@@ -7,11 +7,14 @@ import { applyDirDigests, canSkipDirRewalk, parentDir } from './dirDigests';
 import { contentHash } from './hash';
 import { listIndexableFiles, readIndexableText } from './scanner';
 import { IndexAbortFlag, isIndexAbortError, summarizePartialErrors } from './manifestParse';
+import { initIndexStorage, isIndexStorageAvailable } from './indexStorage';
 import { loadManifest, repairManifestFile, saveManifest } from './store';
 import { maybeRefreshSymbolIndex, removeSymbolIndexPath, updateSymbolIndexForFile } from './symbolIndex';
 import { maybeRefreshOutlineIndex, removeOutlineIndexPath, updateOutlineIndexForFile } from './tsOutline';
 import { rebuildManifestTrigrams, searchTrigrams } from './trigram';
 import type { CodebaseSearchHit, IndexManifest, IndexProgress } from './types';
+
+const NO_STORAGE_ERROR = 'Хранилище рабочей области недоступно (отсутствует storageUri)';
 
 export class IndexManager implements vscode.Disposable {
 	private readonly disposables: vscode.Disposable[] = [];
@@ -26,6 +29,7 @@ export class IndexManager implements vscode.Disposable {
 	private pendingSideIndex = new Map<string, { upsert: Set<string>; remove: Set<string> }>();
 
 	constructor(private readonly context: vscode.ExtensionContext) {
+		initIndexStorage(context);
 		void this.bootstrapExisting();
 
 		this.disposables.push(
@@ -95,7 +99,7 @@ export class IndexManager implements vscode.Disposable {
 	}
 
 	/**
-	 * Починить corrupt `.gen/index/manifest.json` и переиндексировать.
+	 * Починить corrupt manifest.json в workspace storage и переиндексировать.
 	 * Битый JSON -> empty; missing dirDigests -> recompute; затем force fullIndex.
 	 */
 	async repairAndReindex(folder?: vscode.WorkspaceFolder): Promise<void> {
@@ -105,6 +109,17 @@ export class IndexManager implements vscode.Disposable {
 		}
 
 		if (getSettings().indexingEnabled === false) {
+			return;
+		}
+
+		if (!isIndexStorageAvailable()) {
+			this.setProgress(target.uri.fsPath, {
+				state: 'error',
+				fileCount: 0,
+				chunkCount: 0,
+				lastError: NO_STORAGE_ERROR,
+			});
+			this.notifyChanged();
 			return;
 		}
 
@@ -392,6 +407,16 @@ export class IndexManager implements vscode.Disposable {
 		}
 
 		if (this.indexing.has(key)) {
+			return;
+		}
+
+		if (!isIndexStorageAvailable()) {
+			this.setProgress(key, {
+				state: 'error',
+				fileCount: 0,
+				chunkCount: 0,
+				lastError: NO_STORAGE_ERROR,
+			});
 			return;
 		}
 

@@ -67,7 +67,7 @@ Comment command
 
 ## Индекс кодовой базы
 
-- Фоновая индексация в `.gen/index/manifest.json` (`src/features/index/`).
+- Фоновая индексация в VS Code workspace storage (`storageUri` / `src/features/index/`).
 - Инкремент по hash файла; `.gen/` не индексируется.
 - Tool `codebase_search` - триграммный поиск по chunks.
 - Context Engine (`contextEngine.ts`): ранжирует hits индекса и открытых редакторов; используется в `@codebase` и при сборке контекста упоминаний.

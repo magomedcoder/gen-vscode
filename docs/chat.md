@@ -76,8 +76,8 @@ In the input, type `@` and choose:
 | `@past` / `@past title`         | Ranked past chats / messages (token quota)                                    |
 | `@agent name`                   | Body of `.gen/agents/{name}.md`                                               |
 | `@codebase` / `@codebase query` | Fragments from the local index + open editors                                 |
-| `@map`                          | Project map outline (`.gen/map`)                                              |
-| `@symbols` / `@symbols query`   | Symbol index summary or query (`.gen/index/symbols.json`)                     |
+| `@map`                          | Project map outline (workspace storage)                                       |
+| `@symbols` / `@symbols query`   | Symbol index summary or query (workspace storage `symbols.json`)              |
 | `@git` / `@git SHA`             | Recent commits or `git show` for a SHA                                        |
 | `@branch_diff`                  | `git status` + `diff --stat`                                                  |
 | `@rules`                        | AGENTS.md / `.genrules`                                                       |

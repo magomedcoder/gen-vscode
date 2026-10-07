@@ -67,7 +67,7 @@ The agent loads body via `plugin` (by name) or `read_file` using the catalog pat
 
 ## Codebase index
 
-- Background indexing into `.gen/index/manifest.json` (`src/features/index/`).
+- Background indexing into VS Code workspace storage (`storageUri` / `src/features/index/`).
 - Incremental by file hash; `.gen/` is not indexed.
 - Tool `codebase_search` - trigram search over chunks.
 - Context Engine (`contextEngine.ts`): ranks index hits and open editors; used by `@codebase` and mention context packing.

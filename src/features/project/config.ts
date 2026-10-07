@@ -10,7 +10,7 @@ export const GEN_CONFIG_VERSION = 1;
  * Каталоги MVP под `.gen/` - создаются при enable проекта и `/init`.
  * `references.json` пишется по требованию (не здесь).
  */
-export const GEN_SCAFFOLD_DIRS = ['agents', 'commands', 'plugins', 'skills', 'tools', 'references', 'plans', 'map', 'scratch'] as const;
+export const GEN_SCAFFOLD_DIRS = ['agents', 'commands', 'plugins', 'skills', 'tools', 'references', 'plans', 'scratch'] as const;
 
 // Краткое описание layout `.gen/` (RU + EN); не перезаписываем, если уже есть
 const GEN_README_CONTENT = `# \`.gen/\` - Gen Agent
@@ -26,10 +26,11 @@ Project files for Gen / файлы проекта Gen.
 | \`tools/\` | \`*.md\` or \`*/TOOL.md\` | Локальные tools |
 | \`references/\` | Per-alias reference JSON | JSON ссылок по alias |
 | \`plans/\` | Multi-file plans | Планы агента |
-| \`map/\` | Project module map cache (\`project.json\`) | Кэш карты модулей |
 | \`scratch/\` | Ephemeral scripts (\`run_scratch\`) | Одноразовые скрипты |
 
-Also: \`config.json\` (opt-in), \`hooks.json\`, \`shell.json\` (env profiles), \`references.json\` (on demand), \`index/\`, \`plan.md\`.
+Also: \`config.json\` (opt-in), \`hooks.json\`, \`shell.json\` (env profiles), \`references.json\` (on demand), \`plan.md\`.
+
+Index / project map caches live in VS Code workspace storage (\`storageUri\`), not under \`.gen/\`.
 `;
 
 /**

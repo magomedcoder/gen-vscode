@@ -2,7 +2,7 @@
 
 [English version](codebase-index.md)
 
-Локальный индекс workspace в `.gen/index/`. 
+Локальный индекс workspace в VS Code **workspace storage** (`ExtensionContext.storageUri`), не под `.gen/`.
 
 Агент ищет по нему через tool `codebase_search` (триграммы), без отправки всего индекса в LLM.
 
@@ -13,10 +13,10 @@
 
 ## Как устроено
 
-- Индекс пишется в `.gen/index/manifest.json` (files, chunks, trigrams, **dirDigests** Merkle-карта).
+- Индекс пишется в workspace storage `index/<key>/manifest.json` (files, chunks, trigrams, **dirDigests** Merkle-карта).
 - При обновлении пересчитываются digests предков; неизменённые каталоги пропускаются при совпадении путей + **content-hash** (size+mtime gate доверяет stored hash; одного size недостаточно).
-- LSP **symbol index** (кэш): `.gen/index/symbols.json` через `vscode.executeDocumentSymbolProvider`. Tools: `find_symbol` / `find_code` intent `symbol`, mention `@symbols`.
-- **Outline** (без Tree-sitter / native deps - для non-JS **только LSP**): `.gen/index/outline.json`. TS/JS через TypeScript `createSourceFile`; остальные языки через `vscode.executeDocumentSymbolProvider`, если провайдер есть; дешёвый regex fallback только если LSP пуст (`py`/`go`/`rs`/`java`/`kt`/`rb`). Также в `find_symbol` (`source: outline|all`).
+- LSP **symbol index** (кэш): workspace storage `symbols.json` через `vscode.executeDocumentSymbolProvider`. Tools: `find_symbol` / `find_code` intent `symbol`, mention `@symbols`.
+- **Outline** (без Tree-sitter / native deps - для non-JS **только LSP**): workspace storage `outline.json`. TS/JS через TypeScript `createSourceFile`; остальные языки через `vscode.executeDocumentSymbolProvider`, если провайдер есть; дешёвый regex fallback только если LSP пуст (`py`/`go`/`rs`/`java`/`kt`/`rb`). Также в `find_symbol` (`source: outline|all`).
 - `.gen/` не индексируется (как и `.git`, `node_modules` через ignore).
 - При изменении файла переиндексируется только он (сравнение content-hash); outline/symbols обновляются **per-file** (debounce), полный rebuild - только после full index.
 - Результаты `codebase_search` - фрагменты (path, строки, snippet, score).
@@ -34,7 +34,7 @@ Call hierarchy / «кто вызывает Y»: tool `find_references` (LSP refe
 ## Использование
 
 1. Открыть workspace и чат Gen.
-2. Нажать **Создать конфиг и индекс** (пишет `.gen/config.json`, scaffold-каталоги и строит `.gen/index/`). До этого при открытии папки `.gen/` не создаётся. То же scaffold делает slash `/init`.
+2. Нажать **Создать конфиг и индекс** (пишет `.gen/config.json`, scaffold-каталоги и строит индекс в VS Code `storageUri`). До этого при открытии папки `.gen/` не создаётся. То же scaffold делает slash `/init`.
 3. В режиме Agent вызвать `codebase_search` с `query` (символ, фраза, путь). Предпочтительнее `find_code` / `find_symbol` / `pack_context` / `similar_code`.
 4. Для точного grep по строке - `grep` (пути через `glob`).
 

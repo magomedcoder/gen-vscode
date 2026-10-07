@@ -2,7 +2,7 @@
 
 [Русская версия](codebase-index-ru.md)
 
-Local workspace index in `.gen/index/`.
+Local workspace index in VS Code **workspace storage** (`ExtensionContext.storageUri`), not under `.gen/`.
 
 The agent searches it via the `codebase_search` tool (trigrams), without sending the whole index to the LLM.
 
@@ -13,10 +13,10 @@ The agent searches it via the `codebase_search` tool (trigrams), without sending
 
 ## How it works
 
-- The index is written to `.gen/index/manifest.json` (files, chunks, trigrams, **dirDigests** Merkle map).
+- The index is written to workspace storage `index/<key>/manifest.json` (files, chunks, trigrams, **dirDigests** Merkle map).
 - On update, ancestor directory digests are recomputed; unchanged dirs skip re-read when paths + **content-hash** match (size+mtime gate trusts the stored hash; size alone is not enough).
-- LSP **symbol index** (optional cache): `.gen/index/symbols.json` via `vscode.executeDocumentSymbolProvider`. Used by `find_symbol` / `find_code` intent `symbol` and `@symbols`.
-- **Outline** (no Tree-sitter / no native deps - **LSP-only** for non-JS): `.gen/index/outline.json`. TS/JS via TypeScript `createSourceFile`; other languages via `vscode.executeDocumentSymbolProvider` when available; cheap regex fallback only if LSP returns empty (`py`/`go`/`rs`/`java`/`kt`/`rb`). Also exposed via `find_symbol` (`source: outline|all`).
+- LSP **symbol index** (optional cache): workspace storage `symbols.json` via `vscode.executeDocumentSymbolProvider`. Used by `find_symbol` / `find_code` intent `symbol` and `@symbols`.
+- **Outline** (no Tree-sitter / no native deps - **LSP-only** for non-JS): workspace storage `outline.json`. TS/JS via TypeScript `createSourceFile`; other languages via `vscode.executeDocumentSymbolProvider` when available; cheap regex fallback only if LSP returns empty (`py`/`go`/`rs`/`java`/`kt`/`rb`). Also exposed via `find_symbol` (`source: outline|all`).
 - `.gen/` is not indexed (same for `.git`, `node_modules` via ignore).
 - On file change, only that file is reindexed (content-hash compare); outline/symbols update **per-file** (debounced), full rebuild only after a complete index pass.
 - `codebase_search` results are fragments (path, lines, snippet, score).
@@ -34,7 +34,7 @@ Call hierarchy / “who calls Y”: tool `find_references` (LSP reference + defi
 ## Usage
 
 1. Open a workspace and open Gen chat.
-2. Click **Create config & index** (writes `.gen/config.json`, scaffold dirs, and builds `.gen/index/`). Until then Gen does not create `.gen/` on folder open. The same scaffold runs on slash `/init`.
+2. Click **Create config & index** (writes `.gen/config.json`, scaffold dirs, and builds the index under VS Code `storageUri`). Until then Gen does not create `.gen/` on folder open. The same scaffold runs on slash `/init`.
 3. In Agent mode, call `codebase_search` with `query` (symbol, phrase, path). Prefer `find_code` / `find_symbol` / `pack_context` / `similar_code` for hybrid retrieval.
 4. For exact line grep - `grep` (paths via `glob`).
 
