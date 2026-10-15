@@ -162,3 +162,87 @@ export function beginLlmCompleteSpan(
 		},
 	};
 }
+
+export interface IndexMerkleOtelAttrs {
+	filesTotal: number;
+	filesSkipped: number;
+	filesIndexed: number;
+	dirsTotal: number;
+	dirsSkipped: number;
+	chunksIndexed: number;
+	chunksSkipped: number;
+	folderKey?: string;
+}
+
+/**
+ * Opt-in OTLP/консольный span с метриками skip Merkle на fullIndex.
+ * Тот же флаг, что у LLM: `otelEnabled` (+ опционально `otelEndpoint`).
+ */
+export function emitIndexMerkleMetrics(
+	settings: Pick<import('../config/types').GenSettings, 'otelEnabled' | 'otelEndpoint'>,
+	attrs: IndexMerkleOtelAttrs,
+): void {
+	if (!settings.otelEnabled) {
+		return;
+	}
+
+	const startMs = Date.now();
+	const startNs = BigInt(startMs) * 1_000_000n;
+	const endNs = startNs + 1_000_000n;
+	const line = `[${new Date().toISOString()}] otel index.full ` +
+		`files=${attrs.filesIndexed}/${attrs.filesTotal} skip=${attrs.filesSkipped} ` +
+		`dirsSkip=${attrs.dirsSkipped}/${attrs.dirsTotal} ` +
+		`chunks=+${attrs.chunksIndexed}/reuse=${attrs.chunksSkipped}` +
+		(attrs.folderKey ? ` folder=${attrs.folderKey}` : '');
+	const endpoint = settings.otelEndpoint.trim();
+	if (!endpoint) {
+		appendLogLine('llm', line);
+		return;
+	}
+
+	const attributes = [
+		otlpStringAttr('gen.index.op', 'full'),
+		otlpIntAttr('gen.index.files_total', attrs.filesTotal),
+		otlpIntAttr('gen.index.files_skipped', attrs.filesSkipped),
+		otlpIntAttr('gen.index.files_indexed', attrs.filesIndexed),
+		otlpIntAttr('gen.index.dirs_total', attrs.dirsTotal),
+		otlpIntAttr('gen.index.dirs_skipped', attrs.dirsSkipped),
+		otlpIntAttr('gen.index.chunks_indexed', attrs.chunksIndexed),
+		otlpIntAttr('gen.index.chunks_skipped', attrs.chunksSkipped),
+	];
+	if (attrs.folderKey) {
+		attributes.push(otlpStringAttr('gen.index.folder_key', attrs.folderKey));
+	}
+	const body = {
+		resourceSpans: [
+			{
+				resource: {
+					attributes: [otlpStringAttr('service.name', 'gen-agent-vscode')],
+				},
+				scopeSpans: [
+					{
+						scope: {
+							name: 'gen.index',
+							version: '0.1.0',
+						},
+						spans: [
+							{
+								traceId: hexId(16),
+								spanId: hexId(8),
+								name: 'index.full',
+								kind: 3,
+								startTimeUnixNano: startNs.toString(),
+								endTimeUnixNano: endNs.toString(),
+								attributes,
+								status: {
+									code: 1,
+								},
+							},
+						],
+					},
+				],
+			},
+		],
+	};
+	void postOtlp(endpoint, JSON.stringify(body));
+}

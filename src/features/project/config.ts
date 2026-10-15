@@ -7,7 +7,8 @@ export const GEN_CONFIG_RELATIVE = '.gen/config.json';
 export const GEN_CONFIG_VERSION = 1;
 
 /**
- * Каталоги MVP под `.gen/` - создаются при enable проекта и `/init`.
+ * Каталоги MVP под `.gen/` - создаются командой `gen.initProject` и `/init`.
+ * Индекс кодовой базы в workspace storage и не требует `.gen/`.
  * `references.json` пишется по требованию (не здесь).
  */
 export const GEN_SCAFFOLD_DIRS = ['agents', 'commands', 'plugins', 'skills', 'tools', 'references', 'plans', 'scratch'] as const;
@@ -34,8 +35,9 @@ Index / project map caches live in VS Code workspace storage (\`storageUri\`), n
 `;
 
 /**
- * Project `.gen/config.json`: маркер opt-in + опциональный overlay GenSettings.
+ * Project `.gen/config.json`: маркер наличия project-слоя + опциональный overlay GenSettings.
  * Известные ключи мержатся в effective config (см. `src/config/layers.ts`, FILE_LAYER_KEYS).
+ * Не нужен для фоновой индексации.
  */
 export interface GenProjectConfig {
 	version: number;
@@ -82,7 +84,7 @@ export async function ensureGenScaffold(folderPath?: string): Promise<void> {
 	}
 }
 
-// Маркер согласия: файл `.gen/config.json` должен существовать
+// Есть ли `.gen/config.json` (project overlay / hooks / agents scaffold)
 export async function isProjectEnabled(folderPath?: string): Promise<boolean> {
 	const root = folderFsPath(folderPath);
 	if (!root) {

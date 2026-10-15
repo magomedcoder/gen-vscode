@@ -2,7 +2,7 @@
  * Персистентный индекс / map в VS Code workspace storage (`context.storageUri`), не в `.gen/` проекта.
  *
  * Layout:
- *   <storageUri>/index/<folderKey>/{manifest,symbols,outline}.json
+ *   <storageUri>/index/<folderKey>/{manifest,symbols,outline,merkle}.json
  *   <storageUri>/map/<folderKey>/project.json
  */
 
@@ -13,6 +13,7 @@ import type { ExtensionContext } from 'vscode';
 export const INDEX_MANIFEST_FILE = 'manifest.json';
 export const INDEX_SYMBOLS_FILE = 'symbols.json';
 export const INDEX_OUTLINE_FILE = 'outline.json';
+export const INDEX_MERKLE_FILE = 'merkle.json';
 const PROJECT_MAP_FILE = 'project.json';
 
 let storageRoot: string | undefined;

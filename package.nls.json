@@ -7,6 +7,7 @@
 	"command.openChat.title": "Open chat",
 	"command.openChatPanel.title": "Open chat (panel)",
 	"command.openChatSidebar.title": "Open chat (sidebar)",
+	"command.initProject.title": "Initialize project (.gen)",
 	"command.addSelectionToChat.title": "Gen: Add selection to chat",
 	"command.addToChat.title": "Gen: Add to chat",
 	"command.explainSelection.title": "Gen: Explain selection",

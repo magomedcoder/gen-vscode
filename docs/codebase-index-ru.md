@@ -13,11 +13,12 @@
 
 ## Как устроено
 
-- Индекс пишется в workspace storage `index/<key>/manifest.json` (files, chunks, trigrams, **dirDigests** Merkle-карта).
-- При обновлении пересчитываются digests предков; неизменённые каталоги пропускаются при совпадении путей + **content-hash** (size+mtime gate доверяет stored hash; одного size недостаточно).
+- Индекс пишется в workspace storage `index/<key>/manifest.json` (+ `merkle.json`: узлы, digests чанков/символов, метрики skip). Flat `dirDigests` в манифесте зеркалит Merkle-каталоги.
+- При обновлении неизменённые каталоги/файлы пропускаются по Merkle digests + **content-hash** (size+mtime gate); неизменённые тела чанков переиспользуются (стабильные content id).
 - LSP **symbol index** (кэш): workspace storage `symbols.json` через `vscode.executeDocumentSymbolProvider`. Tools: `find_symbol` / `find_code` intent `symbol`, mention `@symbols`.
-- **Outline** (без Tree-sitter / native deps - для non-JS **только LSP**): workspace storage `outline.json`. TS/JS через TypeScript `createSourceFile`; остальные языки через `vscode.executeDocumentSymbolProvider`, если провайдер есть; дешёвый regex fallback только если LSP пуст (`py`/`go`/`rs`/`java`/`kt`/`rb`). Также в `find_symbol` (`source: outline|all`).
-- `.gen/` не индексируется (как и `.git`, `node_modules` через ignore).
+- **Outline** (`outlineEngine`): Tree-sitter wasm (`@vscode/tree-sitter-wasm`) если доступен, иначе TypeScript `createSourceFile` (JS/TS) / LSP DocumentSymbol / regex fallback. Настройки: `auto` | `treesitter` | `lsp` | `typescript`.
+- **Чанки** (`chunkEngine`): AST-span через Tree-sitter (`auto`/`treesitter`) или построчные/эвристические окна (`lines`).
+- `.gen/` не индексируется (как и `.git`, `node_modules` через ignore). Индексация идёт в фоне без `.gen/config.json`.
 - При изменении файла переиндексируется только он (сравнение content-hash); outline/symbols обновляются **per-file** (debounce), полный rebuild - только после full index.
 - Результаты `codebase_search` - фрагменты (path, строки, snippet, score).
 - В чате: `@file`, `@folder`, `@codebase`, `@map`, `@symbols` (см. [chat-ru.md](chat-ru.md)).
@@ -33,8 +34,8 @@ Call hierarchy / «кто вызывает Y»: tool `find_references` (LSP refe
 
 ## Использование
 
-1. Открыть workspace и чат Gen.
-2. Нажать **Создать конфиг и индекс** (пишет `.gen/config.json`, scaffold-каталоги и строит индекс в VS Code `storageUri`). До этого при открытии папки `.gen/` не создаётся. То же scaffold делает slash `/init`.
+1. Открыть workspace и чат Gen - индексация стартует в фоне в `storageUri`.
+2. Опционально **Gen: Инициализировать проект (.gen)** / slash `/init` для scaffold agents/commands/skills (для индекса не обязательно).
 3. В режиме Agent вызвать `codebase_search` с `query` (символ, фраза, путь). Предпочтительнее `find_code` / `find_symbol` / `pack_context` / `similar_code`.
 4. Для точного grep по строке - `grep` (пути через `glob`).
 

@@ -7,6 +7,7 @@
 	"command.openChat.title": "Открыть чат",
 	"command.openChatPanel.title": "Открыть чат (панель)",
 	"command.openChatSidebar.title": "Открыть чат (боковая панель)",
+	"command.initProject.title": "Инициализировать проект (.gen)",
 	"command.addSelectionToChat.title": "Gen: Добавить выделение в чат",
 	"command.addToChat.title": "Gen: Добавить в чат",
 	"command.explainSelection.title": "Gen: Объяснить выделение",

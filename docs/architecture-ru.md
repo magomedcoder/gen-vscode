@@ -44,7 +44,7 @@ Comment command
 Без npm и без выполнения произвольного JS. Только discovery + каталог в system prompt + tools `list_plugins` / `plugin` (+ Open в Settings Rules/Skills).
 
 | Вид          | Путь                              | Заметки                                                                        |
-| ------------ | --------------------------------- | ------------------------------------------------------------------------------ |
+|--------------|-----------------------------------|--------------------------------------------------------------------------------|
 | Tool (файл)  | `.gen/tools/<name>.md`            | YAML frontmatter: `name`, `description`                                        |
 | Tool (пакет) | `.gen/tools/<name>/TOOL.md`       | Как skills/`SKILL.md`                                                          |
 | Plugin       | `.gen/plugins/<name>/plugin.json` | Обязательная точка обнаружения: `{ "name"?, "description"?, "instructions"? }` |
@@ -67,7 +67,7 @@ Comment command
 
 ## Индекс кодовой базы
 
-- Фоновая индексация в VS Code workspace storage (`storageUri` / `src/features/index/`).
+- Фоновая индексация в VS Code workspace storage (`storageUri` / `src/features/index/`), Tree-sitter wasm outline/AST-чанки и Merkle v2 skip (`merkle.json`).
 - Инкремент по hash файла; `.gen/` не индексируется.
 - Tool `codebase_search` - триграммный поиск по chunks.
 - Context Engine (`contextEngine.ts`): ранжирует hits индекса и открытых редакторов; используется в `@codebase` и при сборке контекста упоминаний.

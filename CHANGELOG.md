@@ -2,6 +2,10 @@
 
 [Русская версия](CHANGELOG-ru.md)
 
+## dev
+
+- **Index / Tree-sitter + Merkle v2:** wasm Tree-sitter (`@vscode/tree-sitter-wasm`) for outline and AST chunks (`outlineEngine` / `chunkEngine`); `merkle.json` (nodes, chunk/symbol digests, skip metrics); chunk reuse on edits; Repair rebuilds merkle; index no longer requires `.gen/config.json` (use `gen.initProject` for scaffold)
+
 ## 0.5.0 (30 September 2026)
 
 - **Secrets:** unified SecretStorage vault; `webSearchApiKey` no longer in JSON/settings layers (migrate + clear UI); LLM apiKey via same vault

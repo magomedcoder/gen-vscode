@@ -44,7 +44,7 @@ Comment command
 No npm and no arbitrary JS execution. Discovery + system-prompt catalog + tools `list_plugins` / `plugin` (+ Open on Settings Rules/Skills).
 
 | Kind           | Path                              | Notes                                                                    |
-| -------------- | --------------------------------- | ------------------------------------------------------------------------ |
+|----------------|-----------------------------------|--------------------------------------------------------------------------|
 | Tool (file)    | `.gen/tools/<name>.md`            | YAML frontmatter: `name`, `description`                                  |
 | Tool (package) | `.gen/tools/<name>/TOOL.md`       | Same idea as skills/`SKILL.md`                                           |
 | Plugin         | `.gen/plugins/<name>/plugin.json` | Required discovery entry: `{ "name"?, "description"?, "instructions"? }` |
@@ -67,7 +67,7 @@ The agent loads body via `plugin` (by name) or `read_file` using the catalog pat
 
 ## Codebase index
 
-- Background indexing into VS Code workspace storage (`storageUri` / `src/features/index/`).
+- Background indexing into VS Code workspace storage (`storageUri` / `src/features/index/`), with Tree-sitter wasm outline/AST chunks and Merkle v2 skip (`merkle.json`).
 - Incremental by file hash; `.gen/` is not indexed.
 - Tool `codebase_search` - trigram search over chunks.
 - Context Engine (`contextEngine.ts`): ranks index hits and open editors; used by `@codebase` and mention context packing.
