@@ -4,7 +4,7 @@
 
 ## dev
 
-- **Index / Tree-sitter + Merkle v2:** wasm Tree-sitter (`@vscode/tree-sitter-wasm`) для outline и AST-чанков (`outlineEngine` / `chunkEngine`); `merkle.json` (узлы, digests чанков/символов, метрики skip); reuse чанков при правках; Repair пересобирает merkle; индекс не требует `.gen/config.json` (scaffold через `gen.initProject`)
+- **Index / Tree-sitter + Merkle v2:** wasm Tree-sitter (`@vscode/tree-sitter-wasm`) для outline и AST-чанков (`outlineEngine` / `chunkEngine`); field-based правила Tree-sitter; **строгие** режимы `treesitter` (без fallback); `merkle.json` + опциональный SQLite sidecar (`indexStorageBackend`); patch/unchanged symbol leaves; reuse чанков при правках; Repair пересобирает merkle; индекс не требует `.gen/config.json` (scaffold через `gen.initProject`)
 
 ## 0.5.0 (30 сентября 2026)
 

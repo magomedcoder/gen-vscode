@@ -13,11 +13,11 @@ The agent searches it via the `codebase_search` tool (trigrams), without sending
 
 ## How it works
 
-- The index is written to workspace storage `index/<key>/manifest.json` (+ `merkle.json`: nodes, chunk/symbol digests, skip metrics). Flat `dirDigests` in the manifest mirrors Merkle dirs.
-- On update, unchanged dirs/files skip re-read when Merkle digests + **content-hash** match (size+mtime gate); unchanged chunk bodies are reused (stable content ids).
+- The index is written to workspace storage `index/<key>/manifest.json` (+ `merkle.json`: nodes, chunk/symbol digests, skip metrics; optional `index.sqlite` when `indexStorageBackend=sqlite` and file count ≥ `indexSqliteMinFiles`). Flat `dirDigests` in the manifest mirrors Merkle dirs.
+- On update, unchanged dirs/files skip re-read when Merkle digests + **content-hash** match (size+mtime gate; `indexForceContentHash` forces content-hash); unchanged chunk bodies and symbol leaves are reused (stable content ids / merkle patch).
 - LSP **symbol index** (optional cache): workspace storage `symbols.json` via `vscode.executeDocumentSymbolProvider`. Used by `find_symbol` / `find_code` intent `symbol` and `@symbols`.
-- **Outline** (`outlineEngine`): Tree-sitter wasm (`@vscode/tree-sitter-wasm`) when available, else TypeScript `createSourceFile` (JS/TS) / LSP DocumentSymbol / regex fallback. Settings: `auto` | `treesitter` | `lsp` | `typescript`.
-- **Chunks** (`chunkEngine`): AST spans via Tree-sitter (`auto`/`treesitter`) or line/heuristic windows (`lines`).
+- **Outline** (`outlineEngine`): Tree-sitter wasm (`@vscode/tree-sitter-wasm`) with field-based rules when available; `auto` falls back to TypeScript `createSourceFile` (JS/TS) / LSP DocumentSymbol / regex. Mode `treesitter` is **strict** (no fallback). Settings: `auto` | `treesitter` | `lsp` | `typescript`.
+- **Chunks** (`chunkEngine`): AST spans via Tree-sitter (`auto` with fallback, or **strict** `treesitter`) or line/heuristic windows (`lines`). Languages: `treeSitterLanguages` (empty = MVP whitelist; `*` / `all` = every available wasm).
 - `.gen/` is not indexed (same for `.git`, `node_modules` via ignore). Indexing runs in the background without requiring `.gen/config.json`.
 - On file change, only that file is reindexed (content-hash compare); outline/symbols update **per-file** (debounced), full rebuild only after a complete index pass.
 - `codebase_search` results are fragments (path, lines, snippet, score).

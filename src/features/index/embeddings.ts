@@ -191,3 +191,14 @@ export async function semanticSearchWorkspace(
 	
 	return local;
 }
+
+/**
+ * Пересобрать local-hash векторы после индексации.
+ * В этой сборке vector store не подключён - мягкий no-op (IndexManager ловит ошибки).
+ */
+export async function rebuildLocalVectorIndex(
+	_folderFsPath: string,
+	_opts?: { onlyChunkIds?: ReadonlyArray<string> },
+): Promise<number> {
+	return 0;
+}

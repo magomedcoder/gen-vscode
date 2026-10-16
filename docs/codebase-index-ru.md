@@ -13,11 +13,11 @@
 
 ## Как устроено
 
-- Индекс пишется в workspace storage `index/<key>/manifest.json` (+ `merkle.json`: узлы, digests чанков/символов, метрики skip). Flat `dirDigests` в манифесте зеркалит Merkle-каталоги.
-- При обновлении неизменённые каталоги/файлы пропускаются по Merkle digests + **content-hash** (size+mtime gate); неизменённые тела чанков переиспользуются (стабильные content id).
+- Индекс пишется в workspace storage `index/<key>/manifest.json` (+ `merkle.json`: узлы, digests чанков/символов, метрики skip; опционально `index.sqlite` при `indexStorageBackend=sqlite` и числе файлов ≥ `indexSqliteMinFiles`). Flat `dirDigests` в манифесте зеркалит Merkle-каталоги.
+- При обновлении неизменённые каталоги/файлы пропускаются по Merkle digests + **content-hash** (size+mtime gate; `indexForceContentHash` форсирует content-hash); неизменённые тела чанков и symbol leaves переиспользуются (стабильные content id / merkle patch).
 - LSP **symbol index** (кэш): workspace storage `symbols.json` через `vscode.executeDocumentSymbolProvider`. Tools: `find_symbol` / `find_code` intent `symbol`, mention `@symbols`.
-- **Outline** (`outlineEngine`): Tree-sitter wasm (`@vscode/tree-sitter-wasm`) если доступен, иначе TypeScript `createSourceFile` (JS/TS) / LSP DocumentSymbol / regex fallback. Настройки: `auto` | `treesitter` | `lsp` | `typescript`.
-- **Чанки** (`chunkEngine`): AST-span через Tree-sitter (`auto`/`treesitter`) или построчные/эвристические окна (`lines`).
+- **Outline** (`outlineEngine`): Tree-sitter wasm (`@vscode/tree-sitter-wasm`) с field-based правилами если доступен; `auto` падает на TypeScript `createSourceFile` (JS/TS) / LSP DocumentSymbol / regex. Режим `treesitter` - **строгий** (без fallback). Настройки: `auto` | `treesitter` | `lsp` | `typescript`.
+- **Чанки** (`chunkEngine`): AST-span через Tree-sitter (`auto` с fallback или **строгий** `treesitter`) или построчные/эвристические окна (`lines`). Языки: `treeSitterLanguages` (пусто = MVP whitelist; `*` / `all` = все доступные wasm).
 - `.gen/` не индексируется (как и `.git`, `node_modules` через ignore). Индексация идёт в фоне без `.gen/config.json`.
 - При изменении файла переиндексируется только он (сравнение content-hash); outline/symbols обновляются **per-file** (debounce), полный rebuild - только после full index.
 - Результаты `codebase_search` - фрагменты (path, строки, snippet, score).

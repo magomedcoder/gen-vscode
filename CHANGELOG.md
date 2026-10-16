@@ -4,7 +4,7 @@
 
 ## dev
 
-- **Index / Tree-sitter + Merkle v2:** wasm Tree-sitter (`@vscode/tree-sitter-wasm`) for outline and AST chunks (`outlineEngine` / `chunkEngine`); `merkle.json` (nodes, chunk/symbol digests, skip metrics); chunk reuse on edits; Repair rebuilds merkle; index no longer requires `.gen/config.json` (use `gen.initProject` for scaffold)
+- **Index / Tree-sitter + Merkle v2:** wasm Tree-sitter (`@vscode/tree-sitter-wasm`) for outline and AST chunks (`outlineEngine` / `chunkEngine`); field-based Tree-sitter rules; **strict** `treesitter` modes (no fallback); `merkle.json` + optional SQLite sidecar (`indexStorageBackend`); patch/unchanged symbol leaves; chunk reuse on edits; Repair rebuilds merkle; index no longer requires `.gen/config.json` (use `gen.initProject` for scaffold)
 
 ## 0.5.0 (30 September 2026)
 
