@@ -5,7 +5,7 @@ import { writeFileTool } from './writeFile';
 /**
  * Удобный DSL поверх write_file / apply_patch:
  * - content без old_string -> write_file
- * - old_string + new_string -> apply_patch
+ * - old_string + new_string -> apply_patch (замена фрагмента)
  */
 export const editFileTool: ToolDefinition = {
 	name: 'edit_file',

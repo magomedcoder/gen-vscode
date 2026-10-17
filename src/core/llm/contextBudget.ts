@@ -30,7 +30,7 @@ export function setCachedNCtx(baseUrl: string, model: string, nCtx: number): voi
 	nCtxCache.set(key, Math.floor(nCtx));
 }
 
-// Soft-update кэша n_ctx из тела chat/completions (если сервер отдал поле)
+// Мягкое обновление (soft-update) кэша n_ctx из тела chat/completions (если сервер отдал поле)
 export function softCacheNCtxFromCompletePayload(baseUrl: string, model: string, data: unknown): void {
 	if (!data || typeof data !== 'object') {
 		return;

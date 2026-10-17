@@ -7,14 +7,16 @@ import { astChunkRatio, getIndexRunStats } from './indexStats';
 import { isSqliteIndexAvailable } from './indexSqlite';
 import { detectMerkleIssues, loadMerkle } from './merkle';
 import { inspectManifest, loadManifest } from './store';
+import { getSymbolIndexMetrics, loadSymbolIndex } from './symbolIndex';
 import { isTreeSitterAvailable, listSupportedTreeSitterLanguages } from './treeSitter';
 import type { IndexProgress } from './types';
+import { loadVectorsDocument, localVectorCount } from './vectorStore';
 
 /**
  * Режим движка индекса / семантического поиска.
- * Outline: Tree-sitter wasm / TS API / LSP -> workspace storage outline.json.
+ * Структура: Tree-sitter wasm / TS API / LSP -> outline.json в хранилище workspace.
  */
-export type IndexEngineMode = 'cpu-trigram' | 'remote';
+export type IndexEngineMode = 'cpu-trigram' | 'remote' | 'local-vector';
 
 export interface IndexEngineStatus {
 	mode: IndexEngineMode;
@@ -38,14 +40,25 @@ export interface IndexEngineStatus {
 	merkleSkipPct?: number;
 	indexStorageBackend?: string;
 	sqliteAvailable?: boolean;
+	localVectorCount?: number;
+	symbolIndexOk?: number;
+	symbolIndexFail?: number;
+	symbolIndexPartial?: number;
+	symbolIndexLastError?: string;
+	symbolFileCount?: number;
+	symbolCount?: number;
 }
 
-// Приоритет: remote (embeddingsBaseUrl)  иначе CPU trigram
+// Приоритет: удалённый (embeddingsBaseUrl) -> локальный векторный -> CPU-триграммы
 export function resolveIndexEngineMode(
 	settings: Pick<GenSettings, 'embeddingsBaseUrl' | 'localEmbeddingsMode'>,
 ): IndexEngineMode {
 	if (String(settings.embeddingsBaseUrl ?? '').trim()) {
 		return 'remote';
+	}
+	
+	if (settings.localEmbeddingsMode === 'vector') {
+		return 'local-vector';
 	}
 
 	return 'cpu-trigram';
@@ -69,6 +82,11 @@ export async function collectIndexEngineStatus(): Promise<IndexEngineStatus> {
 	let astRatio: number | undefined;
 	let outlineBySource: Record<string, number> | undefined;
 	let merkleSkipPct: number | undefined;
+	let vectorCount: number | undefined;
+	let symbolFileCount: number | undefined;
+	let symbolCount: number | undefined;
+
+	const symbolMetrics = getSymbolIndexMetrics();
 
 	if (folderFs) {
 		const stats = getIndexRunStats(folderFs);
@@ -77,7 +95,7 @@ export async function collectIndexEngineStatus(): Promise<IndexEngineStatus> {
 		if (stats.lastMerkle && stats.lastMerkle.filesTotal > 0) {
 			merkleSkipPct = Math.round((100 * stats.lastMerkle.filesSkipped) / stats.lastMerkle.filesTotal);
 		}
-		
+
 		try {
 			if (!isIndexStorageAvailable()) {
 				progressState = progressState && progressState !== 'idle' ? progressState : 'error';
@@ -106,6 +124,19 @@ export async function collectIndexEngineStatus(): Promise<IndexEngineStatus> {
 						if (!lastError) {
 							lastError = `Расхождение Merkle (файлы=${issues.mismatches.length}) - рекомендуется Repair`;
 						}
+					}
+				} catch {}
+
+				try {
+					const vectors = await loadVectorsDocument(folderFs);
+					vectorCount = localVectorCount(vectors);
+				} catch {}
+
+				try {
+					const symbols = await loadSymbolIndex(folderFs);
+					if (symbols) {
+						symbolFileCount = symbols.fileCount;
+						symbolCount = symbols.symbols.length;
 					}
 				} catch {}
 			}
@@ -147,5 +178,12 @@ export async function collectIndexEngineStatus(): Promise<IndexEngineStatus> {
 		merkleSkipPct,
 		indexStorageBackend: settings.indexStorageBackend,
 		sqliteAvailable: isSqliteIndexAvailable(),
+		localVectorCount: vectorCount,
+		symbolIndexOk: symbolMetrics.ok,
+		symbolIndexFail: symbolMetrics.fail,
+		symbolIndexPartial: symbolMetrics.partial,
+		symbolIndexLastError: symbolMetrics.lastError,
+		symbolFileCount,
+		symbolCount,
 	};
 }

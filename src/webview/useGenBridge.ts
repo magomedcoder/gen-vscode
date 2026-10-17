@@ -202,6 +202,7 @@ export function useGenBridge() {
 						rules: data.rules,
 						skills: data.skills,
 						plugins: data.plugins ?? [],
+						ruleConflicts: data.ruleConflicts ?? [],
 					});
 					return;
 				case 'personasData':
@@ -228,7 +229,7 @@ export function useGenBridge() {
 		setSettingsStatus(t('settings.status.saving'));
 		vscodeApi.postMessage({
 			type: 'saveSettings',
-			settings: { ...next, webSearchApiKey: '' },
+			settings: next,
 			apiKey: api?.apiKey,
 			clearApiKey: api?.clearApiKey,
 			webSearchApiKey: api?.webSearchApiKey,

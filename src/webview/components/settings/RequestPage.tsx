@@ -210,6 +210,26 @@ export function RequestPage({
 					checked={draft.attachmentImageAutoResize}
 					onChange={(v) => setField('attachmentImageAutoResize', v)}
 				/>
+				<FieldSelect
+					labelKey="settings.attachmentImageQuality.label"
+					hintKey="settings.attachmentImageQuality.hint"
+					value={draft.attachmentImageQuality}
+					onChange={(v) => setField('attachmentImageQuality', v as typeof draft.attachmentImageQuality)}
+				>
+					<option value="low">{t('settings.attachmentImageQuality.low')}</option>
+					<option value="medium">{t('settings.attachmentImageQuality.medium')}</option>
+					<option value="high">{t('settings.attachmentImageQuality.high')}</option>
+				</FieldSelect>
+				<FieldNumber
+					labelKey="settings.pdfVisionMaxPages.label"
+					hintKey="settings.pdfVisionMaxPages.hint"
+					value={draft.pdfVisionMaxPages}
+					min={1}
+					max={6}
+					step={1}
+					parse={parseNumberInput}
+					onChange={(v) => setField('pdfVisionMaxPages', v)}
+				/>
 				<FieldNumber
 					labelKey="settings.attachmentImageMaxWidth.label"
 					value={draft.attachmentImageMaxWidth}

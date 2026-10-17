@@ -1,7 +1,7 @@
 // Лимит JSON-ответа find_code (символы)
 export const FIND_CODE_MAX_CHARS = 12_000;
 
-// Сырой hit от одного бэкенда до merge
+// Сырой hit от одного бэкенда до слияния (merge)
 export interface FindCodeRawHit {
 	path: string;
 	line?: number;

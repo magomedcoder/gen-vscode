@@ -9,7 +9,7 @@ export interface EditReviewEntry {
 	after: string;
 }
 
-// Policy `review` для edits: явный Accept с diff, не heuristic allow
+// Policy `review` для edits: явный Accept с diff, не эвристический allow
 export function needsReviewDiffConfirm(
 	decision: PermissionDecision,
 	action: ApprovalActionType | undefined,

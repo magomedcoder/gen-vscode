@@ -18,8 +18,7 @@ Comment command
 ## Path policy
 
 1. `resolveAgainstFolders` / symlink check  
-2. `deniedPaths` (`policy.ts`)  
-3. `.gitignore` + `.genignore` (`gitIgnore.ts`, cached per turn)
+2. `.gitignore` + `.genignore` (`gitIgnore.ts`, cached per turn)
 
 ## Collaborative editing
 
@@ -41,34 +40,43 @@ Comment command
 
 ## Local plugins / tools (MVP)
 
-No npm and no arbitrary JS execution. Discovery + system-prompt catalog + tools `list_plugins` / `plugin` (+ Open on Settings Rules/Skills).
+Discovery is exposed through the system-prompt catalog and tools `list_plugins` / `plugin` (+ Open in Settings Rules/Skills).
 
 | Kind           | Path                              | Notes                                                                    |
 |----------------|-----------------------------------|--------------------------------------------------------------------------|
-| Tool (file)    | `.gen/tools/<name>.md`            | YAML frontmatter: `name`, `description`                                  |
-| Tool (package) | `.gen/tools/<name>/TOOL.md`       | Same idea as skills/`SKILL.md`                                           |
+| Tool (file)    | `.gen/tools/<name>.md`            | Prompt macro only; YAML frontmatter: `name`, `description`               |
+| Tool (package) | `.gen/tools/<name>/TOOL.md`       | Prompt macro only; same idea as skills/`SKILL.md`                        |
 | Plugin         | `.gen/plugins/<name>/plugin.json` | Required discovery entry: `{ "name"?, "description"?, "instructions"? }` |
 | Plugin body    | `.gen/plugins/<name>/PLUGIN.md`   | Used when `instructions` in JSON is empty                                |
 
-The agent loads body via `plugin` (by name) or `read_file` using the catalog path. npm plugin packages - not yet.
+The agent loads prompt-macro/plugin bodies via `plugin` or `read_file`; no `.gen/tools` host JS is evaluated.
+
+npm plugins are catalogued from `.gen/npm-plugins.json`, or from `package.json` only when matched by `trustedPlugins`. Trust entries pin an exact `package@version` and may add `#sha256=<declared-bin digest>`. `run_plugin` can spawn only the package's declared `bin` under the workspace-never an arbitrary `command`/PATH executable-and still uses shell confirmation and timeout policy. Runs add structured Activity audit data (cwd, resolved bin, sanitized args, exit and timeout).
+
+Remote skills and instruction URLs use a persistent cache, accept optional `#sha256=<content digest>`, and fall back to matching stale cache content when offline. Settings also previews duplicate Markdown headings across merged project, user, and remote rules.
 
 ## Config layers
 
 - User JSON + project `.gen/config.json` merge into effective `GenSettings` (`src/core/config/layers.ts`).
+- Settings UI (`globalState`) stores only non-default keys and **never** `deniedCommands` / `sensitivePathPatterns` / `secretPatterns` (`UI_LAYER_EXCLUDED_KEYS`).
 - Optional **admin policy** (`GEN_ADMIN_POLICY` / `/etc/gen/policy.json` / `%ProgramData%/gen/policy.json`) locks a security subset - highest precedence (`src/core/config/adminPolicy.ts`).
-- Precedence: defaults user UI (non-default) project **admin policy**. Remote `.well-known` / full MDM not implemented.
+- Precedence: defaults -> user -> UI (non-default) -> project -> **admin policy**. Remote `.well-known` / full MDM not implemented.
 - Details: [settings.md](settings.md).
 
 ## Opt-in `.gen/` and scaffold
 
 - Opening a folder does **not** create `.gen/`. Opt-in: chat banner (enable + index) or `/init`.
-- `enableProject` / `ensureGenScaffold` (`src/features/project/config.ts`): `config.json` plus dirs `agents/`, `commands/`, `plugins/`, `skills/`, `tools/`, `references/`, `plans/` (`.gitkeep`, README; never overwrite).
-- Details: [codebase-index.md](codebase-index.md).
+- `enableProject` / `ensureGenScaffold` (`src/features/project/config.ts`): `config.json` (seeds command/redact keys) plus dirs `agents/`, `commands/`, `plugins/`, `skills/`, `tools/`, `references/`, `plans/` (`.gitkeep`, README; never overwrite).
+- Also seeds workspace-root **`.genignore`** (`DEFAULT_GENIGNORE_PATTERNS`) if missing - path/folder ignore for the agent.
+- Details: [codebase-index.md](codebase-index.md), [security.md](security.md).
 
 ## Codebase index
 
-- Background indexing into VS Code workspace storage (`storageUri` / `src/features/index/`), with Tree-sitter wasm outline/AST chunks and Merkle v2 skip (`merkle.json`).
-- Incremental by file hash; `.gen/` is not indexed.
+- Background indexing into VSCode workspace storage (`storageUri` / `src/features/index/`).
+- Tree-sitter wasm (field-based rules): outline + AST chunks; `outlineEngine` / `chunkEngine` modes `treesitter` are **strict** (no fallback).
+- Merkle v2 (`merkle.json`, optional `index.sqlite`); content-hash skip + chunk/symbol leaf reuse.
+- Scan respects `.gitignore` / `.genignore`; `.gen/` is not indexed.
+- UI for engines/status/repair: **Settings -> Project**.
 - Tool `codebase_search` - trigram search over chunks.
 - Context Engine (`contextEngine.ts`): ranks index hits and open editors; used by `@codebase` and mention context packing.
 - Details: [codebase-index.md](codebase-index.md), mentions - [chat.md](chat.md).

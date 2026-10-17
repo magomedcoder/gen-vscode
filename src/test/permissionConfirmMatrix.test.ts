@@ -1,4 +1,5 @@
 import * as assert from 'assert';
+import * as vscode from 'vscode';
 import { DEFAULT_APPROVAL_POLICY } from '../core/config/approvalTypes.js';
 import { evaluateApproval, suggestPattern, toolActionType } from '../features/agent/permissionPolicy.js';
 import type { ApprovalPolicy } from '../features/agent/permissionPolicy.js';
@@ -7,6 +8,7 @@ import { isAlwaysConfirmChoice, resolveConfirmChoiceOutcome, resolveToolConfirmG
 import { shouldSkipToolConfirm } from '../features/agent/tools/confirm.js';
 import { getToolMeta } from '../features/agent/tools/registry.js';
 import type { ConfirmChoice } from '../features/agent/types.js';
+import { AgentWriteTracker } from '../features/agent/userEdits.js';
 
 /**
  * Матрица confirm/policy без LLM:
@@ -290,5 +292,18 @@ suite('permission confirm matrix', () => {
 				assert.strictEqual(toolActionType(name), action, name);
 			}
 		});
+	});
+
+	test('multi-root overwrite snapshots stay isolated by URI', () => {
+		const tracker = new AgentWriteTracker();
+		const first = vscode.Uri.file('/workspace/root-a/src/shared.ts');
+		const second = vscode.Uri.file('/workspace/root-b/src/shared.ts');
+		tracker.remember(first, 'src/shared.ts', 'export const root = "a";\n');
+		tracker.remember(second, 'src/shared.ts', 'export const root = "b";\n');
+
+		assert.strictEqual(tracker.size, 2);
+		assert.strictEqual(tracker.hasUserEdits(first, 'export const root = "a";\n'), false);
+		assert.strictEqual(tracker.hasUserEdits(second, 'export const root = "b changed";\n'), true);
+		assert.strictEqual(tracker.hasUserEdits(first, 'export const root = "a";\n'), false);
 	});
 });

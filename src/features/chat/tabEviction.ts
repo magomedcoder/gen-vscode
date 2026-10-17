@@ -23,7 +23,7 @@ export interface PickTabsToEvictOptions {
 	policy: TabEvictionPolicy;
 }
 
-// Вернуть id вкладок к удалению (от старых к новым), либо [] если policy=block / некого выселить
+// Вернуть id вкладок для удаления (от старых к новым) либо [], если policy=block или удалять нечего
 export function pickTabsToEvict(opts: PickTabsToEvictOptions): string[] {
 	if (opts.policy === 'block') {
 		return [];

@@ -259,7 +259,7 @@ function isOutlineablePath(relative: string): boolean {
 	);
 }
 
-// Per-file upsert в outline.json (без полного rebuild)
+// Пометочное обновление одного файла (upsert) в outline.json (без полного rebuild)
 export async function updateOutlineIndexForFile(
 	folder: vscode.WorkspaceFolder,
 	relative: string,

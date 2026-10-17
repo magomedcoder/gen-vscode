@@ -1,3 +1,4 @@
+import * as vscode from 'vscode';
 import type { Memento } from 'vscode';
 import type { ChatUiMessage } from './protocol';
 
@@ -17,7 +18,8 @@ export interface StoredChatSession {
 	messages: ChatUiMessage[];
 	createdAt: number;
 	updatedAt: number;
-	// Parent<->child: вкладка субагента / handoff
+	archived?: boolean;
+	// Родитель <-> потомок: вкладка субагента / передача
 	parentSessionId?: string;
 	childSessionIds?: string[];
 }
@@ -28,13 +30,14 @@ export interface SessionSummary {
 	createdAt: number;
 	updatedAt: number;
 	messageCount: number;
-	// Сейчас идёт agent/ask turn в этой вкладке (UI-индикатор)
+	archived?: boolean;
+	// Сейчас в этой вкладке идёт ход agent/ask (индикатор UI)
 	busy?: boolean;
-	// Parent session (если эта вкладка - child субагента)
+	// Родительская сессия (если эта вкладка - дочерняя для субагента)
 	parentSessionId?: string;
-	// Child sessions, порождённые из этой вкладки
+	// Дочерние сессии, порождённые из этой вкладки
 	childSessionIds?: string[];
-	// Явный флаг child-сессии (дублирует parentSessionId для UI)
+	// Явный флаг дочерней сессии (дублирует parentSessionId для UI)
 	isChild?: boolean;
 }
 
@@ -88,6 +91,7 @@ function toSummary(session: StoredChatSession): SessionSummary {
 		createdAt: session.createdAt,
 		updatedAt: session.updatedAt,
 		messageCount: session.messages.length,
+		archived: Boolean(session.archived),
 		parentSessionId: session.parentSessionId,
 		childSessionIds: session.childSessionIds?.length
 			? [...session.childSessionIds]
@@ -96,15 +100,20 @@ function toSummary(session: StoredChatSession): SessionSummary {
 	};
 }
 
-// Заголовок новой сессии («Новый чат»)
-export const DEFAULT_SESSION_TITLE = 'Новый чат';
+export function defaultSessionTitle(): string {
+	return vscode.l10n.t('chat.session.defaultTitle');
+}
 
 export function isDefaultSessionTitle(title: string | undefined): boolean {
-	return !title?.trim() || title.trim() === DEFAULT_SESSION_TITLE;
+	if (!title?.trim()) {
+		return true;
+	}
+
+	return title.trim() === defaultSessionTitle();
 }
 
 function defaultTitle(): string {
-	return DEFAULT_SESSION_TITLE;
+	return defaultSessionTitle();
 }
 
 // Живой SessionStore для @past (mentions без ExtensionContext)
@@ -118,7 +127,7 @@ export function getSessionPeek(): SessionStore | undefined {
 	return sessionPeek;
 }
 
-// Persist нескольких чат-сессий в workspaceState (или переданный Memento)
+// Сохранение нескольких чат-сессий в workspaceState (или переданный Memento)
 export class SessionStore {
 	private sessions: StoredChatSession[] = [];
 	private currentId = '';
@@ -143,6 +152,9 @@ export class SessionStore {
 				messages: Array.isArray(s.messages) ? s.messages : [],
 				createdAt: typeof s.createdAt === 'number' ? s.createdAt : Date.now(),
 				updatedAt: typeof s.updatedAt === 'number' ? s.updatedAt : Date.now(),
+				archived: Boolean(s.archived),
+				parentSessionId: s.parentSessionId,
+				childSessionIds: Array.isArray(s.childSessionIds) ? s.childSessionIds : undefined,
 			}));
 			this.currentId = this.sessions.some((s) => s.id === current) ? current : this.sessions[0]!.id;
 			return;
@@ -221,10 +233,37 @@ export class SessionStore {
 		);
 	}
 
-	listSessions(): SessionSummary[] {
-		return this.sessions.slice()
+	listSessions(options?: { archived?: boolean; query?: string }): SessionSummary[] {
+		const query = options?.query?.trim().toLocaleLowerCase();
+		return this.sessions
+			.filter((session) => options?.archived === undefined
+				? !session.archived
+				: Boolean(session.archived) === options.archived)
+			.filter((session) => !query
+				|| session.title.toLocaleLowerCase().includes(query)
+				|| session.messages.some((message) => message.content.toLocaleLowerCase().includes(query)))
+			.slice()
 			.sort((a, b) => b.updatedAt - a.updatedAt)
 			.map(toSummary);
+	}
+
+	archiveSession(id: string, archived = true): boolean {
+		const idx = this.sessions.findIndex((session) => session.id === id);
+		if (idx < 0) {
+			return false;
+		}
+
+		this.sessions[idx] = { 
+			...this.sessions[idx]!, 
+			archived, 
+			updatedAt: Date.now()
+		};
+		if (archived && this.currentId === id) {
+			this.currentId = this.sessions.find((session) => !session.archived)?.id ?? id;
+		}
+
+		void this.persistAll();
+		return true;
 	}
 
 	getCurrentSessionId(): string {
@@ -484,19 +523,19 @@ export class SessionStore {
 function titleFromMessages(messages: ChatUiMessage[]): string {
 	const firstUser = messages.find((m) => m.role === 'user' && m.content.trim());
 	if (!firstUser) {
-		return DEFAULT_SESSION_TITLE;
+		return defaultSessionTitle();
 	}
 
 	const line = firstUser.content.trim().split(/\r?\n/)[0] ?? '';
 	const cleaned = line.replace(/^\/\w+\s*/, '').trim();
 	if (!cleaned) {
-		return DEFAULT_SESSION_TITLE;
+		return defaultSessionTitle();
 	}
 
 	return cleaned.length > 48 ? `${cleaned.slice(0, 45)}...` : cleaned;
 }
 
-// Fallback-title из первого user-сообщения (если smallModel недоступен)
+// Резервный заголовок из первого сообщения пользователя (если smallModel недоступен)
 export function fallbackTitleFromMessages(messages: ChatUiMessage[]): string {
 	return titleFromMessages(messages);
 }

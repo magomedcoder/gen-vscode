@@ -8,7 +8,7 @@ export { DEFAULT_APPROVAL_POLICY } from '../../core/config/approvalTypes';
 const DELETE_TOOLS = new Set(['delete_file']);
 const TASK_TOOLS = new Set(['task']);
 const SKILL_TOOLS = new Set(['skill']);
-// Fallback, пока meta ещё не зарегистрирована (тесты / ранний вызов)
+// Запасной путь, пока meta ещё не зарегистрирована (тесты / ранний вызов)
 const WRITE_TOOLS = new Set(['write_file', 'apply_patch', 'apply_workspace_edit', 'edit_file', 'create_dir', 'edit_notebook']);
 const SHELL_TOOLS = new Set(['run_command', 'run_tests', 'await_shell', 'run_scratch']);
 const WEB_TOOLS = new Set(['fetch_page', 'web_search', 'open_browser']);
@@ -43,7 +43,7 @@ export function toolActionType(toolName: string): ApprovalActionType | undefined
 		return undefined;
 	}
 
-	// Fallback по имени (без registry meta)
+	// Запасной путь по имени (без registry meta)
 	if (WRITE_TOOLS.has(toolName)) {
 		return 'edits';
 	}
@@ -103,7 +103,7 @@ export function isRiskySubject(action: ApprovalActionType, subject: string): boo
 	return false;
 }
 
-// Совпадение пути с sensitivePathPatterns (например `.env`, `.env.*`) - те же glob’ы, что deniedPaths
+// Совпадение пути с sensitivePathPatterns (например `.env`, `.env.*`)
 export function matchesSensitivePath(subject: string, patterns: readonly string[]): boolean {
 	const s = subject.trim().replace(/\\/g, '/');
 	if (!s || patterns.length === 0) {
@@ -189,8 +189,8 @@ export function evaluateApproval(
 	}
 
 	if (ruleCfg.mode === 'review') {
-		// Edits: явный diff preview до Apply (не heuristic allow).
-		// Остальные action: прежняя heuristic (risky -> ask, иначе allow).
+		// Edits: явный diff preview до Apply (не эвристический allow).
+		// Остальные action: прежняя эвристика (risky -> ask, иначе allow).
 		if (action === 'edits') {
 			return 'review';
 		}

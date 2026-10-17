@@ -14,7 +14,7 @@ export interface InterpolateConfigStringOpts {
 
 /**
  * Подставляет плейсхолдеры в строках конфига:
- * `${env:NAME}` / `{env:NAME}` * process.env[NAME] или '' (без throw);
+ * `${env:NAME}` * process.env[NAME] или '' (без throw);
  * `{file:path}` * содержимое файла (utf8), относительно workspace/cwd, с лимитом размера.
  */
 export function interpolateConfigString(
@@ -28,12 +28,7 @@ export function interpolateConfigString(
 	const maxFileBytes = opts?.maxFileBytes ?? DEFAULT_MAX_FILE_BYTES;
 	const baseCwd = opts?.cwd ?? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? process.cwd();
 
-	// Сначала ${env:...}, иначе `{env:...}` съест внутренность `${env:...}`
 	let out = input.replace(/\$\{env:([^}]+)\}/g, (_m, name: string) => {
-		return process.env[name.trim()] ?? '';
-	});
-
-	out = out.replace(/\{env:([^}]+)\}/g, (_m, name: string) => {
 		return process.env[name.trim()] ?? '';
 	});
 

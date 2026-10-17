@@ -5,7 +5,7 @@ const path = require('node:path');
 const production = process.argv.includes('--production');
 const watch = process.argv.includes('--watch');
 
-const TREE_SITTER_COPY = new Set([
+const TREE_SITTER_VSCODE_COPY = new Set([
 	'tree-sitter.wasm',
 	'tree-sitter.js',
 	'web-tree-sitter.d.ts',
@@ -17,22 +17,50 @@ const TREE_SITTER_COPY = new Set([
 	'tree-sitter-rust.wasm',
 	'tree-sitter-java.wasm',
 	'tree-sitter-cpp.wasm',
-	'tree-sitter-c-sharp.wasm',
-	'tree-sitter-ruby.wasm',
 	'tree-sitter-php.wasm',
 	'tree-sitter-bash.wasm',
 	'tree-sitter-css.wasm',
 ]);
 
+const TREE_SITTER_VENDOR_ALWAYS = [
+	'tree-sitter-html.wasm',
+	'tree-sitter-json.wasm',
+	'tree-sitter-yaml.wasm',
+	'tree-sitter-sql.wasm',
+	'tree-sitter-kotlin.wasm',
+	'tree-sitter-swift.wasm',
+	'tree-sitter-dart.wasm',
+];
+
+function copyOne(src, dest) {
+	fs.mkdirSync(path.dirname(dest), { recursive: true });
+	fs.copyFileSync(src, dest);
+}
+
+const TREE_SITTER_REMOVED = new Set([
+	'tree-sitter-c-sharp.wasm',
+	'tree-sitter-ruby.wasm',
+	'tree-sitter-scala.wasm',
+]);
+
 function copyTreeSitterWasm() {
-	const srcDir = path.join(__dirname, 'node_modules', '@vscode', 'tree-sitter-wasm', 'wasm');
 	const destDir = path.join(__dirname, 'dist', 'tree-sitter');
-	if (!fs.existsSync(srcDir)) {
+	fs.mkdirSync(destDir, { recursive: true });
+
+	for (const name of TREE_SITTER_REMOVED) {
+		const stale = path.join(destDir, name);
+		if (fs.existsSync(stale)) {
+			fs.unlinkSync(stale);
+		}
+	}
+
+	const vscodeSrc = path.join(__dirname, 'node_modules', '@vscode', 'tree-sitter-wasm', 'wasm');
+	if (!fs.existsSync(vscodeSrc)) {
 		console.warn('[esbuild] @vscode/tree-sitter-wasm не найден; Tree-sitter будет отключён в runtime');
 		return;
 	}
 
-	const copySet = new Set(TREE_SITTER_COPY);
+	const copySet = new Set(TREE_SITTER_VSCODE_COPY);
 	for (const name of String(process.env.TREE_SITTER_EXTRA || '')
 		.split(',')
 		.map((s) => s.trim())
@@ -40,12 +68,21 @@ function copyTreeSitterWasm() {
 		copySet.add(name.endsWith('.wasm') ? name : `tree-sitter-${name}.wasm`);
 	}
 
-	fs.mkdirSync(destDir, { recursive: true });
-	for (const name of fs.readdirSync(srcDir)) {
+	for (const name of fs.readdirSync(vscodeSrc)) {
 		if (!copySet.has(name)) {
 			continue;
 		}
-		fs.copyFileSync(path.join(srcDir, name), path.join(destDir, name));
+		copyOne(path.join(vscodeSrc, name), path.join(destDir, name));
+	}
+
+	const vendorDir = path.join(__dirname, 'resources', 'tree-sitter-extra');
+	for (const name of TREE_SITTER_VENDOR_ALWAYS) {
+		const src = path.join(vendorDir, name);
+		if (fs.existsSync(src)) {
+			copyOne(src, path.join(destDir, name));
+		} else {
+			console.warn(`[esbuild] нет ${name} в resources/tree-sitter-extra`);
+		}
 	}
 }
 
@@ -100,6 +137,22 @@ async function createExtensionContext() {
 	});
 }
 
+async function createWorkerContext() {
+	return esbuild.context({
+		entryPoints: ['src/features/index/treeSitterWorkerMain.ts'],
+		bundle: true,
+		format: 'cjs',
+		minify: production,
+		sourcemap: !production,
+		sourcesContent: false,
+		platform: 'node',
+		outfile: 'dist/treeSitterWorker.js',
+		external: ['vscode'],
+		logLevel: 'silent',
+		plugins: [createProblemMatcherPlugin('treeSitterWorker')],
+	});
+}
+
 async function createWebviewContext() {
 	return esbuild.context({
 		entryPoints: ['src/webview/index.tsx'],
@@ -119,8 +172,9 @@ async function createWebviewContext() {
 }
 
 async function main() {
-	const [extensionCtx, webviewCtx] = await Promise.all([
+	const [extensionCtx, workerCtx, webviewCtx] = await Promise.all([
 		createExtensionContext(),
+		createWorkerContext(),
 		createWebviewContext(),
 	]);
 
@@ -128,13 +182,14 @@ async function main() {
 
 	if (watch) {
 		await extensionCtx.watch();
+		await workerCtx.watch();
 		await webviewCtx.watch();
 		return;
 	}
 
-	await Promise.all([extensionCtx.rebuild(), webviewCtx.rebuild()]);
+	await Promise.all([extensionCtx.rebuild(), workerCtx.rebuild(), webviewCtx.rebuild()]);
 	copyTreeSitterWasm();
-	await Promise.all([extensionCtx.dispose(), webviewCtx.dispose()]);
+	await Promise.all([extensionCtx.dispose(), workerCtx.dispose(), webviewCtx.dispose()]);
 }
 
 main().catch((e) => {

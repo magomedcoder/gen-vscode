@@ -31,20 +31,22 @@ export async function generateSessionTitle(
 	opts?: { 
 		signal?: AbortSignal 
 	},
-): Promise<string | undefined> {
+): Promise<{ title?: string; error?: string }> {
 	const settings = getSettings();
 	const model = resolveSmallModel(settings);
 	const body = serializeForTitle(messages);
 	if (!body.trim()) {
-		return undefined;
+		return { error: 'no user or assistant content available' };
 	}
 
-	try {
+	let lastError = 'empty title';
+	for (let attempt = 0; attempt < 2; attempt += 1) {
+		try {
 		const result = await client.complete({
 			messages: [
 				{
 					role: 'system',
-					content: 'Ты придумываешь короткое название чата для coding-агента. Ответь только названием: 3-8 слов, без кавычек и пунктуации в конце.',
+					content: `Ты придумываешь короткое название чата для coding-агента. Ответь только названием: 3-8 слов, без кавычек, переносов и пунктуации в конце.${attempt ? ' Предыдущий ответ не прошёл валидацию.' : ''}`,
 				},
 				{
 					role: 'user',
@@ -57,12 +59,21 @@ export async function generateSessionTitle(
 		});
 		const raw = result.content.trim().replace(/^["«]+|["»]+$/g, '').trim();
 		if (!raw) {
-			return undefined;
+			lastError = 'model returned an empty title';
+			continue;
 		}
 
 		const oneLine = raw.split(/\r?\n/)[0]?.trim() ?? '';
-		return oneLine ? oneLine.slice(0, MAX_TITLE_CHARS) : undefined;
-	} catch {
-		return undefined;
+		const words = oneLine.split(/\s+/).filter(Boolean);
+		if (raw.includes('\n') || oneLine.length > MAX_TITLE_CHARS || words.length < 3 || words.length > 8) {
+			lastError = `invalid title shape (${words.length} words, ${oneLine.length} chars)`;
+			continue;
+		}
+		
+		return { title: oneLine };
+		} catch (err) {
+			lastError = err instanceof Error ? err.message : String(err);
+		}
 	}
+	return { error: lastError };
 }

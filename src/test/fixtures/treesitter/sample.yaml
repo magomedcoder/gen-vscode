@@ -1,0 +1,4 @@
+name: widget
+version: 1
+nested:
+  enabled: true

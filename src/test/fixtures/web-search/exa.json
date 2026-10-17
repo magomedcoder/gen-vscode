@@ -1,0 +1,9 @@
+{
+  "requestId": "exa-fixture",
+  "results": [
+    { "title": "Gen docs", "url": "https://example.com/gen" },
+    { "title": "", "url": "https://example.com/no-title" },
+    { "title": "duplicate", "url": "https://example.com/gen" },
+    { "title": "unsafe", "url": "javascript:alert(1)" }
+  ]
+}

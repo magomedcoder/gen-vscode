@@ -1,5 +1,5 @@
 export const INDEX_MANIFEST_VERSION = 2;
-export const INDEX_MANIFEST_VERSIONS_ACCEPTED = new Set([1, 2]);
+export const INDEX_MANIFEST_VERSIONS_ACCEPTED = new Set([2]);
 
 export interface IndexChunk {
 	id: string;
@@ -23,7 +23,7 @@ export interface IndexManifest {
 	files: Record<string, IndexFileRecord>;
 	chunks: Record<string, IndexChunk>;
 	trigrams: Record<string, string[]>;
-	// Merkle / dir-дайджесты: POSIX-путь -> hash прямых детей (mirror of merkle.json dirs)
+	// Merkle / dir-дайджесты: POSIX-путь -> hash прямых детей (зеркало merkle.json dirs)
 	dirDigests: Record<string, string>;
 }
 

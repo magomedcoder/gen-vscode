@@ -1,6 +1,4 @@
 import * as vscode from 'vscode';
-import { getSettings } from '../../core/config/settings';
-import { deniedDirectoryExcludeGlob } from '../agent/policy';
 import { formatMentionPathArg, type MentionKind } from './mentions';
 import { getSessionPeek } from './sessionStore';
 import { loadReferenceDefs } from '../project/references';
@@ -188,7 +186,7 @@ export async function suggestMentions(query: string): Promise<MentionSuggestion[
 		if (!prefix.includes(' ') && !/[./]/.test(prefix) || kindHits.some((k) => k.kind === 'branch_diff' || k.kind === 'git_changes' || k.kind === 'problems' || k.kind === 'rules' || k.kind === 'code' || k.kind === 'terminals' || k.kind === 'past' || k.kind === 'alias' || k.kind === 'ref')) {
 			if (!prefix.includes('/') && !prefix.includes('.')) {
 				const hits = kindTemplates().filter((k) => !prefix || k.kind.startsWith(prefix) || k.kind.includes(prefix) || k.label.toLowerCase().includes(prefix) || (prefix === 'doc' && k.kind === 'docs') || (prefix.startsWith('git') && (k.kind === 'git' || k.kind === 'git_changes')));
-				// @past / @alias / @ref - сразу список значений, не только шаблон kind
+				// @past / @alias / @ref - сразу список значений, а не только шаблон вида
 				if (hits.length && !prefix.includes(' ') && prefix !== 'past' && prefix !== 'alias' && prefix !== 'ref') {
 					return hits.map((k) => ({
 						kind: k.kind,
@@ -346,7 +344,7 @@ export async function suggestMentions(query: string): Promise<MentionSuggestion[
 			}];
 	}
 
-	// Прямое совпадение имени alias (например @sdk), если не kind
+	// Прямое совпадение имени псевдонима (например @sdk), если это не вид
 	if (prefix && !prefix.includes(' ') && !/[./]/.test(prefix)) {
 		const defs = await loadReferenceDefs();
 		const aliasHits = defs.filter((d) => d.alias.toLowerCase().startsWith(prefix) || d.alias.toLowerCase().includes(prefix));
@@ -373,12 +371,11 @@ export async function suggestMentions(query: string): Promise<MentionSuggestion[
 
 	const kind: 'file' | 'folder' = prefix.startsWith('folder') ? 'folder' : 'file';
 
-	const exclude = deniedDirectoryExcludeGlob(getSettings().deniedPaths) ?? '**/{.gen,node_modules,.git}/**';
 	const glob = pathQuery ? `**/*${pathQuery.replace(/[^\w./-]/g, '')}*` : '**/*';
 
 	const uris = await vscode.workspace.findFiles(
 		new vscode.RelativePattern(folder, glob),
-		exclude,
+		'**/{.gen,node_modules,.git}/**',
 		30,
 	);
 

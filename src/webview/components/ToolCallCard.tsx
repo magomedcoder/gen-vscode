@@ -180,7 +180,7 @@ export type ToolDetailsMode = 'full' | 'compact';
 
 interface ToolCallCardProps {
 	call: ToolCallUi;
-	// Глобальная preference деталей: compact скрывает args/result/diff, пока карточка не открыта
+	// Глобальная настройка деталей: compact скрывает args/result/diff, пока карточка не открыта
 	detailsMode?: ToolDetailsMode;
 }
 

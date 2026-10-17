@@ -15,7 +15,7 @@ interface AgentsPageProps {
 	agentsStatus?: string;
 	onLoadAgents?: () => void;
 	onCloneAgentPreset?: (id: string) => void;
-	// Live research jobs из chat state (если доступны)
+	// Активные research jobs из состояния чата (если доступны)
 	researchJobs?: ResearchJobUi[];
 }
 

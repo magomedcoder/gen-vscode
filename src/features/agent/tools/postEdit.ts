@@ -22,7 +22,7 @@ export function diagnosticsNudgeForUri(uri: vscode.Uri): string | undefined {
 	return `После правки есть диагностики: всего ${diags.length} (ошибок: ${errors}, предупреждений: ${warnings}). При необходимости вызови get_diagnostics.`;
 }
 
-// Opt-in форматирование документа после успешной правки агента
+// По желанию (opt-in): форматирование документа после успешной правки агента
 export async function maybeFormatAfterEdit(uri: vscode.Uri): Promise<void> {
 	if (!getSettings().formatAfterEdit) {
 		return;
@@ -36,7 +36,7 @@ export async function maybeFormatAfterEdit(uri: vscode.Uri): Promise<void> {
 		});
 		await vscode.commands.executeCommand('editor.action.formatDocument');
 	} catch {
-		// форматирование - best-effort, не ломаем результат tool
+		// форматирование - по best-effort, не ломаем результат tool
 	}
 }
 

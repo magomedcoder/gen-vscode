@@ -8,12 +8,12 @@ import { getIndexManagerInstance } from '../index/IndexManager';
 import { HttpLlmClient } from '../../core/llm/client';
 import { loadWebviewL10n } from '../../l10n/loadBundle';
 import { revealLogsFolder } from '../../core/log/logger';
-import { discoverPersonas } from '../project/personas';
-import { BUILTIN_PRESETS, cloneBuiltinPreset, discoverCustomAgents } from '../project/customAgents';
-import { listRulesCandidates } from '../project/projectRules';
+import { discoverPersonas, getPersonaDiscoveryDiagnostics } from '../project/personas';
+import { BUILTIN_PRESETS, cloneBuiltinPreset, discoverCustomAgents, getAgentDiscoveryDiagnostics } from '../project/customAgents';
+import { listRulesCandidates, previewRulesMergeConflicts } from '../project/projectRules';
 import { discoverSkills } from '../project/skills';
 import { discoverLocalPlugins } from '../project/plugins';
-import { clearActivity, readActivity } from '../../core/stores/activityStore';
+import { clearActivity, readActivity, recordActivity } from '../../core/stores/activityStore';
 import { readUsage, resetUsage } from '../../core/stores/usageStore';
 import { createNonce, renderChatHtml } from './chatHtml';
 import type { AdminPolicyInfo, FromWebviewMessage, PersonaOption, ToWebviewMessage } from './protocol';
@@ -105,9 +105,19 @@ export class SettingsPanel {
 
 	// Отправить актуальный список персон в webview (Reload на странице Personas)
 	private async postPersonasData(): Promise<void> {
+		const personas = await this.listPersonaOptions();
+		for (const diagnostic of getPersonaDiscoveryDiagnostics()) {
+			recordActivity({
+				kind: 'tool',
+				toolName: 'personas',
+				label: vscode.l10n.t('activity.personas.discoveryError', diagnostic.message),
+				path: diagnostic.path,
+				status: 'error',
+			});
+		}
 		this.post({
 			type: 'personasData',
-			personas: await this.listPersonaOptions(),
+			personas,
 		});
 	}
 
@@ -250,10 +260,7 @@ export class SettingsPanel {
 						await setPersistedAlwaysAllow(msg.persistedAlwaysAllow);
 					}
 
-					const saved = await updateSettings({
-						...msg.settings,
-						webSearchApiKey: '',
-					});
+					const saved = await updateSettings(msg.settings);
 					this.post({
 						type: 'settingsSaved',
 						settings: saved,
@@ -317,16 +324,6 @@ export class SettingsPanel {
 		return out;
 	}
 
-	// Первый непустой список из альтернативных ключей JSON
-	private pickHookCommands(hooks: Record<string, unknown>, ...keys: string[]): string[] {
-		for (const key of keys) {
-			if (key in hooks) {
-				return this.asHookCommands(hooks[key]);
-			}
-		}
-		return [];
-	}
-
 	private async postHooksData(): Promise<void> {
 		const uri = this.hooksFileUri();
 		if (!uri) {
@@ -356,14 +353,10 @@ export class SettingsPanel {
 				type: 'hooksData',
 				beforeSubmit: this.asHookCommands(hooks.beforeSubmit),
 				beforeShell: this.asHookCommands(hooks.beforeShell),
-				sessionDiff: this.pickHookCommands(hooks, 'sessionDiff', 'session.diff'),
-				sessionCompacting: this.pickHookCommands(
-					hooks,
-					'sessionCompacting',
-					'session.compacting',
-				),
-				shellEnv: this.pickHookCommands(hooks, 'shellEnv', 'shell.env'),
-				fileWatcher: this.pickHookCommands(hooks, 'fileWatcher', 'file.watcher'),
+				sessionDiff: this.asHookCommands(hooks['session.diff']),
+				sessionCompacting: this.asHookCommands(hooks['session.compacting']),
+				shellEnv: this.asHookCommands(hooks['shell.env']),
+				fileWatcher: this.asHookCommands(hooks['file.watcher']),
 				path,
 			});
 		} catch (err) {
@@ -429,8 +422,8 @@ export class SettingsPanel {
 			const payload = {
 				beforeSubmit: toCommands(beforeSubmit),
 				beforeShell: toCommands(beforeShell),
-				sessionDiff: toCommands(sessionDiff),
-				sessionCompacting: toCommands(sessionCompacting),
+				'session.diff': toCommands(sessionDiff),
+				'session.compacting': toCommands(sessionCompacting),
 				'shell.env': toCommands(shellEnv),
 				'file.watcher': toCommands(fileWatcher),
 			};
@@ -476,8 +469,8 @@ export class SettingsPanel {
 				const empty = `${JSON.stringify({
 					beforeSubmit: [],
 					beforeShell: [],
-					sessionDiff: [],
-					sessionCompacting: [],
+					'session.diff': [],
+					'session.compacting': [],
 					'shell.env': [],
 					'file.watcher': [],
 				}, null, 2)}\n`;
@@ -501,13 +494,14 @@ export class SettingsPanel {
 		}
 	}
 
-	// Кандидаты rules + discovered skills/plugins для read-only UI
+	// Кандидаты правил и обнаруженные skills/plugins для UI только для чтения
 	private async postRulesSkillsData(): Promise<void> {
 		try {
-			const [rules, skillsRaw, pluginsRaw] = await Promise.all([
+			const [rules, skillsRaw, pluginsRaw, ruleConflicts] = await Promise.all([
 				listRulesCandidates(),
 				discoverSkills(),
 				discoverLocalPlugins(),
+				previewRulesMergeConflicts(),
 			]);
 			this.post({
 				type: 'rulesSkillsData',
@@ -523,6 +517,7 @@ export class SettingsPanel {
 					description: p.description,
 					path: p.path,
 				})),
+				ruleConflicts,
 			});
 		} catch {
 			this.post({
@@ -530,6 +525,7 @@ export class SettingsPanel {
 				rules: [],
 				skills: [],
 				plugins: [],
+				ruleConflicts: [],
 			});
 		}
 	}
@@ -570,6 +566,16 @@ export class SettingsPanel {
 	private async postAgentsData(): Promise<void> {
 		try {
 			const custom = await discoverCustomAgents();
+			const diagnostics = getAgentDiscoveryDiagnostics();
+			for (const diagnostic of diagnostics) {
+				recordActivity({
+					kind: 'tool',
+					toolName: 'agents',
+					label: vscode.l10n.t('activity.agents.discoveryError', diagnostic.message),
+					path: diagnostic.path,
+					status: 'error',
+				});
+			}
 			this.post({
 				type: 'agentsData',
 				presets: BUILTIN_PRESETS.map((p) => ({
@@ -585,6 +591,11 @@ export class SettingsPanel {
 					description: a.description,
 					readonly: a.readonly,
 				})),
+				...(diagnostics.length > 0
+					? { 
+						error: diagnostics.map((item) => `${item.path}: ${item.message}`).join('\n') 
+					}
+					: {}),
 			});
 		} catch (err) {
 			this.post({

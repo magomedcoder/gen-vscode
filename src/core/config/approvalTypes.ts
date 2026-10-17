@@ -16,9 +16,9 @@ const rule = (mode: ApprovalMode, allowlist: string[] = [], denylist: string[] =
 });
 
 /**
- * Базовая политика. 
- * Чувствительные пути (`.env*`) не кладём в denylist здесь: их закрывает `sensitivePathPatterns` (ask/deny на запись) отдельно от пустого `deniedPaths`.
- * Примеры для UI «Вставить примеры» - `EXAMPLE_DENIED_PATHS` (`.env`, `.env.*`, ...).
+ * Базовая политика.
+ * Чувствительные пути (`.env*`) не кладём в denylist здесь: их закрывает `sensitivePathPatterns` (ask/deny на запись).
+ * Игнор путей/папок - `.genignore` (`DEFAULT_GENIGNORE_PATTERNS` при init).
  */
 export const DEFAULT_APPROVAL_POLICY: ApprovalPolicy = {
 	shell: rule('ask'),

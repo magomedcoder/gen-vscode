@@ -39,9 +39,6 @@ export const SPAN_RULES: readonly SpanRule[] = [
 	{ type: 'class_declaration', kind: 'class', nameFields: ['name'], requireName: true },
 	{ type: 'class_definition', kind: 'class', nameFields: ['name'], requireName: true },
 	{ type: 'class_specifier', kind: 'class', nameFields: ['name'], requireName: true },
-	// Ruby: узлы `class` / `method` (не class_declaration)
-	{ type: 'class', kind: 'class', nameFields: ['name'], requireName: true },
-	{ type: 'method', kind: 'method', nameFields: ['name'], requireName: true },
 	{ type: 'interface_declaration', kind: 'interface', nameFields: ['name'], requireName: true },
 	{ type: 'trait_item', kind: 'interface', nameFields: ['name'], requireName: true },
 	{ type: 'type_alias_declaration', kind: 'type', nameFields: ['name'], requireName: true },
@@ -65,8 +62,37 @@ export const SPAN_RULES: readonly SpanRule[] = [
 	{ type: 'macro_rules_definition', kind: 'macro', nameFields: ['name'], requireName: true },
 	{ type: 'preproc_function_def', kind: 'macro', nameFields: ['name'], requireName: true },
 	{ type: 'lexical_declaration', kind: 'variable', nameFields: ['name'], requireName: true, maxDepth: 2 },
-	// CSS: наборы правил
+	// CSS / SCSS (грамматика css)
 	{ type: 'rule_set', kind: 'type', nameFields: ['name'], requireName: false },
+	{ type: 'media_statement', kind: 'module', nameFields: ['name'], requireName: false },
+	{ type: 'keyframes_statement', kind: 'type', nameFields: ['name'], requireName: true },
+	{ type: 'import_statement', kind: 'module', nameFields: ['name'], requireName: false },
+	{ type: 'supports_statement', kind: 'module', nameFields: ['name'], requireName: false },
+	// HTML / JSON / YAML / SQL
+	{ type: 'element', kind: 'module', nameFields: ['name'], requireName: false },
+	{ type: 'start_tag', kind: 'module', nameFields: ['name'], requireName: true },
+	{ type: 'pair', kind: 'property', nameFields: ['key', 'name'], requireName: true },
+	{ type: 'block_mapping_pair', kind: 'property', nameFields: ['key'], requireName: true },
+	{ type: 'create_table', kind: 'type', nameFields: ['name'], requireName: true },
+	{ type: 'create_function', kind: 'function', nameFields: ['name'], requireName: true },
+	{ type: 'create_procedure', kind: 'function', nameFields: ['name'], requireName: true },
+	{ type: 'function_signature', kind: 'function', nameFields: ['name'], requireName: true },
+	// Kotlin / Swift
+	{ type: 'object_declaration', kind: 'class', nameFields: ['name'], requireName: true },
+	{ type: 'fun_declaration', kind: 'function', nameFields: ['name'], requireName: true },
+	{ type: 'protocol_declaration', kind: 'interface', nameFields: ['name'], requireName: true },
+	{ type: 'struct_declaration', kind: 'class', nameFields: ['name'], requireName: true },
+	// Dart / Flutter (tree-sitter-dart)
+	{ type: 'class_definition', kind: 'class', nameFields: ['name'], requireName: true },
+	{ type: 'mixin_declaration', kind: 'class', nameFields: ['name'], requireName: true },
+	{ type: 'extension_declaration', kind: 'class', nameFields: ['name'], requireName: true },
+	{ type: 'mixin_application_class', kind: 'class', nameFields: ['name'], requireName: true },
+	{ type: 'method_signature', kind: 'method', nameFields: ['name'], requireName: true },
+	{ type: 'getter_signature', kind: 'method', nameFields: ['name'], requireName: true },
+	{ type: 'setter_signature', kind: 'method', nameFields: ['name'], requireName: true },
+	{ type: 'constructor_signature', kind: 'method', nameFields: ['name'], requireName: true },
+	{ type: 'factory_constructor_signature', kind: 'method', nameFields: ['name'], requireName: true },
+	{ type: 'typedef_declaration', kind: 'type', nameFields: ['name'], requireName: true },
 ];
 
 const RULE_BY_TYPE = new Map(SPAN_RULES.map((r) => [r.type, r]));
@@ -198,7 +224,7 @@ export function collectSpansFromTree(root: any, source: string): CollectedSpan[]
 			return;
 		}
 
-		// const foo = () => {} / function
+		// const foo = () => {} и function (стрелки / декларации)
 		if (node.type === 'lexical_declaration' && depth <= 2) {
 			for (const c of node.namedChildren ?? node.children ?? []) {
 				if (c?.type !== 'variable_declarator') {

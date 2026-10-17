@@ -1,8 +1,8 @@
-# Gen Agent VS Code Extension
+# Gen Agent VSCode Extension
 
 [Русская версия](README-ru.md)
 
-Minimum VS Code version: **1.125.0**
+Minimum VSCode version: **1.125.0**
 
 AI chat and coding agent **Gen**. Works with **llama.cpp** and any **OpenAI-compatible** API.
 

@@ -17,10 +17,10 @@ export type ConfirmVariant = 'agent' | 'binary';
 
 /**
  * Design Mode visual click-to-code: см. `features/design/designVisual.ts`.
- * MVP: tool `design_inspect` + fetch_page source hints; полный click bridge в Simple Browser ещё нет.
+ * MVP-мост разрешает URL и селектор через поиск подсказки на исходник в `design_inspect`.
  */
 
-// Снимок admin policy для Settings UI (баннер locked keys)
+// Снимок admin policy для UI настроек (баннер заблокированных ключей)
 export interface AdminPolicyInfo {
 	active: boolean;
 	path?: string;
@@ -36,7 +36,7 @@ export interface ToolCallUi {
 	path?: string;
 	diff?: string;
 	hunks?: DiffHunkPayload[];
-	// Epoch ms - когда tool стал pending (для countdown)
+	// Время в мс - когда инструмент перешёл в ожидание (для обратного отсчёта)
 	startedAt?: number;
 	// Таймаут tool в мс (например timeout_ms у run_command)
 	timeoutMs?: number;
@@ -55,7 +55,7 @@ export interface ChatUiMessage {
 	id: string;
 	role: ChatRole;
 	content: string;
-	// Reasoning/thinking от модели (только если API реально отдал)
+	// Рассуждения модели (только если API действительно их вернул)
 	thinking?: string;
 	toolCalls?: ToolCallUi[];
 	toolCallId?: string;
@@ -80,7 +80,7 @@ export interface PendingConfirm {
 	alwaysLabel?: string;
 	suggestion?: string;
 	allowAlways?: boolean;
-	// Кнопка «Allow remaining edits» при очереди edits в turn
+	// Кнопка «Разрешить остальные правки» при очереди правок в ходе
 	allowRemaining?: boolean;
 	allowRemainingLabel?: string;
 	remainingEdits?: number;
@@ -100,16 +100,16 @@ export interface ChatTodoItem {
 	status: 'pending' | 'in_progress' | 'completed' | 'cancelled';
 }
 
-// Статус research/subagent job для Teams UI
+// Статус research/subagent job для UI Teams
 export type ResearchJobStatus = 'running' | 'done' | 'error' | 'aborted' | 'queued';
 
-// Карточка research job в chat state (host заполняет, webview только отображает/шлёт interrupt)
+// Карточка research job в состоянии чата (хост заполняет, webview только отображает и отправляет прерывание)
 export interface ResearchJobUi {
 	id: string;
 	status: ResearchJobStatus;
 	subagent: string;
 	promptPreview: string;
-	// Полный prompt для resume (не обязательно показывать в UI)
+	// Полный prompt для возобновления (показывать в UI необязательно)
 	prompt?: string;
 	detail?: string;
 	parentSessionId?: string;
@@ -122,7 +122,7 @@ export interface ResearchJobUi {
 	reportSnippet?: string;
 }
 
-// Файлы, изменённые успешными mutating-tools за один agent run
+// Файлы, изменённые успешными инструментами мутации за один запуск агента
 export interface SessionDiffEvent {
 	turnId: string;
 	paths: string[];
@@ -151,15 +151,15 @@ export interface ChatViewState {
 	usage?: TokenUsage;
 	// Лимит контекста для context ring
 	maxContextTokens?: number;
-	// Оценка prompt tokens: server usage.promptTokens если есть, иначе char-estimate
+	// Оценка токенов prompt: usage.promptTokens сервера, иначе посимвольная оценка
 	estimatedPromptTokens?: number;
-	// Effective prompt budget после n_ctx / reserves
+	// Эффективный бюджет prompt после n_ctx и резервов
 	contextBudget?: number;
 	// Закэшированный n_ctx сервера (если probe/overflow уже знал)
 	cachedNCtx?: number;
-	// ~80% budget - soft warning
+	// Около 80% бюджета - мягкое предупреждение
 	nearBudget?: boolean;
-	// maxContextTokens > cachedNCtx
+	// предупреждение, если maxContextTokens > cachedNCtx
 	nCtxWarn?: boolean;
 	contextBreakdown?: {
 		history: number;
@@ -169,7 +169,7 @@ export interface ChatViewState {
 	};
 	mentionsTruncated?: boolean;
 	mentionsTruncatedKinds?: string[];
-	// Последний prune context (debug)
+	// Последнее сокращение контекста (отладка)
 	lastContextPrune?: { 
 		chars: number; 
 		messages: number 
@@ -180,7 +180,7 @@ export interface ChatViewState {
 	pendingQuestion?: PendingQuestion;
 	todos?: ChatTodoItem[];
 	project?: ChatProjectStatus;
-	// Кастомные slash из `.gen/commands` для автодополнения Composer
+	// Пользовательские slash-команды из `.gen/commands` для автодополнения Composer
 	customSlashCommands?: Array<{
 		id: string;
 		name: string;
@@ -192,23 +192,23 @@ export interface ChatViewState {
 	}>;
 	// Мягкая пауза агента (лимит итераций) - Continue / Stop в UI
 	agentPaused?: AgentPausedState;
-	// Id tool, который сейчас выполняется (для per-tool kill)
+	// Id выполняемого инструмента (для отдельной остановки)
 	activeToolCallId?: string;
-	// Размер текста чата из настроек (для CSS class на .app)
+	// Размер текста чата из настроек (для CSS-класса .app)
 	chatTextSize?: ChatTextSize;
 	// План подтверждён в mode=plan - баннер «Run in Agent»
 	planHandoff?: { title?: string };
-	// Текущая session-модель из getSettings().model
+	// Текущая модель сессии из getSettings().model
 	model?: string;
 	// Diff последнего agent-хода (уникальные пути)
 	lastTurnDiff?: SessionDiffEvent;
-	// Черновик Composer для текущей сессии (persist per sessionId)
+	// Черновик Composer для текущей сессии (сохраняется по sessionId)
 	composerDraft?: string;
 	// Chips Composer (insert-строки mention) для текущей сессии
 	composerChips?: string[];
-	// Live research/subagent jobs (Teams UI)
+	// Активные research/subagent jobs (UI Teams)
 	researchJobs?: ResearchJobUi[];
-	// Есть lossless-архив до compact (память / диск) - баннер Restore
+	// Есть полный архив до сжатия (память/диск) - баннер восстановления
 	hasExportArchive?: boolean;
 }
 
@@ -225,11 +225,11 @@ export type ToWebviewMessage = | { type: 'state'; state: ChatViewState }
 	| { type: 'indexStatus'; status: IndexEngineStatus }
 	| { type: 'hooksData'; beforeSubmit: string[]; beforeShell: string[]; sessionDiff: string[]; sessionCompacting: string[]; shellEnv: string[]; fileWatcher: string[]; path?: string; error?: string; }
 	| { type: 'hooksSaved'; ok: boolean; error?: string }
-	// Builtin presets + кастомные агенты из `.gen/agents/`
+	// Встроенные пресеты и пользовательские агенты из `.gen/agents/`
 	| { type: 'agentsData'; presets: AgentPresetInfo[]; custom: AgentCustomInfo[]; error?: string }
 	| { type: 'agentsCloned'; relativePath: string; created: boolean; error?: string }
-	// Кандидаты rules + discovered skills/plugins (read-only UI)
-	| { type: 'rulesSkillsData'; rules: Array<{ label: string; path: string; exists: boolean }>; skills: Array<{ name: string; description: string; path: string }>; plugins: Array<{ kind: 'tool' | 'plugin' | 'npm'; name: string; description: string; path: string }>; }
+	// Кандидаты правил и обнаруженные skills/plugins (UI только для чтения)
+	| { type: 'rulesSkillsData'; rules: Array<{ label: string; path: string; exists: boolean }>; skills: Array<{ name: string; description: string; path: string }>; plugins: Array<{ kind: 'tool' | 'plugin' | 'npm'; name: string; description: string; path: string }>; ruleConflicts: Array<{ heading: string; sources: string[] }>; }
 	// Список персон (builtin + `.gen/personas/*.md`) для Settings * Personas
 	| { type: 'personasData'; personas: PersonaOption[] }
 	// Короткий beep в chat webview (завершение хода)
@@ -254,7 +254,7 @@ export interface PersonaOption {
 	id: string;
 	name: string;
 	description: string;
-	// Workspace-relative путь к `.md` (пусто у builtin)
+	// Путь к `.md` относительно workspace (пусто у встроенных)
 	path?: string;
 	// Источник: встроенный пресет или `.gen/personas/*.md`
 	source?: 'builtin' | 'custom';
@@ -274,6 +274,7 @@ export interface IncomingImagePayload {
 }
 
 export type FromWebviewMessage = | { type: 'ready' }
+	| { type: 'gen.design.click'; url: string; selector: string; snippet?: string; sourceHint?: string; x?: number; y?: number }
 	| { type: 'send'; text: string; images?: IncomingImagePayload[] }
 	| { type: 'cancel' }
 	| { type: 'clear' }
@@ -292,14 +293,16 @@ export type FromWebviewMessage = | { type: 'ready' }
 	| { type: 'editMessage'; id: string; content: string; revertFiles?: boolean }
 	| { type: 'reviewHunk'; toolCallId: string; hunkId: string; action: 'accept' | 'reject' }
 	| { type: 'reviewDiff'; toolCallId: string; action: 'acceptAll' | 'rejectAll' }
-	// Accept/Reject всех pending-хунков одного файла (сессионная панель)
+	// Принять или отклонить все ожидающие хунки одного файла (панель сессии)
 	| { type: 'reviewPendingPath'; path: string; action: 'accept' | 'reject' }
 	| { type: 'newSession' }
 	| { type: 'switchSession'; id: string }
 	| { type: 'renameSession'; id: string; title: string }
+	| { type: 'archiveSession'; id: string; archived?: boolean }
+	| { type: 'setSessionFilter'; query?: string; archived?: boolean }
 	| { type: 'deleteSession'; id: string }
 	| { type: 'forkSession'; messageId: string }
-	// Черновик Composer (debounce на webview); chips - insert-строки
+	// Черновик Composer (задержка в webview); chips - строки вставки
 	| { type: 'setComposerDraft'; text: string; chips?: string[]; sessionId?: string }
 	| { type: 'loadUsage' }
 	| { type: 'resetUsage' }
@@ -324,7 +327,7 @@ export type FromWebviewMessage = | { type: 'ready' }
 	| { type: 'dismissPlanHandoff' }
 	| { type: 'dismissTurnDiff' }
 	| { type: 'openPath'; path: string }
-	// Research / Teams
+	// Исследования / Teams
 	| { type: 'interruptResearchJob'; id?: string; jobId?: string }
 	| { type: 'interruptAllResearch' }
 	| { type: 'resumeResearchJob'; id?: string; jobId?: string }

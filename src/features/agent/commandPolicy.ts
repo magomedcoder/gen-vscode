@@ -162,7 +162,7 @@ export function assertAllowedCommand(
 			throw new CommandPolicyError(vscode.l10n.t('cmd.badArgChar'));
 		}
 
-		// PowerShell -Command / -EncodedCommand = inline eval
+		// PowerShell -Command / -EncodedCommand - inline eval (запрещено)
 		if ((binary === 'pwsh' || binary === 'powershell') && (/^-(?:[Cc]ommand|EncodedCommand)$/i.test(arg) || arg === '-c')) {
 			throw new CommandPolicyError(vscode.l10n.t('cmd.evalFlag', arg));
 		}

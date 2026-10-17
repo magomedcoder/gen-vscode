@@ -1,14 +1,14 @@
 {
-  "name": "gen-agent-vscode",
+  "name": "gen-vscode",
   "displayName": "%extension.displayName%",
   "description": "%extension.description%",
   "publisher": "magomedcoder",
   "icon": "media/logo.png",
   "license": "MIT",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "repository": {
     "type": "git",
-    "url": "https://github.com/magomedcoder/gen-agent-vscode"
+    "url": "https://github.com/magomedcoder/gen-vscode"
   },
   "l10n": "./l10n",
   "engines": {
@@ -16,6 +16,9 @@
   },
   "categories": [
     "Programming Languages",
+    "AI",
+    "Chat",
+    "Gen",
     "Other"
   ],
   "activationEvents": [],
@@ -100,6 +103,11 @@
       {
         "command": "gen.manageWorktrees",
         "title": "%command.manageWorktrees.title%",
+        "category": "%extension.category%"
+      },
+      {
+        "command": "gen.dryRunHook",
+        "title": "%command.dryRunHook.title%",
         "category": "%extension.category%"
       },
       {
@@ -279,6 +287,14 @@
           "**/.gen/references/*.json"
         ],
         "url": "./schemas/gen-references.schema.json"
+      },
+      {
+        "fileMatch": [
+          "/etc/gen/policy.json",
+          "**/.config/gen/policy.json",
+          "**/gen/policy.json"
+        ],
+        "url": "./schemas/gen-policy.schema.json"
       }
     ]
   },
@@ -310,6 +326,7 @@
     "esbuild": "^0.28.1",
     "eslint": "^10.5.0",
     "npm-run-all": "^4.1.5",
+    "tree-sitter-wasms": "^0.1.13",
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.61.1"
   },
@@ -320,6 +337,7 @@
   "dependencies": {
     "@vscode/tree-sitter-wasm": "^0.3.1",
     "ignore": "^7.0.5",
+    "jimp": "^1.6.1",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "react-markdown": "^10.1.0",

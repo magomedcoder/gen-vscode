@@ -7,7 +7,7 @@ Logging is **off** by default.
 ## What is written when enabled
 
 | Channel              | Contents                                                                   |
-| -------------------- | -------------------------------------------------------------------------- |
+|----------------------|----------------------------------------------------------------------------|
 | Output **Gen LLM**   | Model requests (no body, no API key)                                       |
 | Output **Gen Agent** | Tool audit: name, path/details (with redaction), duration, ok/error/denied |
 | File `llm.log`       | Same for LLM, in extension storage                                         |

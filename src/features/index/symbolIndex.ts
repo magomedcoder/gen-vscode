@@ -15,6 +15,51 @@ export const SYMBOL_INDEX_LIMITS = {
 	staleMs: 15 * 60_000,
 } as const;
 
+export interface SymbolIndexMetrics {
+	ok: number;
+	fail: number;
+	partial: number;
+	lastError?: string;
+	lastBuildAt?: string;
+}
+
+const symbolMetrics: SymbolIndexMetrics = {
+	ok: 0,
+	fail: 0,
+	partial: 0,
+};
+
+export function getSymbolIndexMetrics(): SymbolIndexMetrics {
+	return { ...symbolMetrics };
+}
+
+export function resetSymbolIndexMetricsForTests(): void {
+	symbolMetrics.ok = 0;
+	symbolMetrics.fail = 0;
+	symbolMetrics.partial = 0;
+	symbolMetrics.lastError = undefined;
+	symbolMetrics.lastBuildAt = undefined;
+}
+
+function recordSymbolOk(): void {
+	symbolMetrics.ok += 1;
+	symbolMetrics.lastBuildAt = new Date().toISOString();
+}
+
+function recordSymbolFail(err?: string): void {
+	symbolMetrics.fail += 1;
+	if (err) {
+		symbolMetrics.lastError = err.slice(0, 300);
+	}
+}
+
+function recordSymbolPartial(err?: string): void {
+	symbolMetrics.partial += 1;
+	if (err) {
+		symbolMetrics.lastError = err.slice(0, 300);
+	}
+}
+
 // Числовые значения vscode.SymbolKind (без require('vscode') на пути разбора)
 const KIND_NAMES: Record<number, string> = {
 	0: 'file',
@@ -125,6 +170,8 @@ export async function buildSymbolIndex(
 	const maxFiles = opts?.maxFiles ?? SYMBOL_INDEX_LIMITS.maxFiles;
 	const paths = Object.keys(manifest.files).sort().slice(0, maxFiles);
 	const symbols: SymbolIndexEntry[] = [];
+	let fileFails = 0;
+	const failSamples: string[] = [];
 
 	for (const relative of paths) {
 		if (opts?.signal?.aborted) {
@@ -144,7 +191,13 @@ export async function buildSymbolIndex(
 			if (docSymbols?.length) {
 				flattenSymbols(docSymbols, relative, symbols);
 			}
-		} catch {}
+		} catch (err) {
+			fileFails += 1;
+			if (failSamples.length < 3) {
+				const msg = err instanceof Error ? err.message : String(err);
+				failSamples.push(`${relative}: ${msg}`);
+			}
+		}
 
 		await sleep(SYMBOL_INDEX_LIMITS.throttleMs);
 	}
@@ -156,6 +209,15 @@ export async function buildSymbolIndex(
 	};
 
 	await writeSymbolIndex(folderFs, doc);
+
+	if (fileFails === 0) {
+		recordSymbolOk();
+	} else if (fileFails >= paths.length && paths.length > 0) {
+		recordSymbolFail(failSamples.join('; ') || `all ${fileFails} files failed`);
+	} else {
+		recordSymbolPartial(`fail=${fileFails}/${paths.length}` + (failSamples.length ? ` (${failSamples.join('; ')})` : ''));
+	}
+
 	return doc;
 }
 
@@ -180,8 +242,32 @@ export async function maybeRefreshSymbolIndex(folder: vscodeTypes.WorkspaceFolde
 	building = true;
 	try {
 		await buildSymbolIndex(folder);
-	} catch {
-		// тихо: symbol index - best-effort
+	} catch (err) {
+		recordSymbolFail(err instanceof Error ? err.message : String(err));
+	} finally {
+		building = false;
+	}
+}
+
+// Принудительная пересборка символов (путь восстановления) - игнорирует устаревание
+export async function rebuildSymbolIndex(
+	folder: vscodeTypes.WorkspaceFolder,
+	opts?: { signal?: AbortSignal },
+): Promise<SymbolIndexDocument | undefined> {
+	if (getSettings().indexingEnabled === false) {
+		return undefined;
+	}
+	
+	if (building) {
+		return loadSymbolIndex(folder.uri.fsPath);
+	}
+
+	building = true;
+	try {
+		return await buildSymbolIndex(folder, opts);
+	} catch (err) {
+		recordSymbolFail(err instanceof Error ? err.message : String(err));
+		return undefined;
 	} finally {
 		building = false;
 	}

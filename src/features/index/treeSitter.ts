@@ -1,6 +1,6 @@
 /**
- * Runtime Tree-sitter wasm (`@vscode/tree-sitter-wasm`).
- * Field-правила, пул Parser, кэш spans, opt-in языки, метрики fail/timeout.
+ * Среда выполнения Tree-sitter wasm (`@vscode/tree-sitter-wasm`).
+ * Правила полей, пул Parser, кэш диапазонов, подключаемые языки, метрики ошибок и таймаутов.
  */
 
 import * as fs from 'node:fs';
@@ -9,7 +9,11 @@ import type { ExtensionContext } from 'vscode';
 import { contentHash } from './hash';
 import { collectSpansFromTree, type TreeSitterSpanKind } from './treeSitterRules';
 
-// MVP - всегда в whitelist VSIX
+/**
+ * Полный набор языков индекса (см. gen-vscode-docs/tree-sitter-languages.md):
+ * Go, C++, Rust, JS/TS, PHP, Python, HTML, JSON, YAML, SQL, Kotlin, Dart/Flutter, Swift,
+ * CSS, java, bash.
+ */
 export const TREE_SITTER_MVP_LANGS = [
 	'typescript',
 	'tsx',
@@ -19,30 +23,20 @@ export const TREE_SITTER_MVP_LANGS = [
 	'rust',
 	'java',
 	'cpp',
-	'c_sharp',
-	'ruby',
 	'php',
 	'bash',
-] as const;
-
-/**
- * Opt-in сверх MVP.
- * `css` есть в `@vscode/tree-sitter-wasm`; kotlin/swift/... - reserved (wasm в пакет не входит, заработают после появления файла в dist/tree-sitter).
- */
-export const TREE_SITTER_OPT_IN_LANGS = [
-	'css',
 	'html',
 	'json',
 	'yaml',
 	'sql',
 	'kotlin',
 	'swift',
-	'scala',
+	'dart',
+	'css',
 ] as const;
 
-export type TreeSitterMvpLangId = (typeof TREE_SITTER_MVP_LANGS)[number];
-export type TreeSitterOptInLangId = (typeof TREE_SITTER_OPT_IN_LANGS)[number];
-export type TreeSitterLangId = TreeSitterMvpLangId | TreeSitterOptInLangId;
+export type TreeSitterLangId = (typeof TREE_SITTER_MVP_LANGS)[number];
+export type TreeSitterMvpLangId = TreeSitterLangId;
 
 export interface TreeSitterSpan {
 	name: string;
@@ -97,8 +91,8 @@ const EXT_TO_LANG: Record<string, TreeSitterLangId> = {
 	'.cxx': 'cpp',
 	'.h': 'cpp',
 	'.hpp': 'cpp',
-	'.cs': 'c_sharp',
-	'.rb': 'ruby',
+	'.hh': 'cpp',
+	'.hxx': 'cpp',
 	'.php': 'php',
 	'.sh': 'bash',
 	'.bash': 'bash',
@@ -113,8 +107,7 @@ const EXT_TO_LANG: Record<string, TreeSitterLangId> = {
 	'.kt': 'kotlin',
 	'.kts': 'kotlin',
 	'.swift': 'swift',
-	'.scala': 'scala',
-	'.sc': 'scala',
+	'.dart': 'dart',
 };
 
 const LANG_WASM: Record<TreeSitterLangId, string> = {
@@ -126,8 +119,6 @@ const LANG_WASM: Record<TreeSitterLangId, string> = {
 	rust: 'tree-sitter-rust.wasm',
 	java: 'tree-sitter-java.wasm',
 	cpp: 'tree-sitter-cpp.wasm',
-	c_sharp: 'tree-sitter-c-sharp.wasm',
-	ruby: 'tree-sitter-ruby.wasm',
 	php: 'tree-sitter-php.wasm',
 	bash: 'tree-sitter-bash.wasm',
 	css: 'tree-sitter-css.wasm',
@@ -137,7 +128,7 @@ const LANG_WASM: Record<TreeSitterLangId, string> = {
 	sql: 'tree-sitter-sql.wasm',
 	kotlin: 'tree-sitter-kotlin.wasm',
 	swift: 'tree-sitter-swift.wasm',
-	scala: 'tree-sitter-scala.wasm',
+	dart: 'tree-sitter-dart.wasm',
 };
 
 export const TREE_SITTER_LIMITS = {
@@ -174,6 +165,29 @@ const metrics: TreeSitterMetrics = {
 let enabledLangsOverride: Set<TreeSitterLangId> | undefined;
 let useWorkerPreferred = false;
 let metricsFlushTimer: ReturnType<typeof setTimeout> | undefined;
+
+type WorkerParseOk = {
+	ok: true;
+	spans: TreeSitterSpan[];
+	durationMs?: number;
+};
+
+type WorkerParseFail = {
+	ok: false;
+	reason: TreeSitterFailReason;
+	error?: string;
+};
+
+type PendingWorker = {
+	resolve: (v: WorkerParseOk | WorkerParseFail) => void;
+	timer: ReturnType<typeof setTimeout>;
+};
+
+let workerInst: import('node:worker_threads').Worker | undefined;
+let workerBroken = false;
+let workerReqId = 0;
+
+const workerPending = new Map<number, PendingWorker>();
 
 export function resolveTreeSitterWasmRoot(extensionPath: string): string | undefined {
 	const candidates = [
@@ -246,6 +260,149 @@ export function setTreeSitterLanguageAllowlist(langs: string[] | undefined): voi
 
 export function setTreeSitterUseWorker(enabled: boolean): void {
 	useWorkerPreferred = enabled;
+	if (!enabled) {
+		void disposeTreeSitterWorker();
+	}
+}
+
+export function treeSitterWasmFileForLang(lang: TreeSitterLangId): string {
+	return LANG_WASM[lang];
+}
+
+async function disposeTreeSitterWorker(): Promise<void> {
+	const w = workerInst;
+	workerInst = undefined;
+	for (const [id, pending] of workerPending) {
+		clearTimeout(pending.timer);
+		pending.resolve({ ok: false, reason: 'error', error: 'worker_disposed' });
+		workerPending.delete(id);
+	}
+
+	if (w) {
+		try {
+			await w.terminate();
+		} catch {}
+	}
+}
+
+function resolveWorkerScript(): string | undefined {
+	const candidates = [
+		path.join(__dirname, 'treeSitterWorker.js'),
+		path.join(__dirname, '..', 'treeSitterWorker.js'),
+	];
+	for (const c of candidates) {
+		if (fs.existsSync(c)) {
+			return c;
+		}
+	}
+
+	return undefined;
+}
+
+async function ensureWorker(): Promise<import('node:worker_threads').Worker | undefined> {
+	if (workerBroken || !wasmRoot || !useWorkerPreferred) {
+		return undefined;
+	}
+
+	if (workerInst) {
+		return workerInst;
+	}
+
+	const script = resolveWorkerScript();
+	if (!script) {
+		workerBroken = true;
+		return undefined;
+	}
+
+	try {
+		const { Worker } = await import('node:worker_threads');
+		const w = new Worker(script, { workerData: { wasmRoot } });
+		w.on('message', (msg: {
+			id: number;
+			ok: boolean;
+			spans?: TreeSitterSpan[];
+			durationMs?: number;
+			error?: string;
+			timedOut?: boolean;
+		}) => {
+			const pending = workerPending.get(msg.id);
+			if (!pending) {
+				return;
+			}
+
+			clearTimeout(pending.timer);
+			workerPending.delete(msg.id);
+			if (msg.ok && msg.spans) {
+				pending.resolve({ ok: true, spans: msg.spans, durationMs: msg.durationMs });
+				return;
+			}
+
+			pending.resolve({
+				ok: false,
+				reason: msg.timedOut ? 'timeout' : msg.error === 'wasm_missing' ? 'wasm_missing' : 'error',
+				error: msg.error,
+			});
+		});
+		w.on('error', () => {
+			workerBroken = true;
+			void disposeTreeSitterWorker();
+		});
+		w.on('exit', (code) => {
+			if (code !== 0) {
+				workerBroken = true;
+			}
+
+			workerInst = undefined;
+		});
+		workerInst = w;
+		return w;
+	} catch {
+		workerBroken = true;
+		return undefined;
+	}
+}
+
+function parseViaWorker(
+	relativePath: string,
+	sourceText: string,
+	lang: TreeSitterLangId,
+): Promise<WorkerParseOk | WorkerParseFail> {
+	return new Promise((resolve) => {
+		void (async () => {
+			const w = await ensureWorker();
+			if (!w) {
+				resolve({ 
+					ok: false, 
+					reason: 'error', 
+					error: 'worker_unavailable' 
+				});
+				return;
+			}
+
+			const id = ++workerReqId;
+			const timer = setTimeout(() => {
+				if (workerPending.has(id)) {
+					workerPending.delete(id);
+					resolve({ 
+						ok: false, 
+						reason: 'timeout', 
+						error: 'worker_timeout' 
+					});
+				}
+			}, TREE_SITTER_LIMITS.parseTimeoutMs + 500);
+			workerPending.set(id, { 
+				resolve, timer 
+			});
+			w.postMessage({
+				id,
+				relativePath,
+				sourceText,
+				lang,
+				wasmFile: LANG_WASM[lang],
+				timeoutMs: TREE_SITTER_LIMITS.parseTimeoutMs,
+			});
+		})();
+	});
 }
 
 export function listAllTreeSitterLanguageIds(): TreeSitterLangId[] {
@@ -495,7 +652,7 @@ function cacheSet(relativePath: string, hash: string, result: TreeSitterParseRes
 
 /**
  * Разобрать файл Tree-sitter.
- * При fail - `undefined` + метрика с причиной (не silent).
+ * При ошибке - `undefined` и метрика с причиной.
  */
 export async function parseWithTreeSitter(
 	relativePath: string,
@@ -532,8 +689,27 @@ export async function parseWithTreeSitter(
 		return cached;
 	}
 
-	// Опциональный worker: в VSIX wasm+Worker хрупко - уступаем цикл событий и парсим в том же процессе
-	if (useWorkerPreferred) {
+	if (useWorkerPreferred && !workerBroken) {
+		const viaWorker = await parseViaWorker(relativePath, sourceText, rawLang);
+		if (viaWorker.ok) {
+			const result: TreeSitterParseResult = {
+				lang: rawLang,
+				spans: viaWorker.spans,
+				source: 'treesitter',
+				durationMs: viaWorker.durationMs,
+			};
+			cacheSet(relativePath, hash, result);
+			recordOk();
+			return result;
+		}
+		
+		// Сбой worker -> резервный разбор в процессе (кроме таймаута, записанного ниже при полном сбое)
+		if (viaWorker.reason === 'timeout') {
+			recordFail('timeout', viaWorker.error);
+			return undefined;
+		}
+	} else if (useWorkerPreferred) {
+		// Worker недоступен: уступить цикл и разбирать в текущем процессе
 		await new Promise<void>((r) => setImmediate(r));
 	}
 
@@ -587,16 +763,10 @@ export async function parseWithTreeSitter(
 }
 
 // Имена wasm-файлов для esbuild / упаковки
-export function treeSitterWasmFileNames(opts?: { includeOptInShipped?: boolean }): string[] {
+export function treeSitterWasmFileNames(): string[] {
 	const names = new Set<string>(['tree-sitter.wasm', 'tree-sitter.js', 'web-tree-sitter.d.ts']);
 	for (const id of TREE_SITTER_MVP_LANGS) {
 		names.add(LANG_WASM[id]);
 	}
-
-	if (opts?.includeOptInShipped !== false) {
-		// Только те opt-in, что реально есть в пакете VS Code (сейчас css)
-		names.add(LANG_WASM.css);
-	}
-	
 	return [...names];
 }

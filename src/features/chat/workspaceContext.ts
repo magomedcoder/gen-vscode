@@ -31,9 +31,9 @@ function runGit(cwd: string, args: string[], timeoutMs = 2500): Promise<string> 
 }
 
 /**
- * Короткий always-on блок workspace (ветка git + недавние файлы).
+ * Короткий постоянно включённый блок workspace (ветка git и недавние файлы).
  * Также подмешивает `User: {usernameDisplay}`, если задано.
- * Возвращает undefined, если workspace context выключен и имени нет, или workspace нет.
+ * Возвращает undefined, если контекст workspace выключен и имени нет либо workspace отсутствует.
  */
 export async function getAlwaysOnWorkspaceContext(): Promise<string | undefined> {
 	const settings = getSettings();

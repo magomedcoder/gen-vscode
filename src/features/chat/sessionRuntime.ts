@@ -4,7 +4,7 @@ import type { ConfirmChoice } from '../agent/types';
 import type { ImageAttachment } from './attachments';
 import type { AgentPausedState, ChatTodoItem, ChatUiMessage, PendingConfirm, PendingQuestion, ResearchJobUi, SessionDiffEvent } from './protocol';
 
-// Запись undo/redo одного user-хода
+// Запись отмены и повтора одного хода пользователя
 export interface TurnHistoryEntry {
 	messages: ChatUiMessage[];
 	checkpoint?: AgentCheckpoint;
@@ -19,7 +19,7 @@ export interface PendingQuestionInternal extends PendingQuestion {
 }
 
 /**
- * Runtime одной чат-сессии (вкладки): очередь ходов, inflight, Accept/Reject, undo.
+ * Runtime одной чат-сессии (вкладки): очередь ходов, выполняемые операции, принятие/отклонение, отмена.
  * Хранится в Map - переключение вкладок не абортит чужие runs.
  */
 export interface SessionRuntime {
@@ -30,9 +30,9 @@ export interface SessionRuntime {
 	pendingConfirm?: PendingConfirmInternal;
 	pendingQuestion?: PendingQuestionInternal;
 	todos: ChatTodoItem[];
-	// Live research/subagent jobs (Teams UI)
+	// Активные research/subagent jobs (UI Teams)
 	researchJobs?: ResearchJobUi[];
-	// Per-job AbortController (interrupt одного research без Stop parent)
+	// Отдельный AbortController для каждой задачи (прерывание research без остановки родителя)
 	researchAborts: Map<string, AbortController>;
 	agentPaused?: AgentPausedState;
 	toolAborts: Map<string, AbortController>;
@@ -65,7 +65,7 @@ export function createSessionRuntime(messages: ChatUiMessage[] = []): SessionRun
 	};
 }
 
-// Abort inflight + очистка очереди/confirm (без трогания messages)
+// Прервать выполняемое и очистить очередь/подтверждение (не трогая сообщения)
 export function abortSessionRuntime(rt: SessionRuntime): void {
 	rt.clearSeq += 1;
 	rt.turnQueue.length = 0;

@@ -5,9 +5,9 @@ import { getSettings } from '../../core/config/settings';
 const LIVE_SELECTION_MAX = 400;
 
 /**
- * Контекст активного редактора / выделения для chat prompt.
- * shareMode: disabled/manual - не авто-inject; auto - при enableWorkspaceContext.
- * Always-on workspace context (git/recent) - отдельно, см. workspaceContext.ts.
+ * Контекст активного редактора или выделения для prompt чата.
+ * shareMode: disabled/manual - без автоматической вставки; auto - при enableWorkspaceContext.
+ * Постоянный контекст workspace (git/недавние файлы) - отдельно, см. workspaceContext.ts.
  */
 export function getEditorChatContext(): string | undefined {
 	const settings = getSettings();

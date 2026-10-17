@@ -2,9 +2,21 @@
 
 [Русская версия](CHANGELOG-ru.md)
 
-## dev
+## 0.6.0 (17 October 2026)
 
-- **Index / Tree-sitter + Merkle v2:** wasm Tree-sitter (`@vscode/tree-sitter-wasm`) for outline and AST chunks (`outlineEngine` / `chunkEngine`); field-based Tree-sitter rules; **strict** `treesitter` modes (no fallback); `merkle.json` + optional SQLite sidecar (`indexStorageBackend`); patch/unchanged symbol leaves; chunk reuse on edits; Repair rebuilds merkle; index no longer requires `.gen/config.json` (use `gen.initProject` for scaffold)
+- **Security:** drop Settings UI deny-lists (`deniedPaths`) and `providerUsePolicy` / `providerUsePatterns` (runtime + schema + admin lock); path/folder ignore via workspace-root `.genignore` (seeded on `/init` / `gen.initProject`); `deniedCommands` / `sensitivePathPatterns` / `secretPatterns` only in user/project JSON (`UI_LAYER_EXCLUDED_KEYS` - not Settings `globalState`)
+- **Index storage:** move codebase index + project map off `.gen/` into VSCode `ExtensionContext.storageUri` (`index/<key>/`, `map/<key>/`); indexing runs without requiring `.gen/config.json` (scaffold still via `gen.initProject` / `/init`)
+- **Index / Tree-sitter:** `@vscode/tree-sitter-wasm` runtime (wasm grammars copied to `dist/tree-sitter/`); outline + AST chunking via `outlineEngine` / `chunkEngine` (`auto` | `treesitter` | `lsp`/`typescript`/`lines`); mode `treesitter` is **strict** (no TS/LSP/lines fallback); field-based span rules (`treeSitterRules` - no noisy `export_statement`; filter nested arrows); **languages (default):** Go/C++/Rust/JS-TS/PHP/Python/HTML/JSON/YAML/SQL/Kotlin/Dart/Swift/CSS (+ java/bash); vendor wasm in `resources/tree-sitter-extra/`; `treeSitterUseWorker` -> real `worker_threads` (`dist/treeSitterWorker.js`) with in-process fallback; parser pool + span cache
+- **Index / Merkle v2:** `merkle.json` (nodes, chunk/symbol digests, skip metrics); content-hash dir skip (`indexForceContentHash`); stable chunk ids (`contentChunkId` / sha256 prefix); `patchMerkleDocument` + `unchangedSymbolLeaves` reuse across edits; Repair detects mismatch (`merkleMismatch`) and rebuilds; optional SQLite merkle sidecar (`indexStorageBackend=sqlite`, threshold `indexSqliteMinFiles`, Node `node:sqlite`)
+- **Index / local vector + remote embeddings:** `localEmbeddingsMode=vector` feature-hash dense index (`vectors.json`); `rebuildLocalVectorIndex` + dirty `onlyChunkIds`; remote `/embeddings` batch + retry/backoff + content-hash/model cache; engineStatus `local-vector` + vector count
+- **Index / symbols:** LSP symbol index metrics (`ok`/`fail`/`partial`) on engineStatus; Repair rebuilds `symbols.json`
+- **Tools:** `repo_health` Tree-sitter + Python/Go relative imports, fewer barrel re-export FP; `test_impact` import-graph / outline / `.gen/coverage-map.json`
+- **Index UI:** engines/languages/storage knobs + wasm/AST%/merkle skip%/outline-source/vectors/symbols status on **Settings -> Project** (Indexing moved off Agent); engine change can prompt reindex; `codebase_search` `debug` can surface merkle skip%
+- **OTEL / tests:** spans `index.treesitter` / index full metrics; fixtures + `treeSitter.test.ts` / `merkle.test.ts` / `indexStorage.test.ts` / `vectorStore.test.ts`
+- **Shell / tests:** workspace cwd sandbox (`shellCwd`); `run_tests` ranked failure parse + `paths`/`filter` from `test_impact`; `repo_health` -> Activity + `.gen/reports/`
+- **Agents / personas / hooks / plugins:** `generate_agent` inference + reserved-id reject; builtin personas; hooks matchers + dry-run; plugin trust/bin audit; prompt-macro dynamic tools; skills URL cache
+- **Sessions / config / privacy:** session archive/filter/search; exportArchive quarantine + secret redaction; layer schema errors; expanded admin locks; Privacy Mode; `compactReservedTokens` = headroom
+- **Design / media:** click-to-code via `design_inspect` + designSession; PDF page budget; host image resize; Exa/Parallel adapter tests
 
 ## 0.5.0 (30 September 2026)
 
@@ -13,7 +25,7 @@
 - **Index:** Merkle `dirDigests` content-hash skip (size+mtime gate; path+size alone no longer skips); incremental outline/symbols per-file (debounced watcher; full rebuild after fullIndex)
 - **Outline:** multi-language MVP - non-JS via LSP `DocumentSymbolProvider` (no Tree-sitter); TS/JS still `createSourceFile`; regex fallback only when LSP empty
 - **Tools:** `repo_health` / `test_impact` - fewer false positives, `ignore[]` + `watcherIgnore`, 60s report cache, ranked test hits with reason/score
-- **Tools:** `pack_context` / `similar_code` - token budget (`max_tokens` / `maxTokens`) with lowest-score eviction; structured provenance on each hit (path, line range, tool, reason, score, estimatedTokens); `pack_context` JSON now includes `hits` (+ keeps `text`)
+- **Tools:** `pack_context` / `similar_code` - token budget (`max_tokens`) with lowest-score eviction; structured provenance on each hit (path, line range, tool, reason, score, estimatedTokens); `pack_context` JSON now includes `hits` (+ keeps `text`)
 - **Tools:** `find_references` multi-root (`folder`/`root`), optional path (workspace symbols), `limit`/`offset`/`page` paging with `total`/`hasMore`/`nextOffset`
 - **Mentions:** paths with spaces via quotes / backticks (`@file "my dir/a.ts"`, `@file:"..."`, `` @file:`...` ``); autocomplete and paste quote spaced paths; unquoted mentions unchanged
 - **Permissions:** policy `review` on edits shows unified diff in ConfirmCard before Apply (Accept / Reject / Always); no longer heuristic allow for non-risky paths; `autoApprove` does not skip review
@@ -68,7 +80,7 @@
 - Personas: Chat dropdown + Settings Personas page (`.gen/personas/`); Agents page to clone builtin presets into `.gen/agents/`
 - Local plugins/tools discovery under `.gen/tools` and `.gen/plugins` (catalog + `list_plugins` / `plugin`)
 - Project scaffold: Enable / `/init` creates `.gen/{agents,commands,plugins,skills,tools,references,plans}`
-- Config layers: user `~/.config/gen/config.json` + project `.gen/config.json`; JSON schemas + VS Code validation
+- Config layers: user `~/.config/gen/config.json` + project `.gen/config.json`; JSON schemas + VSCode validation
 - Hooks: Settings page for `.gen/hooks.json`; events `beforeSubmit` / `beforeShell` / `session.diff` / `session.compacting` / `shell.env` / `file.watcher`
 - Subagents: `task` (`explore` / `general`), nesting limit, optional git worktrees + start command after create
 - Tools: `glob`, `grep`, `file_search`, `web_search`, `todo_write` / `todo_read`, `ask_question`, `edit_notebook`, `lsp`, `semantic_search` / `search_docs`
@@ -80,7 +92,7 @@
 - Indexing: toggles + engine status (CPU trigram / remote embeddings); optional OTEL spans for LLM calls
 - Settings UI: split screens (Chat / Agent / Indexing / Permissions); grouped nav (Main / More); all sections always visible; clearer field toggles
 - Usage page: token ledger by model (totals/sort); Quota (OAuth) placeholder
-- Settings search; deep-links to VS Code Settings/Keybindings; sidebar or bottom panel (`chatViewLocation`); light/HC polish
+- Settings search; deep-links to VSCode Settings/Keybindings; sidebar or bottom panel (`chatViewLocation`); light/HC polish
 - LLM: honor `Retry-After` on 429/5xx with visible retry status; parallel read-only tool batches; tool output truncation
 - Images/attachments: paste/drag + vision; `read_file` images; auto-resize limits; export/import sessions; lossless archive after compact
 

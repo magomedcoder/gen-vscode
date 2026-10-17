@@ -206,7 +206,7 @@ async function resolvePathInFolders(
 		}
 	}
 
-	// Fallback: резолв через первую папку (policy / symlink / ignore), если по existence ничего не нашли
+	// Запасной путь: резолв через первую папку (policy / symlink / ignore), если по existence ничего не нашли
 	if (!out.length && folders.length) {
 		try {
 			const resolved = await resolveWorkspacePath(trimmed);

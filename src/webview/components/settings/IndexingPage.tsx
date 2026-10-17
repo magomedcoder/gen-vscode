@@ -31,6 +31,8 @@ function indexEngineModeLabel(mode: IndexEngineStatus['mode']): string {
 	switch (mode) {
 		case 'remote':
 			return t('settings.indexEngine.remote');
+		case 'local-vector':
+			return t('settings.indexEngine.localVector');
 		case 'cpu-trigram':
 		default:
 			return t('settings.indexEngine.cpuTrigram');
@@ -85,9 +87,33 @@ function buildIndexExtrasLine(status: IndexEngineStatus): string | undefined {
 	}
 
 	if (status.indexStorageBackend) {
-		bits.push(t('settings.indexEngine.storage', status.indexStorageBackend + (status.sqliteAvailable ? '' : ' (нет node:sqlite)')));
+		bits.push(
+			t(
+				'settings.indexEngine.storage',
+				status.indexStorageBackend + (status.sqliteAvailable ? '' : ` (${t('settings.indexEngine.sqliteUnavailable')})`),
+			),
+		);
 	}
-	
+
+	if (typeof status.localVectorCount === 'number' && status.localVectorCount > 0) {
+		bits.push(t('settings.indexEngine.vectors', status.localVectorCount));
+	}
+
+	if (
+		typeof status.symbolIndexFail === 'number'
+		|| typeof status.symbolIndexPartial === 'number'
+		|| typeof status.symbolCount === 'number'
+	) {
+		const ok = status.symbolIndexOk ?? 0;
+		const fail = status.symbolIndexFail ?? 0;
+		const partial = status.symbolIndexPartial ?? 0;
+		const n = status.symbolCount ?? 0;
+		bits.push(t('settings.indexEngine.symbols', n, ok, fail, partial));
+		if (status.symbolIndexLastError) {
+			bits.push(status.symbolIndexLastError);
+		}
+	}
+
 	return bits.length ? bits.toString() : undefined;
 }
 
@@ -107,7 +133,8 @@ function showRepairButton(status: IndexEngineStatus): boolean {
 		Boolean(status.missingDirDigests) ||
 		Boolean(status.merkleMismatch) ||
 		Boolean(status.partialErrors?.length) ||
-		Boolean(status.lastError)
+		Boolean(status.lastError) ||
+		(typeof status.symbolIndexFail === 'number' && status.symbolIndexFail > 0)
 	);
 }
 
@@ -194,6 +221,7 @@ export function IndexingPage({
 			>
 				<option value="off">{t('settings.localEmbeddingsMode.off')}</option>
 				<option value="trigram">{t('settings.localEmbeddingsMode.trigram')}</option>
+				<option value="vector">{t('settings.localEmbeddingsMode.vector')}</option>
 			</FieldSelect>
 			<FieldSelect
 				labelKey="settings.outlineEngine.label"

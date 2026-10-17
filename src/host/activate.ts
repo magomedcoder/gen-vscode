@@ -9,6 +9,7 @@ import { initActivityStore } from '../core/stores/activityStore';
 import { initUsageStore } from '../core/stores/usageStore';
 import { registerHostCommands } from './commands';
 import { registerHostProviders } from './providers';
+import { initDesignSession } from '../features/design/designSession';
 
 export function activate(context: vscode.ExtensionContext): void {
 	initSettings(context);
@@ -18,6 +19,7 @@ export function activate(context: vscode.ExtensionContext): void {
 	initFileWatcherHooks(context);
 	initUsageStore(context);
 	initActivityStore(context);
+	initDesignSession(context.workspaceState);
 
 	const { diffProvider, disposables: providerDisposables } = registerHostProviders();
 

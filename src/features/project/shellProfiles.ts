@@ -113,7 +113,7 @@ export function parseShellProfilesJson(raw: unknown): ShellProfilesConfig | unde
 		}
 	}
 
-	// Shorthand без profiles -> default
+	// Краткая форма без profiles -> default
 	const shorthand = parseProfile({
 		env: obj.env,
 		pathPrepend: obj.pathPrepend,
@@ -123,7 +123,7 @@ export function parseShellProfilesJson(raw: unknown): ShellProfilesConfig | unde
 	if (shorthand && Object.keys(profiles).length === 0) {
 		profiles.default = shorthand;
 	} else if (shorthand && !profiles.default) {
-		// Top-level env мержится в default, если его ещё нет
+		// env верхнего уровня мержится в default, если его ещё нет
 		profiles.default = shorthand;
 	}
 
@@ -199,10 +199,10 @@ export function buildPathEnv(opts: {
 export function resolveShellProfileEnv(opts: {
 	config: ShellProfilesConfig | undefined;
 	profileName?: string;
-	// process.env.PATH (или аналог) для pathPrepend/Append
+	// `process.env.PATH` (или аналог) для pathPrepend/Append
 	basePath?: string;
 	workspaceRoot?: string;
-	// process.env.GEN_SHELL_PROFILE
+	// переопределение из `process.env.GEN_SHELL_PROFILE`
 	envProfileOverride?: string;
 }): ResolvedShellProfileEnv {
 	const config = opts.config;
@@ -257,7 +257,7 @@ export async function loadShellProfiles(folderPath?: string): Promise<ShellProfi
 	}
 }
 
-// Env overlay для spawn: profile (+ опц. имя) из `.gen/shell.json`
+// Наложение env для spawn: profile (+ опц. имя) из `.gen/shell.json`
 export async function getShellProfileEnv(opts?: {
 	profileName?: string;
 	folderPath?: string;

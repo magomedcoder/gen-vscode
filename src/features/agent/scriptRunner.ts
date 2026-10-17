@@ -38,7 +38,7 @@ const BASH: ScriptRunner = {
 	} : undefined,
 };
 
-// PowerShell Core first; Windows PowerShell fallback. `-File` only (не -Command)
+// Сначала PowerShell Core; запасной Windows PowerShell. Только `-File` (не -Command)
 const POWERSHELL: ScriptRunner = {
 	command: 'pwsh',
 	argsPrefix: ['-NoProfile', '-File'],
@@ -75,7 +75,7 @@ export function resolveScriptRunner(filePathOrExt: string): ScriptRunner | undef
 
 /**
  * Shell для одноразовых start-команд worktree / hooks.
- * Unix: /bin/sh -c; Windows: pwsh -NoProfile -Command (fallback cmd.exe).
+ * Unix: /bin/sh -c; Windows: pwsh -NoProfile -Command (запасной cmd.exe).
  */
 export function resolveHostShellInvoker(): {
 	command: string;

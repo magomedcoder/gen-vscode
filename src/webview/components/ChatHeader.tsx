@@ -70,6 +70,8 @@ export function ChatHeader({
 	const currentModel = model ?? '';
 	const [renaming, setRenaming] = useState(false);
 	const [renameDraft, setRenameDraft] = useState('');
+	const [sessionQuery, setSessionQuery] = useState('');
+	const [showArchived, setShowArchived] = useState(false);
 	const renameInputRef = useRef<HTMLInputElement>(null);
 	const skipRenameBlurRef = useRef(false);
 	const optsRef = useRef<HTMLDetailsElement>(null);
@@ -81,6 +83,17 @@ export function ChatHeader({
 	useEffect(() => {
 		setRenaming(false);
 	}, [currentId]);
+
+	useEffect(() => {
+		const timer = window.setTimeout(() => {
+			vscodeApi.postMessage({
+				type: 'setSessionFilter',
+				query: sessionQuery,
+				archived: showArchived ? true : undefined,
+			});
+		}, 150);
+		return () => window.clearTimeout(timer);
+	}, [sessionQuery, showArchived]);
 
 	useEffect(() => {
 		if (!renaming) {
@@ -180,6 +193,23 @@ export function ChatHeader({
 				<span className="header__title">{t('chat.header.title')}</span>
 				{list.length > 0 ? (
 					<div className="session-bar" role="group" aria-label={t('chat.session.aria')}>
+						<input
+							className="session-bar__rename"
+							type="search"
+							value={sessionQuery}
+							placeholder={t('chat.session.search')}
+							aria-label={t('chat.session.search')}
+							onChange={(event) => setSessionQuery(event.target.value)}
+						/>
+						<button
+							className="btn btn--secondary session-bar__btn"
+							type="button"
+							aria-pressed={showArchived}
+							title={showArchived ? t('chat.session.showActive') : t('chat.session.showArchived')}
+							onClick={() => setShowArchived((value) => !value)}
+						>
+							<span className="codicon codicon-archive" aria-hidden="true" />
+						</button>
 						{renaming ? (
 							<input
 								ref={renameInputRef}
@@ -256,6 +286,15 @@ export function ChatHeader({
 							onClick={startRename}
 						>
 							<span className="codicon codicon-edit" aria-hidden="true" />
+						</button>
+						<button
+							className="btn btn--secondary session-bar__btn"
+							type="button"
+							title={current?.archived ? t('chat.session.unarchive') : t('chat.session.archive')}
+							aria-label={current?.archived ? t('chat.session.unarchive') : t('chat.session.archive')}
+							onClick={() => vscodeApi.postMessage({ type: 'archiveSession', id: currentId, archived: !current?.archived })}
+						>
+							<span className="codicon codicon-archive" aria-hidden="true" />
 						</button>
 						<button
 							className="btn btn--secondary session-bar__btn"

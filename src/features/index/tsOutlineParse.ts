@@ -116,7 +116,7 @@ function visitClassLike(
 
 /**
  * Извлечь outline class / function / import из текста одного файла (TS/JS).
- * Non-JS: LSP в `extractOutlineFromLsp` / regex-fallback - отдельно.
+ * Не JS: LSP в `extractOutlineFromLsp` / regex-fallback - отдельно.
  */
 export function parseTsOutline(relativePath: string, sourceText: string): OutlineEntry[] {
 	if (!isJsLikeOutlinePath(relativePath)) {
@@ -238,35 +238,35 @@ export interface LspOutlineSymbolInfo {
 	containerName?: string;
 }
 
-// Map vscode.SymbolKind -> OutlineKind. undefined для шума (file/string/literal), children всё равно обходим
+// Сопоставление vscode.SymbolKind -> OutlineKind; undefined для шума (file/string/literal), children всё равно обходим
 export function mapLspSymbolKindToOutlineKind(kind: number): OutlineKind | undefined {
 	switch (kind) {
-		case 4: // Class
-		case 22: // Struct
+		case 4: // Класс
+		case 22: // Структура
 			return 'class';
-		case 10: // Interface
+		case 10: // Интерфейс
 			return 'interface';
-		case 25: // TypeParameter
+		case 25: // Параметр типа
 			return 'type';
-		case 9: // Enum
+		case 9: // Перечисление
 			return 'enum';
-		case 11: // Function
+		case 11: // Функция
 			return 'function';
-		case 5: // Method
-		case 8: // Constructor
+		case 5: // Метод
+		case 8: // Конструктор
 			return 'method';
-		case 6: // Property
+		case 6: // Свойство
 			return 'property';
-		case 7: // Field
+		case 7: // Поле
 			return 'field';
-		case 12: // Variable
-		case 13: // Constant
-		case 21: // EnumMember
+		case 12: // Переменная
+		case 13: // Константа
+		case 21: // Член enum
 			return 'variable';
-		case 1: // Module
-		case 3: // Package
+		case 1: // Модуль
+		case 3: // Пакет
 			return 'module';
-		case 2: // Namespace
+		case 2: // Пространство имён
 			return 'namespace';
 		default:
 			return undefined;
@@ -315,7 +315,7 @@ function pushLspOutlineEntry(
 	});
 }
 
-// Раскрыть дерево DocumentSymbol -> OutlineEntry[] (pure; без vscode)
+// Раскрыть дерево DocumentSymbol -> OutlineEntry[] (чистая функция; без vscode)
 export function flattenLspDocumentSymbolsToOutline(
 	symbols: LspOutlineSymbol[],
 	relativePath: string,
@@ -350,7 +350,7 @@ export function flattenLspDocumentSymbolsToOutline(
 	return out;
 }
 
-// Раскрыть SymbolInformation[] -> OutlineEntry[] (pure; без vscode)
+// Раскрыть SymbolInformation[] -> OutlineEntry[] (чистая функция; без vscode)
 export function flattenLspSymbolInfosToOutline(
 	infos: LspOutlineSymbolInfo[],
 	relativePath: string,
@@ -378,7 +378,7 @@ export function flattenLspSymbolInfosToOutline(
 
 /**
  * Нормализовать результат executeDocumentSymbolProvider (DocumentSymbol[] | SymbolInformation[]).
- * Pure: принимает duck-typed формы.
+ * Чистая функция: принимает duck-typed формы.
  */
 export function outlineEntriesFromLspProviderResult(
 	result: unknown,

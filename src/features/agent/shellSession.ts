@@ -1,8 +1,9 @@
 import { spawn } from 'node:child_process';
-import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { assertAllowedCommand, formatCommandLine } from './commandPolicy';
 import { AGENT_LIMITS, previewText } from './policy';
+import { resolveShellCwd } from './shellCwd';
+import { resolveWorkspacePath } from './workspacePath';
 
 export interface BackgroundJob {
 	id: string;
@@ -25,39 +26,31 @@ export class ShellSession {
 		this.cwd = rootCwd;
 	}
 
-	resolveCwd(relativeOrAbs?: string): string {
-		const raw = (relativeOrAbs ?? '').trim();
-		if (!raw || raw === '.') {
-			return this.cwd;
-		}
-
-		if (path.isAbsolute(raw)) {
-			return raw;
-		}
-
-		return path.resolve(this.cwd, raw);
+	async resolveCwd(relativeOrAbs?: string): Promise<string> {
+		return resolveShellCwd(this.cwd, relativeOrAbs, resolveWorkspacePath);
 	}
 
-	applyCd(command: string, args: string[]): void {
+	async applyCd(command: string, args: string[]): Promise<void> {
 		if (command === 'cd' && args.length === 1) {
-			this.cwd = this.resolveCwd(args[0]);
+			this.cwd = await this.resolveCwd(args[0]);
 		}
 	}
 
-	startBackground(
+	async startBackground(
 		command: string,
 		args: string[],
 		cwd: string,
 		signal?: AbortSignal,
 		envExtra?: Record<string, string>,
-	): BackgroundJob {
+	): Promise<BackgroundJob> {
 		assertAllowedCommand(command, args);
+		const allowedCwd = await resolveShellCwd(this.cwd, cwd, resolveWorkspacePath);
 		const id = `job_${this.nextId++}`;
 		const commandLine = formatCommandLine(command, args);
 		const job: BackgroundJob = {
 			id,
 			commandLine,
-			cwd,
+			cwd: allowedCwd,
 			startedAt: Date.now(),
 			done: false,
 			output: '',
@@ -65,7 +58,7 @@ export class ShellSession {
 		this.jobs.set(id, job);
 
 		const proc = spawn(command, args, {
-			cwd,
+			cwd: allowedCwd,
 			env: {
 				...process.env,
 				FORCE_COLOR: '0',

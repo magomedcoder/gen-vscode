@@ -22,6 +22,72 @@ export interface RuleCandidate {
 	exists: boolean;
 }
 
+export interface RuleHeadingConflict {
+	heading: string;
+	sources: string[];
+}
+
+// Подготовка предпросмотра в Settings: заголовки Markdown могут дублироваться в независимо объединённых источниках правил.
+export function detectRuleHeadingConflicts(
+	sources: Array<{ source: string; text: string }>,
+): RuleHeadingConflict[] {
+	const headings = new Map<string, { heading: string; sources: Set<string> }>();
+	for (const item of sources) {
+		for (const line of item.text.split(/\r?\n/)) {
+			const match = /^\s{0,3}#{1,6}\s+(.+?)\s*#*\s*$/.exec(line);
+			if (!match) {
+				continue;
+			}
+
+			const heading = match[1]!.trim();
+			const key = heading.toLocaleLowerCase();
+			const entry = headings.get(key) ?? { heading, sources: new Set<string>() };
+			entry.sources.add(item.source);
+			headings.set(key, entry);
+		}
+	}
+	
+	return [...headings.values()]
+		.filter((entry) => entry.sources.size > 1)
+		.map((entry) => ({ 
+			heading: entry.heading, 
+			sources: [...entry.sources] 
+		}));
+}
+
+export async function previewRulesMergeConflicts(): Promise<RuleHeadingConflict[]> {
+	const sources: Array<{ source: string; text: string }> = [];
+	const folder = vscode.workspace.workspaceFolders?.[0];
+	if (folder) {
+		for (const rel of RULE_FILES) {
+			const text = await readText(vscode.Uri.joinPath(folder.uri, rel));
+			if (text) {
+				sources.push({ source: rel, text });
+			}
+		}
+	}
+
+	const userText = await readUserAgentsMd();
+	if (userText) {
+		sources.push({ 
+			source: '~/.config/gen/AGENTS.md', 
+			text: userText 
+		});
+	}
+
+	for (const raw of getSettings().instructionUrls.slice(0, MAX_INSTRUCTION_URLS)) {
+		const result = await fetchHttpsText(raw, MAX_INSTRUCTION_URL_CHARS);
+		if (result.ok) {
+			sources.push({ 
+				source: `remote:${result.url}`, 
+				text: result.text 
+			});
+		}
+	}
+
+	return detectRuleHeadingConflicts(sources);
+}
+
 async function pathExistsUri(uri: vscode.Uri): Promise<boolean> {
 	try {
 		await vscode.workspace.fs.stat(uri);
@@ -126,7 +192,7 @@ async function loadInstructionUrlsAppendix(): Promise<string[]> {
 	return chunks;
 }
 
-// Собрать .genrules + AGENTS.md (+ user-level + instructionUrls) в appendix к prompt
+// Собрать .genrules, AGENTS.md, user-level и instructionUrls в приложение к prompt
 export async function loadProjectRulesAppendix(): Promise<string | undefined> {
 	const chunks: string[] = [];
 	const folder = vscode.workspace.workspaceFolders?.[0];
@@ -140,7 +206,7 @@ export async function loadProjectRulesAppendix(): Promise<string | undefined> {
 		}
 	}
 
-	// User-level правила - после проектных
+	// Пользовательские правила - после проектных
 	const userText = await readUserAgentsMd();
 	const userNormalized = userText ? normalizeGenRulesText(userText) : undefined;
 	if (userNormalized) {

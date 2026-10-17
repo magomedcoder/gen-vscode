@@ -1,5 +1,7 @@
 import * as path from 'node:path';
+import { createHash } from 'node:crypto';
 import * as vscode from 'vscode';
+import { getSettings } from '../../core/config/settings';
 
 function pathIsInside(child: string, parent: string): boolean {
 	const rel = path.relative(path.resolve(parent), path.resolve(child));
@@ -7,7 +9,7 @@ function pathIsInside(child: string, parent: string): boolean {
 }
 
 /**
- * Локальные plugins/tools + npm-каталог с осторожным runtime execute.
+ * Локальные plugins/tools и npm-каталог с осторожным выполнением в runtime.
  *
  * Конвенция:
  * - Инструменты:
@@ -16,10 +18,10 @@ function pathIsInside(child: string, parent: string): boolean {
  * - Плагины:
  *   - `.gen/plugins/<name>/plugin.json` - манифест (обязательная точка обнаружения) { "name"?, "description"?, "instructions"? }
  *   - если `instructions` пуст - тело берётся из соседнего `PLUGIN.md`
- * - npm:
- *   - `package.json` с полем `gen` или `genAgent` (объект / строка имени; опц. command/args/bin)
- *   - `.gen/npm-plugins.json` - список `{ "name", "description"?, "package"?, "command"?, "args"?, "bin"? }` или строк
- *   - execute: только spawn объявленной команды под workspace / node_modules (tool `run_plugin`); без require() в host
+ * - npm-пакеты:
+ *   - `package.json` с полем `gen` или `genAgent` (объект / строка имени; опц. args/bin)
+ *   - `.gen/npm-plugins.json` - список разрешённых точных версий пакетов и необязательный SHA-256 бинарника
+ *   - выполнение: только объявленный бинарник пакета в workspace/node_modules (инструмент `run_plugin`); без require() в хосте
  */
 
 export type LocalPluginKind = 'tool' | 'plugin' | 'npm';
@@ -30,6 +32,8 @@ export interface NpmPluginExecutable {
 	args: string[];
 	// Абсолютный корень пакета для резолва относительных args (под workspace)
 	packageRoot: string;
+	// SHA-256 проверенного объявленного bin
+	binDigest: string;
 }
 
 export interface LocalPluginInfo {
@@ -212,7 +216,7 @@ function pushNpmEntry(
 			entry.body?.trim()
 			|| (canRun
 				? `(npm plugin) run via tool run_plugin; no require() into extension host.`
-				: '(npm plugin catalog only - declare command/args or bin for run_plugin)'),
+				: '(npm plugin catalog only - exact version / declared bin / integrity check did not pass)'),
 		),
 		...(entry.executable ? { executable: entry.executable } : {}),
 	});
@@ -221,7 +225,6 @@ function pushNpmEntry(
 interface ParsedGenPluginField {
 	name: string;
 	description?: string;
-	command?: string;
 	args?: string[];
 	bin?: string;
 }
@@ -244,9 +247,6 @@ function parseGenPluginField(raw: unknown, pkgName: string): ParsedGenPluginFiel
 	}
 
 	const description = typeof obj.description === 'string' ? obj.description.trim() : undefined;
-	const command = typeof obj.command === 'string' && obj.command.trim()
-		? obj.command.trim()
-		: undefined;
 	const args = Array.isArray(obj.args)
 		? obj.args.filter((a): a is string => typeof a === 'string').map((a) => a.trim()).filter(Boolean)
 		: undefined;
@@ -256,7 +256,6 @@ function parseGenPluginField(raw: unknown, pkgName: string): ParsedGenPluginFiel
 	return {
 		name,
 		description: description || `npm package ${pkgName}`,
-		...(command ? { command } : {}),
 		...(args && args.length ? { args } : {}),
 		...(bin ? { bin } : {}),
 	};
@@ -279,7 +278,9 @@ async function resolveBinFromPackage(
 	packageRoot: string,
 	binName: string | undefined,
 	workspaceRoot: string,
-): Promise<{ command: string; args: string[] } | undefined> {
+	expectedVersion: string,
+	expectedIntegrity?: string,
+): Promise<{ command: string; args: string[]; digest: string } | undefined> {
 	const pkgRaw = await readText(vscode.Uri.file(path.join(packageRoot, 'package.json')));
 	if (pkgRaw === undefined) {
 		return undefined;
@@ -287,6 +288,10 @@ async function resolveBinFromPackage(
 
 	try {
 		const data = JSON.parse(pkgRaw) as Record<string, unknown>;
+		if (typeof data.version !== 'string' || data.version !== expectedVersion) {
+			return undefined;
+		}
+
 		const binField = data.bin;
 		let scriptRel: string | undefined;
 		if (typeof binField === 'string' && binField.trim()) {
@@ -306,36 +311,84 @@ async function resolveBinFromPackage(
 		}
 
 		const scriptAbs = assertPathInsideWorkspace(path.resolve(packageRoot, scriptRel), workspaceRoot);
-		return { command: 'node', args: [scriptAbs] };
+		const script = await vscode.workspace.fs.readFile(vscode.Uri.file(scriptAbs));
+		const digest = createHash('sha256').update(script).digest('hex');
+		if (expectedIntegrity && digest !== normalizeSha256(expectedIntegrity)) {
+			return undefined;
+		}
+
+		return { 
+			command: 'node', 
+			args: [scriptAbs], 
+			digest 
+		};
 	} catch {
 		return undefined;
 	}
 }
 
+interface TrustedPlugin {
+	packageName: string;
+	version: string;
+	integrity?: string;
+}
+
+function normalizeSha256(raw: string): string {
+	return raw.trim().toLowerCase().replace(/^sha256[=:-]/, '');
+}
+
+function parseTrustedPlugin(raw: string): TrustedPlugin | undefined {
+	const trimmed = raw.trim();
+	const hashAt = trimmed.indexOf('#sha256=');
+	const spec = hashAt >= 0 ? trimmed.slice(0, hashAt) : trimmed;
+	const integrity = hashAt >= 0 ? trimmed.slice(hashAt + 1) : undefined;
+	const versionAt = spec.lastIndexOf('@');
+	if (versionAt <= 0 || versionAt === spec.length - 1) {
+		return undefined;
+	}
+
+	const packageName = spec.slice(0, versionAt);
+	const version = spec.slice(versionAt + 1);
+	if (!/^(?:@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*$/i.test(packageName)) {
+		return undefined;
+	}
+
+	if (!/^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(version)) {
+		return undefined;
+	}
+
+	if (integrity && !/^sha256=[a-fA-F0-9]{64}$/.test(integrity)) {
+		return undefined;
+	}
+
+	return { packageName, version, ...(integrity ? { integrity } : {}) };
+}
+
+function trustedFromConfig(packageName: string): TrustedPlugin | undefined {
+	return getSettings().trustedPlugins
+		.map(parseTrustedPlugin)
+		.find((entry) => entry?.packageName === packageName);
+}
+
 /**
  * Собрать spawn-спеку executable. Относительные args резолвятся под packageRoot; все пути к файлам - внутри workspace.
- * Command: бинарь из PATH (node) или абсолютный/относительный путь под workspace.
+ * Command фиксирован на Node runtime; первый arg приходит только из declared package bin.
  */
 export function buildNpmPluginExecutable(params: {
 	workspaceRoot: string;
 	packageRoot: string;
 	command?: string;
 	args?: string[];
+	binDigest?: string;
 }): NpmPluginExecutable {
 	const workspaceRoot = path.resolve(params.workspaceRoot);
 	const packageRoot = assertPathInsideWorkspace(params.packageRoot, workspaceRoot);
 	const commandRaw = (params.command ?? 'node').trim();
-	if (!commandRaw) {
-		throw new Error('empty command');
+	if (commandRaw !== 'node') {
+		throw new Error('npm plugins may execute only a declared package bin with the Node runtime');
 	}
 
-	let command = commandRaw;
-	if (command.includes('/') || command.includes('\\') || path.isAbsolute(command)) {
-		command = assertPathInsideWorkspace(
-			path.isAbsolute(command) ? command : path.resolve(packageRoot, command),
-			workspaceRoot,
-		);
-	}
+	const command = 'node';
 
 	const args = (params.args ?? []).map((arg) => {
 		const a = arg.trim();
@@ -355,7 +408,12 @@ export function buildNpmPluginExecutable(params: {
 		return a;
 	});
 
-	return { command, args, packageRoot };
+	return { 
+		command, 
+		args, 
+		packageRoot, 
+		binDigest: params.binDigest ?? '' 
+	};
 }
 
 async function discoverNpmPluginsFromPackageJson(
@@ -379,25 +437,28 @@ async function discoverNpmPluginsFromPackageJson(
 			return;
 		}
 
+		const trusted = trustedFromConfig(pkgName);
+		if (!trusted) {
+			return;
+		}
+
 		let executable: NpmPluginExecutable | undefined;
 		try {
-			if (parsed.command || parsed.args?.length) {
+			const fromBin = await resolveBinFromPackage(
+				workspaceRoot,
+				parsed.bin,
+				workspaceRoot,
+				trusted.version,
+				trusted.integrity,
+			);
+			if (fromBin) {
 				executable = buildNpmPluginExecutable({
 					workspaceRoot,
 					packageRoot: workspaceRoot,
-					command: parsed.command,
-					args: parsed.args,
+					command: fromBin.command,
+					args: [...fromBin.args, ...(parsed.args ?? [])],
+					binDigest: fromBin.digest,
 				});
-			} else if (parsed.bin || field && typeof field === 'object') {
-				const fromBin = await resolveBinFromPackage(workspaceRoot, parsed.bin, workspaceRoot);
-				if (fromBin) {
-					executable = buildNpmPluginExecutable({
-						workspaceRoot,
-						packageRoot: workspaceRoot,
-						command: fromBin.command,
-						args: fromBin.args,
-					});
-				}
 			}
 		} catch {
 			executable = undefined;
@@ -408,8 +469,8 @@ async function discoverNpmPluginsFromPackageJson(
 			description: parsed.description,
 			path: 'package.json',
 			body: executable
-				? `Объявлено в package.json (${data.gen ? 'gen' : 'genAgent'}). Запуск: tool run_plugin (spawn, без require).`
-				: `Объявлено в package.json (${data.gen ? 'gen' : 'genAgent'}). Добавь command/args или bin для run_plugin.`,
+				? `Объявлено в package.json (${data.gen ? 'gen' : 'genAgent'}), разрешено trustedPlugins. Запуск: tool run_plugin.`
+				: `Объявлено в package.json, но declared bin/version/integrity не прошли проверку.`,
 			executable,
 		});
 	} catch {}
@@ -436,24 +497,35 @@ async function discoverNpmPluginsList(
 				: [];
 		for (const item of items) {
 			if (typeof item === 'string' && item.trim()) {
-				const pkgName = item.trim();
-				const packageRoot = path.join(workspaceRoot, 'node_modules', pkgName);
+				const trusted = parseTrustedPlugin(item);
+				if (!trusted) {
+					continue;
+				}
+
+				const packageRoot = path.join(workspaceRoot, 'node_modules', trusted.packageName);
 				let executable: NpmPluginExecutable | undefined;
 				try {
-					const fromBin = await resolveBinFromPackage(packageRoot, undefined, workspaceRoot);
+					const fromBin = await resolveBinFromPackage(
+						packageRoot,
+						undefined,
+						workspaceRoot,
+						trusted.version,
+						trusted.integrity,
+					);
 					if (fromBin) {
 						executable = buildNpmPluginExecutable({
 							workspaceRoot,
 							packageRoot,
 							command: fromBin.command,
 							args: fromBin.args,
+							binDigest: fromBin.digest,
 						});
 					}
 				} catch {
 					executable = undefined;
 				}
 				pushNpmEntry(seen, out, {
-					name: pkgName,
+					name: trusted.packageName,
 					path: '.gen/npm-plugins.json',
 					executable,
 				});
@@ -473,11 +545,16 @@ async function discoverNpmPluginsList(
 			const packageName = typeof row.package === 'string' && row.package.trim()
 				? row.package.trim()
 				: name;
+			const version = typeof row.version === 'string' ? row.version.trim() : '';
+			const integrity = typeof row.integrity === 'string' ? row.integrity.trim() : undefined;
+			if (!parseTrustedPlugin(`${packageName}@${version}${integrity ? `#sha256=${normalizeSha256(integrity)}` : ''}`)) {
+				continue;
+			}
+			
 			const description = typeof row.description === 'string'
 				? row.description.trim()
 				: `package ${packageName}`;
 			const packageRoot = path.join(workspaceRoot, 'node_modules', packageName);
-			const command = typeof row.command === 'string' ? row.command.trim() : undefined;
 			const args = Array.isArray(row.args)
 				? row.args.filter((a): a is string => typeof a === 'string')
 				: undefined;
@@ -485,23 +562,21 @@ async function discoverNpmPluginsList(
 
 			let executable: NpmPluginExecutable | undefined;
 			try {
-				if (command || args?.length) {
+				const fromBin = await resolveBinFromPackage(
+					packageRoot,
+					bin,
+					workspaceRoot,
+					version,
+					integrity,
+				);
+				if (fromBin) {
 					executable = buildNpmPluginExecutable({
 						workspaceRoot,
 						packageRoot,
-						command,
-						args,
+						command: fromBin.command,
+						args: [...fromBin.args, ...(args ?? [])],
+						binDigest: fromBin.digest,
 					});
-				} else {
-					const fromBin = await resolveBinFromPackage(packageRoot, bin, workspaceRoot);
-					if (fromBin) {
-						executable = buildNpmPluginExecutable({
-							workspaceRoot,
-							packageRoot,
-							command: fromBin.command,
-							args: fromBin.args,
-						});
-					}
 				}
 			} catch {
 				executable = undefined;
@@ -591,8 +666,8 @@ export function formatPluginsCatalog(items: LocalPluginInfo[]): string | undefin
 	});
 	return [
 		'Локальные plugins/tools (описание; JS не require в host).',
-		'npm с command/args/bin: tool run_plugin (spawn под workspace, с подтверждением shell).',
-		'Tools из `.gen/tools` также доступны как LLM tools по имени (registry).',
+		'npm из allowlist с exact version и declared bin: tool run_plugin (spawn под workspace, с подтверждением shell).',
+		'`.gen/tools` - prompt-макросы (инструкции модели), не исполняемый host JS.',
 		'Иначе загрузи инструкции через tool plugin по имени или read_file:',
 		...lines,
 	].join('\n');

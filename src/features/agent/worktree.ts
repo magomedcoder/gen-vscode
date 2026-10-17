@@ -66,7 +66,7 @@ export function slugifyWorktreeId(raw: string): string {
 
 /**
  * Запустить `worktreeStartCommand` один раз в cwd worktree.
- * Unix: /bin/sh -c; Windows: pwsh -Command (fallback cmd.exe).
+ * Unix: /bin/sh -c; Windows: pwsh -Command (запасной cmd.exe).
  * Ошибка не бросается - возвращает ok/detail.
  */
 export async function runWorktreeStartCommand(
@@ -235,7 +235,7 @@ export async function createAgentWorktree(params: {
 				const started = await runWorktreeStartCommand(worktreePath, startCmd, signal);
 				lines.push('startCommand:', started.detail || '(пусто)');
 				if (!started.ok) {
-					// Soft-fail: worktree уже создан - субагент может работать
+					// Мягкий сбой (soft-fail): worktree уже создан - субагент может работать
 					lines.push('(startCommand завершился с ошибкой - продолжаем)');
 				}
 			}

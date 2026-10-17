@@ -1,6 +1,6 @@
 {
 	"$schema": "https://json-schema.org/draft-07/schema#",
-	"$id": "https://raw.githubusercontent.com/magomedcoder/gen-agent-vscode/main/schemas/gen-shell.schema.json",
+	"$id": "https://raw.githubusercontent.com/magomedcoder/gen-vscode/main/schemas/gen-shell.schema.json",
 	"title": "Gen Agent shell profiles",
 	"description": "Workspace shell env templates (`.gen/shell.json`). Applied before spawn for run_command / run_tests / run_scratch. Order: profile env -> shell.env hook. Select profile via tool `profile`, env GEN_SHELL_PROFILE, or defaultProfile.",
 	"type": "object",

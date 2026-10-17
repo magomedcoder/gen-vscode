@@ -25,6 +25,7 @@ export interface RulesSkillsPageData {
 	rules: RulesSkillsRuleRow[];
 	skills: RulesSkillsSkillRow[];
 	plugins: RulesSkillsPluginRow[];
+	ruleConflicts: Array<{ heading: string; sources: string[] }>;
 }
 
 interface RulesSkillsPageProps {
@@ -45,6 +46,7 @@ export function RulesSkillsPage({ data, onLoad, onOpenPath }: RulesSkillsPagePro
 	const rules = data?.rules ?? [];
 	const skills = data?.skills ?? [];
 	const plugins = data?.plugins ?? [];
+	const ruleConflicts = data?.ruleConflicts ?? [];
 
 	return (
 		<>
@@ -54,6 +56,16 @@ export function RulesSkillsPage({ data, onLoad, onOpenPath }: RulesSkillsPagePro
 				</button>
 			</div>
 			<span className="field__hint">{t('settings.rulesSkills.pageHint')}</span>
+			{ruleConflicts.length > 0 ? (
+				<div className="settings-list" style={{ marginTop: 8 }}>
+					{ruleConflicts.map((conflict) => (
+						<div key={`${conflict.heading}:${conflict.sources.join(':')}`} className="settings-card">
+							<span className="settings-card__name">{t('settings.rulesSkills.conflict', conflict.heading)}</span>
+							<span className="settings-card__command">{conflict.sources.toString()}</span>
+						</div>
+					))}
+				</div>
+			) : null}
 
 			<SettingsSection titleKey="settings.section.rulesSkills.rules">
 			{rules.length === 0 ? (

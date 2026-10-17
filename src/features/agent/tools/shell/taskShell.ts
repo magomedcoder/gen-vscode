@@ -29,7 +29,7 @@ export interface TaskToolContext extends ToolContext {
 		reportSnippet?: string;
 		childSessionId?: string;
 	}): void;
-	// Per-job AbortSignal, связанный с parent signal (без гонок со Stop parent)
+	// AbortSignal на job, связанный с parent signal (без гонок со Stop parent)
 	createJobAbort?(jobId: string): AbortSignal;
 	releaseJobAbort?(jobId: string): void;
 	// Открыть child-вкладку для субагента (parent<->child UI)
@@ -168,7 +168,7 @@ async function runOneSubagent(
 			background: opts.background,
 			mutating: opts.mutating,
 		});
-		// Scout/explore lifecycle: после успешного readonly - убрать ephemeral worktree
+		// Жизненный цикл scout/explore: после успешного readonly - убрать ephemeral worktree
 		if (opts.cleanupWorktree && worktreeCwd && !opts.mutating) {
 			const removed = await removeAgentWorktree(worktreeCwd);
 			if (removed) {
@@ -255,7 +255,7 @@ async function mapPool<T>(
 export const taskTool: ToolDefinition = {
 	name: 'task',
 	description:
-		'Запустить субагента (explore | general | scout | docs-researcher | code-reviewer | кастомный из `.gen/agents/`) для подзадачи. Explore/scout/presets - read-only; general - полный набор tools. Параллельный research: prompts[] (readonly). Параллельные mutating: prompts[] + allow_mutating_parallel (отдельные worktree). background/run_in_background - не блокировать parent. synthesize - записать aggregate в `.gen/reports/`.',
+		'Запустить субагента (explore | general | scout | docs-researcher | code-reviewer | кастомный из `.gen/agents/`) для подзадачи. Explore/scout/presets - read-only; general - полный набор tools. Параллельный research: prompts[] (readonly). Параллельные mutating: prompts[] + allow_mutating_parallel (отдельные worktree). background - не блокировать parent. synthesize - записать aggregate в `.gen/reports/`.',
 	parameters: {
 		type: 'object',
 		properties: {
@@ -282,11 +282,7 @@ export const taskTool: ToolDefinition = {
 			},
 			background: {
 				type: 'boolean',
-				description: 'Запустить в фоне: сразу вернуть job_id, не ждать отчёт (синоним run_in_background).',
-			},
-			run_in_background: {
-				type: 'boolean',
-				description: 'Алиас background=true.',
+				description: 'Запустить в фоне: сразу вернуть job_id, не ждать отчёт.',
 			},
 			allow_mutating_parallel: {
 				type: 'boolean',
@@ -364,7 +360,7 @@ export const taskTool: ToolDefinition = {
 			};
 		}
 
-		const background = asBool(args, 'background') || asBool(args, 'run_in_background');
+		const background = asBool(args, 'background');
 		const openChild = asBool(args, 'open_child_session');
 		const chatMode = getSettings().chatMode;
 		const synthesize = args.synthesize === undefined
@@ -426,7 +422,7 @@ export const taskTool: ToolDefinition = {
 					});
 
 					let worktreeCwd: string | undefined;
-					// Mutating parallel - всегда отдельный worktree; research - только если use_worktree
+					// Параллельные mutating - всегда отдельный worktree; research - только если use_worktree
 					const wantWt = mutating
 						? true
 						: shouldUseWorktree(args.use_worktree);

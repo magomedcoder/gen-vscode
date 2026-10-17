@@ -2,7 +2,7 @@ import * as path from 'node:path';
 
 export type RelatedTestHit = {
 	path: string;
-	reason: 'self' | 'sidecar' | '__tests__' | 'mirror' | 'name';
+	reason: 'self' | 'sidecar' | '__tests__' | 'mirror' | 'name' | 'import' | 'outline' | 'coverage';
 	score: number;
 };
 
@@ -103,6 +103,154 @@ export function rankRelatedTests(changedPaths: string[], allFiles: string[]): Re
 				if (nameRe.test(fBase) && (f.includes('.test.') || f.includes('.spec.') || f.includes('__tests__'))) {
 					consider({ path: f, reason: 'name', score: 40 });
 				}
+			}
+		}
+	}
+
+	return [...best.values()]
+		.sort((a, b) => b.score - a.score || a.path.localeCompare(b.path))
+		.slice(0, 40);
+}
+
+/**
+ * Дополнить hits рёбрами import-графа: тесты, которые импортируют changed (или наоборот).
+ * `importsOf` - Map пути к зависимостям; `importedBy` строится из importsOf.
+ */
+export function boostByImportGraph(
+	hits: RelatedTestHit[],
+	changedPaths: readonly string[],
+	importsOf: Map<string, readonly string[]>,
+): RelatedTestHit[] {
+	const best = new Map<string, RelatedTestHit>();
+	for (const h of hits) {
+		best.set(h.path, h);
+	}
+
+	const consider = (hit: RelatedTestHit) => {
+		const prev = best.get(hit.path);
+		if (!prev || hit.score > prev.score) {
+			best.set(hit.path, hit);
+		}
+	};
+
+	const changed = new Set(changedPaths.map((p) => p.replace(/\\/g, '/')));
+	const importedBy = new Map<string, string[]>();
+	for (const [from, deps] of importsOf) {
+		for (const d of deps) {
+			const list = importedBy.get(d) ?? [];
+			list.push(from);
+			importedBy.set(d, list);
+		}
+	}
+
+	for (const src of changed) {
+		for (const dep of importsOf.get(src) ?? []) {
+			if (isTestPath(dep)) {
+				consider({ 
+					path: dep, 
+					reason: 'import', 
+					score: 75 
+				});
+			}
+		}
+
+		for (const importer of importedBy.get(src) ?? []) {
+			if (isTestPath(importer)) {
+				consider({ 
+					path: importer, 
+					reason: 'import',
+					score: 78 
+				});
+			}
+		}
+	}
+
+	return [...best.values()]
+		.sort((a, b) => b.score - a.score || a.path.localeCompare(b.path))
+		.slice(0, 40);
+}
+
+// Имена символов outline -> тесты с тем же stem в имени файла
+export function boostByOutlineSymbols(
+	hits: RelatedTestHit[],
+	symbolNames: readonly string[],
+	allFiles: readonly string[],
+): RelatedTestHit[] {
+	const best = new Map<string, RelatedTestHit>();
+	for (const h of hits) {
+		best.set(h.path, h);
+	}
+
+	const consider = (hit: RelatedTestHit) => {
+		const prev = best.get(hit.path);
+		if (!prev || hit.score > prev.score) {
+			best.set(hit.path, hit);
+		}
+	};
+
+	const stems = symbolNames
+		.map((n) => n.trim())
+		.filter((n) => n.length >= 4 && !WEAK_STEMS.has(n.toLowerCase()));
+	if (stems.length === 0) {
+		return hits;
+	}
+
+	for (const f of allFiles) {
+		if (!isTestPath(f)) {
+			continue;
+		}
+
+		const base = path.posix.basename(f).toLowerCase();
+		for (const stem of stems) {
+			const s = stem.toLowerCase();
+			if (base.includes(s) && (base.includes('.test.') || base.includes('.spec.') || f.includes('__tests__'))) {
+				consider({ path: f.replace(/\\/g, '/'), reason: 'outline', score: 55 });
+				break;
+			}
+		}
+	}
+
+	return [...best.values()]
+		.sort((a, b) => b.score - a.score || a.path.localeCompare(b.path))
+		.slice(0, 40);
+}
+
+/**
+ * Coverage map: JSON вида { "src/foo.ts": ["src/foo.test.ts", ...] } или istanbul-like.
+ * Поднимает score известных пар.
+ */
+export function boostByCoverageMap(
+	hits: RelatedTestHit[],
+	changedPaths: readonly string[],
+	coverageMap: Record<string, readonly string[]> | undefined,
+): RelatedTestHit[] {
+	if (!coverageMap || Object.keys(coverageMap).length === 0) {
+		return hits;
+	}
+
+	const best = new Map<string, RelatedTestHit>();
+	for (const h of hits) {
+		best.set(h.path, h);
+	}
+
+	const consider = (hit: RelatedTestHit) => {
+		const prev = best.get(hit.path);
+		if (!prev || hit.score > prev.score) {
+			best.set(hit.path, hit);
+		}
+	};
+
+	for (const src of changedPaths) {
+		const key = src.replace(/\\/g, '/');
+		const tests = coverageMap[key] ?? coverageMap[`./${key}`];
+		if (!tests) {
+			continue;
+		}
+		
+		for (const t of tests) {
+			const p = t.replace(/\\/g, '/').replace(/^\.\//, '');
+			if (isTestPath(p)) {
+				consider({ path: p, reason: 'coverage', score: 95 });
 			}
 		}
 	}

@@ -4,7 +4,7 @@
 
 **Agent** mode. Paths must stay inside the workspace. Models may use `/workspace/...` as a portable alias for the first workspace folder root.
 
-`.gitignore` and `.genignore` at the workspace root are respected (together with `deniedPaths` from settings). The agent does **not** bypass ignore “to see everything”. Details: [security.md](security.md).
+`.gitignore` and `.genignore` at the workspace root are respected. Path/folder ignore goes in `.genignore` (not `config.json`). The agent does **not** bypass ignore “to see everything”. Details: [security.md](security.md).
 
 Confirmation follows **Settings -> Security**: `approvalPolicy` (`allow` / `ask` / `review` / `deny`) and `autoApprove` (asks -> allow; denies stay; **review** on edits still requires Accept + diff). Capability toggles can disable terminal / file / web entirely.
 
@@ -15,7 +15,7 @@ Confirmation follows **Settings -> Security**: `approvalPolicy` (`allow` / `ask`
 Builtin tools are registered via a **registry** and grouped by category folders. Shared helpers (`confirm.ts`, `postEdit.ts`, `webSearchBackends.ts`) stay at the top of `tools/`.
 
 | Folder    | Tools (names)                                                                                                                                                                            |
-| --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+|-----------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `fs/`     | `list_dir`, `read_file`, `write_file`, `apply_patch`, `edit_file`, `apply_workspace_edit`, `edit_notebook`, `delete_file`, `create_dir`                                                  |
 | `search/` | `glob`, `grep`, `file_search`, `find_code`, `find_symbol`, `codebase_search`, `semantic_search`, `search_docs`, `project_map`, `pack_context`, `similar_code`                            |
 | `shell/`  | `run_command`, `await_shell`, `run_tests`, `run_scratch` (+ `task` implementation)                                                                                                       |
@@ -30,12 +30,12 @@ Builtin tools are registered via a **registry** and grouped by category folders.
 Confirmations are a **card in Gen chat** (Apply / Skip / Stop or Apply / Reject). The chat panel is focused automatically; there is no separate tab.
 
 | Tool                      | Action                                                                                                                   | Confirm                                                              |
-| ------------------------- | ------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------- |
+|---------------------------|--------------------------------------------------------------------------------------------------------------------------|----------------------------------------------------------------------|
 | `get_workspace_info`      | Workspace folders, name, document count                                                                                  | no                                                                   |
 | `get_active_editor`       | Active editor: path, language, cursor, selection                                                                         | no                                                                   |
 | `get_open_editors`        | Open tabs                                                                                                                | no                                                                   |
 | `list_dir`                | List files/folders (excluding ignored)                                                                                   | no                                                                   |
-| `read_file`               | Read a file (optional line range); PDF via `pdftotext` (+ first-page PNG via `pdftoppm` when `visionEnabled`)            | no                                                                   |
+| `read_file`               | Read text/images; PDF supports `page`/`pages`/`max_pages`, text + up to 6 budgeted PNGs (first+last for long docs)       | no                                                                   |
 | `glob`                    | Find paths by glob                                                                                                       | no                                                                   |
 | `grep`                    | Exact text / regex search in file contents                                                                               | no                                                                   |
 | `find_code`               | Hybrid intent search (fans out to path/text/index/semantic/symbols, merges hits; dirty/recent boosts)                    | no                                                                   |
@@ -62,10 +62,10 @@ Confirmations are a **card in Gen chat** (Apply / Skip / Stop or Apply / Reject)
 | `find_references`         | Who references Y: LSP refs (+ definition); path+pos / path+symbol / symbol; multi-root `folder`/`root`; `limit`/`offset` | no                                                                   |
 | `find_logs`               | Find `*.log` / `logs/` in the workspace                                                                                  | no                                                                   |
 | `read_log_tail`           | Last N lines of a log file                                                                                               | no                                                                   |
-| `open_browser`            | Open URL in VS Code Simple Browser                                                                                       | Ask                                                                  |
+| `open_browser`            | Open URL in VSCode Simple Browser                                                                                        | Ask                                                                  |
 | `fetch_page`              | HTTP GET page text/HTML (Design Mode); annotates sourceMappingURL hints                                                  | Ask; remote (non-localhost) always confirms                          |
-| `design_inspect`          | URL + CSS selector -> outerHTML + guessed source via class/id grep (not full click-to-code)                              | Ask (same as fetch_page)                                             |
-| `web_search`              | Web search (`duckduckgo` \| `exa` \| `parallel` \| `http`)                                                               | Ask (confirmAlwaysOrSkip)                                            |
+| `design_inspect`          | URL + selector -> outerHTML + source hints (`data-component`/source map first, then class/id grep)                       | Ask (same as fetch_page)                                             |
+| `web_search`              | Web search (`duckduckgo` \                                                                                               | `exa` \                                                              | `parallel` \| `http`)                                                               | Ask (confirmAlwaysOrSkip)                                            |
 | `run_command`             | Command in workspace cwd (allow + denylist)                                                                              | Ask                                                                  |
 | `run_scratch`             | Run a file under `.gen/scratch/**` only (node/python/bash by ext)                                                        | Ask                                                                  |
 | `await_shell`             | Wait for background `run_command` job; optional `notify_on_output` regex                                                 | no                                                                   |
@@ -73,16 +73,16 @@ Confirmations are a **card in Gen chat** (Apply / Skip / Stop or Apply / Reject)
 | `list_plugins`            | List local `.gen/tools` and `.gen/plugins` (no npm/JS)                                                                   | no                                                                   |
 | `plugin`                  | Load a local plugin/tool description by name into context                                                                | no                                                                   |
 | `register_ephemeral_tool` | Register a markdown-only tool for this run (no JS; auto-cleared)                                                         | no                                                                   |
-| `repo_health`             | MVP: TS/JS import-cycle heuristics + orphan files (JSON)                                                                 | no                                                                   |
-| `test_impact`             | Suggest related `*test*` / `__tests__` from paths or git dirty                                                           | no                                                                   |
+| `repo_health`             | TS/JS/Python/Go import cycles + orphans (Tree-sitter spans + regex; barrel re-export FP reduced)                         | no                                                                   |
+| `test_impact`             | Related tests via name/path + import graph + outline symbols + optional `.gen/coverage-map.json`                         | no                                                                   |
 
 ## Notes
 
 - Local plugins/tools: see [architecture.md](architecture.md#local-plugins--tools-mvp). Catalog is injected into the system prompt; JS is not executed.
-- Chat modes **Debug** / **Design** are enabled via slash commands `/debug` / `/design` (same agent loop with a focused system prompt). Debug prefers `find_logs` + `read_log_tail` + diagnostics; Design uses `open_browser` + `fetch_page` / `design_inspect` (no JS execution / no live DOM clicks). Full browser click-to-code is not wired - see `features/design/designVisual.ts`.
+- Chat modes **Debug** / **Design** are enabled via slash commands `/debug` / `/design`. The best-effort click bridge resolves through the `design_inspect` source-hint/grep path and opens the matching file; it does not require full Simple Browser CDP.
 - Mid-turn: when `shareMode=auto`, each tool-loop iteration refreshes a short live-editor appendix (file + selection snippet) in the system prompt.
 - Scratch: write scripts under `.gen/scratch/` (scaffold dir) and run via `run_scratch` only - **no** arbitrary JS eval from `.gen/tools` / ephemeral tools.
-- Quality: `repo_health` (import cycles + orphans), `test_impact` (related tests). Eval suite: `src/test/eval/` - retrieval quality gate (precision@k / hit-rate / simpleScore, offline trigram) + permissions/confirm smoke; run `npm test -- --grep eval` or `npm run test:eval` (no live LLM / no remote embeddings).
+- Quality: `repo_health` (import cycles + orphans), `test_impact` (related tests). Eval suite: `src/test/eval/` + `vectorStore.test.ts` - retrieval quality gate (precision@k / hit-rate / simpleScore, offline trigram + local-vector) + permissions/confirm smoke; run `npm test -- --grep eval` or `npm run test:eval` (no live LLM / no remote embeddings).
 - Multiple files: start with `propose_plan` -> `.gen/plan.md`; progress via `update_plan`. The plan survives **Clear** chat.
 - Large file: short `write_file` scaffold, then `apply_patch` in chunks.
 - After successful `write_file` / `apply_patch`, if the file has diagnostics, the tool result appends a short nudge (tool still succeeds). Opt-in `formatAfterEdit` in settings runs `editor.action.formatDocument` after those edits.
@@ -90,7 +90,7 @@ Confirmations are a **card in Gen chat** (Apply / Skip / Stop or Apply / Reject)
 - Subagent tool `task` (`explore` / `general` / `scout` / presets / `.gen/agents/`):
   - `prompt` - single job; or `prompts[]` - fan-out (read-only research by default).
   - `max_parallel` - concurrency for `prompts[]` (default 3, max 6).
-  - `background` / `run_in_background` - return job ids immediately; parent is not blocked.
+  - `background` - return job ids immediately; parent is not blocked.
   - `allow_mutating_parallel` - required for `prompts[]` on non-readonly agents (e.g. `general`); each job gets its own worktree.
   - `synthesize` - write aggregate markdown under `.gen/reports/` (default **true** in Project mode).
   - `open_child_session` - create a child chat tab (parent<->child Teams UI).
@@ -99,7 +99,7 @@ Confirmations are a **card in Gen chat** (Apply / Skip / Stop or Apply / Reject)
   - Optional git worktree via setting `worktreesEnabled` or arg `use_worktree`. Creates branch under `.gen/worktrees/<slug>/` (fallback: sibling `*.gen-worktrees/`). Optional `worktreeStartCommand` runs once after create. Non-git workspace -> skipped, normal subagent.
 - Project overview: `project_map` for a cached module tree; prefer `find_code` (intent: `symbol` \| `path` \| `text` \| `mixed`) to fan out across path/text/index/semantic/symbols; `find_symbol` for LSP cache; `pack_context` / `similar_code` for task-scoped packs and duplicates; `codebase_search` for the trigram index alone; exact grep - `grep` / `glob`.
 - If the user edited a file after the agent: full `write_file` is rejected; patch via `apply_patch` / `apply_workspace_edit` after a fresh `read_file`.
-- `run_command` without shell/pipe. Blocked binaries come from `deniedCommands`. Eval / git write / package install stay blocked in code. Confirm via `approvalPolicy` / `autoApprove` (Security settings).
+- `run_command` without shell/pipe. Blocked binaries come from `deniedCommands` in user/project JSON (not Settings UI). Eval / git write / package install stay blocked in code. Confirm via `approvalPolicy` / `autoApprove` (Settings -> Security).
 - After an agent turn you can **Restore snapshot**.
 - Secrets in tool results are masked by regexps from settings (if set).
 

@@ -2,15 +2,15 @@ import { normalizeApprovalPolicy } from '../../features/agent/permissionPolicy';
 import type { ApprovalPolicy } from './approvalTypes';
 import * as vscode from 'vscode';
 import type { ExtensionContext, Memento } from 'vscode';
-import { initApiKeyStore, getWebSearchApiKey, setWebSearchApiKey } from './apiKey';
+import { initApiKeyStore } from './apiKey';
 import { initAlwaysAllowStore } from '../stores/alwaysAllowStore';
 import { applyAdminPolicy, stripAdminLockedForStorage } from './adminPolicy';
-import { deepMerge, getFileSettingsOverlay, initConfigLayers, onConfigLayersChanged, pickNonDefaultSettings } from './layers';
+import { deepMerge, getFileSettingsOverlay, initConfigLayers, onConfigLayersChanged, pickNonDefaultSettings, stripUiExcludedKeys } from './layers';
 import { clearCachedNCtx } from '../llm/contextBudget';
 import { DEFAULT_SETTINGS } from './types';
-import type { ChatMode, ChatTextSize, ChatViewLocation, GenSettings, ProviderUsePolicy, RevealOnEdit, ShareMode, TabEvictionPolicy, ThinkingDisplay, WebSearchBackend } from './types';
-export type { ChatMode, ChatTextSize, ChatViewLocation, CommentStyle, GenSettings, ProviderUsePolicy, RevealOnEdit, ShareMode, TabEvictionPolicy, ThinkingDisplay, WebSearchBackend } from './types';
-export { DEFAULT_SETTINGS, EXAMPLE_DENIED_COMMANDS, EXAMPLE_DENIED_PATHS, EXAMPLE_SECRET_PATTERNS, DEFAULT_SENSITIVE_PATH_PATTERNS, isAgentLikeMode, resolveModeModel, resolveSmallModel } from './types';
+import type { ChatMode, ChatTextSize, ChatViewLocation, GenSettings, RevealOnEdit, ShareMode, TabEvictionPolicy, ThinkingDisplay, WebSearchBackend } from './types';
+export type { ChatMode, ChatTextSize, ChatViewLocation, CommentStyle, GenSettings, RevealOnEdit, ShareMode, TabEvictionPolicy, ThinkingDisplay, WebSearchBackend } from './types';
+export { DEFAULT_SETTINGS, EXAMPLE_DENIED_COMMANDS, DEFAULT_GENIGNORE_PATTERNS, EXAMPLE_SECRET_PATTERNS, DEFAULT_SENSITIVE_PATH_PATTERNS, isAgentLikeMode, resolveModeModel, resolveSmallModel } from './types';
 export { getApiKey, hasApiKey, initApiKeyStore, setApiKey, clearApiKey, getWebSearchApiKey, hasWebSearchApiKey, setWebSearchApiKey, clearWebSearchApiKey } from './apiKey';
 export { initSecretVault } from './secretVault';
 export type { GenSecretId } from './secretVault';
@@ -18,7 +18,6 @@ export { FILE_LAYER_KEYS, getConfigLayersSnapshot, getEffectiveHooksInline, getE
 export { ADMIN_POLICY_KEYS, getAdminPolicySnapshot, isAdminPolicyActive } from './adminPolicy';
 export type { AdminPolicyKey, AdminPolicySnapshot } from './adminPolicy';
 const STORAGE_KEY = 'gen.settings';
-const WEB_SEARCH_KEY_MIGRATED = 'gen.webSearchApiKey.migrated';
 
 let store: Memento | undefined;
 let sessionModel = '';
@@ -126,6 +125,10 @@ function normalizeLocalEmbeddingsMode(raw: unknown): GenSettings['localEmbedding
 	if (v === 'off') {
 		return 'off';
 	}
+	
+	if (v === 'vector') {
+		return 'vector';
+	}
 
 	return 'trigram';
 }
@@ -146,10 +149,6 @@ function normalizeChunkEngine(raw: unknown): GenSettings['chunkEngine'] {
 	}
 
 	return 'auto';
-}
-
-function normalizeProviderUsePolicy(raw: unknown): ProviderUsePolicy {
-	return raw === 'deny' ? 'deny' : 'allow';
 }
 
 function normalize(raw: Partial<GenSettings>): GenSettings {
@@ -194,9 +193,9 @@ function normalize(raw: Partial<GenSettings>): GenSettings {
 		webSearchBackend: normalizeWebSearchBackend(raw.webSearchBackend),
 		webSearchHttpUrl: String(raw.webSearchHttpUrl ?? DEFAULT_SETTINGS.webSearchHttpUrl).trim(),
 		webSearchHttpHeader: String(raw.webSearchHttpHeader ?? DEFAULT_SETTINGS.webSearchHttpHeader).trim() || DEFAULT_SETTINGS.webSearchHttpHeader,
-		// Ключ только SecretStorage - никогда не держим в effective/JSON
-		webSearchApiKey: '',
 		webFetchEnabled: raw.webFetchEnabled !== false,
+		privacyMode: raw.privacyMode === true,
+		blockNonLocalUrls: raw.blockNonLocalUrls === true,
 		systemPrompt: String(raw.systemPrompt ?? '').trim(),
 		temperature: clamp(asNumber(raw.temperature, DEFAULT_SETTINGS.temperature), 0, 2),
 		maxTokens: Math.max(64, Math.floor(asNumber(raw.maxTokens, DEFAULT_SETTINGS.maxTokens))),
@@ -211,7 +210,6 @@ function normalize(raw: Partial<GenSettings>): GenSettings {
 		commentStyle,
 		previewBeforeApply: Boolean(raw.previewBeforeApply ?? DEFAULT_SETTINGS.previewBeforeApply),
 		commentSystemPrompt: String(raw.commentSystemPrompt ?? DEFAULT_SETTINGS.commentSystemPrompt).trim(),
-		deniedPaths: normalizeStringList(raw.deniedPaths),
 		sensitivePathPatterns: 'sensitivePathPatterns' in raw
 			? normalizeStringList(raw.sensitivePathPatterns)
 			: [...DEFAULT_SETTINGS.sensitivePathPatterns],
@@ -220,8 +218,6 @@ function normalize(raw: Partial<GenSettings>): GenSettings {
 			? normalizeStringList(raw.deniedCommands).map((item) => item.toLowerCase())
 			: [...DEFAULT_SETTINGS.deniedCommands],
 		secretPatterns: normalizeStringList(raw.secretPatterns),
-		providerUsePolicy: normalizeProviderUsePolicy(raw.providerUsePolicy),
-		providerUsePatterns: normalizeStringList(raw.providerUsePatterns),
 		authHeader,
 		authScheme,
 		planWriteToFile: raw.planWriteToFile !== false,
@@ -238,6 +234,7 @@ function normalize(raw: Partial<GenSettings>): GenSettings {
 		skillsPaths: normalizeStringList(raw.skillsPaths),
 		skillsUrls: normalizeStringList(raw.skillsUrls),
 		instructionUrls: normalizeStringList(raw.instructionUrls),
+		trustedPlugins: normalizeStringList(raw.trustedPlugins),
 		personaId: String(raw.personaId ?? '').trim(),
 		formatAfterEdit: raw.formatAfterEdit === true,
 		gitSyncAutoKeep: raw.gitSyncAutoKeep === true,
@@ -264,6 +261,10 @@ function normalize(raw: Partial<GenSettings>): GenSettings {
 		attachmentImageMaxWidth: Math.max(64, Math.floor(asNumber(raw.attachmentImageMaxWidth, DEFAULT_SETTINGS.attachmentImageMaxWidth))),
 		attachmentImageMaxHeight: Math.max(64, Math.floor(asNumber(raw.attachmentImageMaxHeight, DEFAULT_SETTINGS.attachmentImageMaxHeight))),
 		attachmentImageAutoResize: raw.attachmentImageAutoResize !== false,
+		attachmentImageQuality: raw.attachmentImageQuality === 'low' || raw.attachmentImageQuality === 'high'
+			? raw.attachmentImageQuality
+			: 'medium',
+		pdfVisionMaxPages: clamp(Math.floor(asNumber(raw.pdfVisionMaxPages, DEFAULT_SETTINGS.pdfVisionMaxPages)), 1, 6),
 		chatTextSize: normalizeChatTextSize(raw.chatTextSize),
 		thinkingDisplay: normalizeThinkingDisplay(raw.thinkingDisplay),
 		chatViewLocation: normalizeChatViewLocation(raw.chatViewLocation),
@@ -278,9 +279,8 @@ export function initSettings(context: ExtensionContext): void {
 	initApiKeyStore(context);
 	initAlwaysAllowStore(context);
 	sessionModel = '';
-	// JSON-слои: user (~/.config/gen) + project (.gen/config.json)
+	// JSON-слои: пользовательский (~/.config/gen) и проектный (.gen/config.json)
 	initConfigLayers(context);
-	void migrateWebSearchApiKeyToVault(context);
 	context.subscriptions.push(
 		onConfigLayersChanged(() => {
 			for (const listener of listeners) {
@@ -289,36 +289,11 @@ export function initSettings(context: ExtensionContext): void {
 			void syncChatViewLocationToWorkspace(getSettings().chatViewLocation);
 		}),
 	);
-	// when-clause для views читает contributes.configuration - синхронизируем с GenSettings
+	// Условие when для представлений читает contributes.configuration - синхронизируем с GenSettings
 	void syncChatViewLocationToWorkspace(getSettings().chatViewLocation);
 }
 
-// Одноразовая миграция: plain `webSearchApiKey` из UI globalState / JSON-слоёв -> SecretStorage, затем очистка UI-хранилища. `${env:}` / `{file:}` в значении сохраняем как есть (resolve через interpolate).
-async function migrateWebSearchApiKeyToVault(context: ExtensionContext): Promise<void> {
-	if (context.globalState.get<boolean>(WEB_SEARCH_KEY_MIGRATED)) {
-		return;
-	}
-
-	try {
-		const stored = store?.get<Partial<GenSettings>>(STORAGE_KEY);
-		const legacy = String(stored?.webSearchApiKey ?? '').trim();
-		const existing = await getWebSearchApiKey();
-		if (!existing && legacy) {
-			await setWebSearchApiKey(legacy);
-		}
-
-		if (stored && String(stored.webSearchApiKey ?? '').trim()) {
-			await store?.update(STORAGE_KEY, {
-				...stored,
-				webSearchApiKey: ''
-			});
-		}
-	} finally {
-		await context.globalState.update(WEB_SEARCH_KEY_MIGRATED, true);
-	}
-}
-
-// Прописать gen.chatViewLocation в VS Code config (для view `when`)
+// Записать gen.chatViewLocation в конфигурацию VSCode (для условия `when` представления)
 async function syncChatViewLocationToWorkspace(location: ChatViewLocation): Promise<void> {
 	const config = vscode.workspace.getConfiguration('gen');
 	const current = config.get<string>('chatViewLocation');
@@ -339,14 +314,14 @@ export function setSessionModel(model: string): void {
 /**
  * Эффективные GenSettings.
  *
- * Слои (низкий * высокий): defaults * user JSON * UI (non-default) * project JSON * admin policy.
+ * Слои (от низкого к высокому): defaults -> user JSON -> UI (не стандартные) -> project JSON -> admin policy.
  * Подробнее: docs/settings*.md и src/config/layers.ts / adminPolicy.ts.
  */
 export function getSettings(): GenSettings {
 	const stored = store?.get<Partial<GenSettings>>(STORAGE_KEY);
 	const { user, project } = getFileSettingsOverlay();
 	const uiOverlay = pickNonDefaultSettings(stored);
-	// project перекрывает UI и user; admin - поверх всех для locked keys
+	// project перекрывает UI и user; admin - поверх всех для заблокированных ключей
 	const merged = applyAdminPolicy(
 		deepMerge({}, user, uiOverlay, project) as Partial<GenSettings>,
 	);
@@ -367,10 +342,10 @@ export async function updateSettings(next: GenSettings): Promise<GenSettings> {
 
 	const prev = getSettings();
 	sessionModel = String(next.model ?? '').trim();
-	const normalized = stripAdminLockedForStorage(normalize({
+	const normalized = stripUiExcludedKeys(stripAdminLockedForStorage(normalize({
 		...next,
 		model: ''
-	}));
+	})));
 	await store.update(STORAGE_KEY, normalized);
 	await syncChatViewLocationToWorkspace(getSettings().chatViewLocation);
 	const effective = getSettings();

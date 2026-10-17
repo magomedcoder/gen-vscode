@@ -7,7 +7,7 @@ In the command palette they appear as **Gen: ...** (`Gen` category).
 ## Default keybindings
 
 | Command           | Win / Linux  | macOS       |
-| ----------------- | ------------ | ----------- |
+|-------------------|--------------|-------------|
 | Open chat         | `Ctrl+Alt+G` | `Cmd+Alt+G` |
 | Comment selection | `Ctrl+Alt+/` | `Cmd+Alt+/` |
 
@@ -30,7 +30,7 @@ Comments for the entire open file. Editor context menu item (no default hotkey).
 ## Comment syntax by language
 
 | Family   | Languages (examples)            | Comments                         |
-| -------- | ------------------------------- | -------------------------------- |
+|----------|---------------------------------|----------------------------------|
 | ts-style | JS, TS, Java, Go, Rust, C#, CSS | `//` `/* */`                     |
 | hash     | Python, Ruby, Shell, YAML       | `#` (+ `=begin`/`=end` for Ruby) |
 | html     | HTML, XML, Vue                  | `<!-- -->`                       |

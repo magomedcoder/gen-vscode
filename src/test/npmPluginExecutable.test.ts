@@ -26,4 +26,13 @@ suite('npmPluginExecutable', () => {
 			args: ['../../../../etc/passwd'],
 		}), /outside workspace/);
 	});
+
+	test('buildNpmPluginExecutable: denies arbitrary PATH commands', () => {
+		assert.throws(() => buildNpmPluginExecutable({
+			workspaceRoot: '/ws',
+			packageRoot: '/ws/node_modules/foo',
+			command: 'python',
+			args: ['plugin.py'],
+		}), /declared package bin/);
+	});
 });

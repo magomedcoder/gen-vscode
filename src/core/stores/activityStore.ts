@@ -15,14 +15,21 @@ export interface ActivityEntry {
 	sessionId?: string;
 	// Имя tool / действие (accept, reject, ...)
 	toolName?: string;
-	// pending | ok | error | denied | start
+	// Статус записи: pending | ok | error | denied | start
 	status?: string;
+	// Поля аудита run_plugin (cwd, bin, args, exit, timeout).
+	cwd?: string;
+	resolvedBin?: string;
+	args?: string[];
+	exitCode?: number;
+	timeoutMs?: number;
+	timedOut?: boolean;
 }
 
 const STORAGE_KEY = 'gen.activity.entries';
 const MAX_ENTRIES = 200;
 
-const SHELL_TOOLS = new Set(['run_command', 'run_tests', 'await_shell', 'run_scratch']);
+const SHELL_TOOLS = new Set(['run_command', 'run_tests', 'await_shell', 'run_scratch', 'run_plugin']);
 
 let store: Memento | undefined;
 let entries: ActivityEntry[] = [];
@@ -108,6 +115,12 @@ export function recordActivity(input: {
 	sessionId?: string;
 	toolName?: string;
 	status?: string;
+	cwd?: string;
+	resolvedBin?: string;
+	args?: string[];
+	exitCode?: number;
+	timeoutMs?: number;
+	timedOut?: boolean;
 }): void {
 	const label = input.label.trim();
 	if (!label) {
@@ -123,6 +136,12 @@ export function recordActivity(input: {
 		...(input.sessionId?.trim() ? { sessionId: input.sessionId.trim() } : {}),
 		...(input.toolName?.trim() ? { toolName: input.toolName.trim() } : {}),
 		...(input.status?.trim() ? { status: input.status.trim() } : {}),
+		...(input.cwd?.trim() ? { cwd: input.cwd.trim() } : {}),
+		...(input.resolvedBin?.trim() ? { resolvedBin: input.resolvedBin.trim() } : {}),
+		...(input.args ? { args: input.args.slice(0, 40).map((arg) => arg.slice(0, 300)) } : {}),
+		...(typeof input.exitCode === 'number' ? { exitCode: input.exitCode } : {}),
+		...(typeof input.timeoutMs === 'number' ? { timeoutMs: input.timeoutMs } : {}),
+		...(typeof input.timedOut === 'boolean' ? { timedOut: input.timedOut } : {}),
 	};
 
 	entries = [entry, ...entries].slice(0, MAX_ENTRIES);
@@ -130,7 +149,7 @@ export function recordActivity(input: {
 }
 
 export function readActivity(): ActivityEntry[] {
-	return entries.map((e) => ({ ...e }));
+	return entries.map((e) => ({ ...e, ...(e.args ? { args: [...e.args] } : {}) }));
 }
 
 export function clearActivity(): void {

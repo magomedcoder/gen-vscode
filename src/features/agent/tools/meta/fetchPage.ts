@@ -4,6 +4,7 @@ import { asString, type ToolContext, type ToolDefinition, type ToolResult } from
 import { throwIfAborted } from '../../workspacePath';
 import { confirmAlwaysOrSkip, confirmOrSkip, shouldConfirmWrites } from '../confirm';
 import { annotateHtmlWithSourceHints } from '../../../design/designVisual';
+import { getSettings } from '../../../../core/config/settings';
 
 const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '::1', '[::1]']);
 
@@ -63,6 +64,14 @@ export const fetchPageTool: ToolDefinition = {
 
 		const href = parsed.toString();
 		const local = isLocalUrl(parsed);
+		if (!local && getSettings().blockNonLocalUrls) {
+			return { 
+				ok: false, 
+				denied: true, 
+				content: `fetch_page blocked non-local URL: ${href}` 
+			};
+		}
+		
 		if (!local) {
 			const denied = await confirmAlwaysOrSkip(
 				ctx,

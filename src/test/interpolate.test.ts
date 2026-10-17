@@ -22,15 +22,19 @@ suite('interpolateConfigString', () => {
 		}
 	});
 
-	test('${env:NAME} и {env:NAME} подставляют значение', () => {
+	test('${env:NAME} подставляет значение', () => {
 		process.env.GEN_INTERP_TEST = 'secret-value';
 		assert.strictEqual(
 			interpolateConfigString('token=${env:GEN_INTERP_TEST}', { cwd: os.tmpdir() }),
 			'token=secret-value',
 		);
+	});
+
+	test('{env:NAME} без $ не интерполируется', () => {
+		process.env.GEN_INTERP_TEST = 'secret-value';
 		assert.strictEqual(
 			interpolateConfigString('token={env:GEN_INTERP_TEST}', { cwd: os.tmpdir() }),
-			'token=secret-value',
+			'token={env:GEN_INTERP_TEST}',
 		);
 	});
 
@@ -38,10 +42,6 @@ suite('interpolateConfigString', () => {
 		delete process.env.GEN_INTERP_MISSING;
 		assert.strictEqual(
 			interpolateConfigString('x=${env:GEN_INTERP_MISSING}-y', { cwd: os.tmpdir() }),
-			'x=-y',
-		);
-		assert.strictEqual(
-			interpolateConfigString('x={env:GEN_INTERP_MISSING}-y', { cwd: os.tmpdir() }),
 			'x=-y',
 		);
 	});

@@ -1,9 +1,9 @@
 /**
- * Персистентный индекс / map в VS Code workspace storage (`context.storageUri`), не в `.gen/` проекта.
+ * Персистентный индекс / map в VSCode workspace storage (`context.storageUri`), не в `.gen/` проекта.
  *
- * Layout:
- *   <storageUri>/index/<folderKey>/{manifest,symbols,outline,merkle}.json
- *   <storageUri>/map/<folderKey>/project.json
+ * Схема каталогов:
+ *   индекс: <storageUri>/index/<folderKey>/{manifest,symbols,outline,merkle}.json
+ *   карта проекта: <storageUri>/map/<folderKey>/project.json
  */
 
 import { createHash } from 'node:crypto';

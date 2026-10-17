@@ -61,8 +61,8 @@ async function readIgnoreLines(folderFsPath: string, fileName: string): Promise<
 
 /**
  * Матчер корня workspace: `.gitignore` + `.genignore` + `.ignore` + `.rgignore` (если есть)
- * (+ встроенный `.git`). Строки `!` (re-include) передаются в `ignore` как есть.
- * Не spawn'ит `git check-ignore`.
+ * (+ встроенный `.git`). Строки `!` (повторное включение) передаются в `ignore` как есть.
+ * Не вызывает `git check-ignore` через spawn.
  */
 export async function getFolderIgnoreMatcher(folderFsPath: string): Promise<IgnoreMatcher> {
 	const key = path.resolve(folderFsPath);

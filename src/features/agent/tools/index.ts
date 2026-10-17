@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import type { LlmToolDefinition } from '../../../core/llm/types';
 import { getSettings } from '../../../core/config/settings';
+import { beginGenOperationSpan } from '../../../core/llm/otel';
 import { logAgentTool } from '../audit';
 import { isMutatingTool } from '../auth';
 import { evaluateApproval, matchesSensitivePath, suggestPattern, toolActionType, type PermissionDecision } from '../permissionPolicy';
@@ -22,7 +23,7 @@ import type { ShellSession } from '../shellSession';
 import type { TaskToolContext } from './shell/taskShell';
 import type { ChatMode } from '../../../core/config/types';
 
-// Side-effect: регистрация всех builtin tools
+// Побочный эффект: регистрация всех builtin tools
 import './builtins';
 
 export type ExtendedToolContext = ToolContext & TaskToolContext & {
@@ -65,7 +66,7 @@ export function getAgentLlmTools(mode?: string, opts?: {
 	readonly?: boolean;
 	disableTask?: boolean;
 	primary?: boolean;
-	// Id модели текущего run (для model-routed patch)
+	// Id модели текущего run (для маршрутизации patch по модели)
 	modelId?: string;
 }): LlmToolDefinition[] {
 	const settings = getSettings();
@@ -109,7 +110,7 @@ export function getAgentLlmTools(mode?: string, opts?: {
 			return false;
 		}
 
-		// Model-routed patch: non-GPT без apply_patch (write/edit остаются)
+		// Маршрутизация patch: non-GPT без apply_patch (write/edit остаются)
 		if (!keepApplyPatch && tool.name === 'apply_patch') {
 			return false;
 		}
@@ -125,7 +126,7 @@ export function getAgentLlmTools(mode?: string, opts?: {
 
 	const allow = new Set(settings.primaryTools.map((name) => name.trim()).filter(Boolean));
 	const primaryFiltered = filtered.filter((tool) => allow.has(tool.name));
-	// пустой результат после фильтра - откат ко всем (essential fallback)
+	// пустой результат после фильтра - откат ко всем (запасной essential fallback)
 	const result = primaryFiltered.length > 0 ? primaryFiltered : filtered;
 	return result.map(toLlmToolDefinition);
 }
@@ -221,7 +222,7 @@ export async function executeAgentTool(name: string, rawArguments: string, ctx: 
 		};
 	}
 
-	// external_directory: путь вне workspace -> action `outside` или deny
+	// external_directory: путь вне workspace -> action `outside` или deny (запрет)
 	// Исключение: cwd субагента в git worktree (может быть sibling вне workspace folders)
 	if (pathLike && (action === 'edits' || action === 'delete' || name === 'read_file' || name === 'list_dir' || name === 'open_file' || name === 'create_dir' || name === 'apply_patch' || name === 'apply_workspace_edit' || name === 'write_file' || name === 'edit_file' || name === 'delete_file' || name === 'edit_notebook' || name === 'run_scratch')) {
 		const agentRoot = getAgentRoot();
@@ -250,13 +251,13 @@ export async function executeAgentTool(name: string, rawArguments: string, ctx: 
 	// Паттерн Always для confirmAlwaysOrSkip (после remapping outside)
 	ext.suggestAlwaysPattern = action ? suggestPattern(action, name, subject) : undefined;
 
-	// Чувствительные пути (.env*): force ask/deny на запись/удаление
+	// Чувствительные пути (.env*): принудительный ask/deny на запись/удаление
 	const sensitiveWrite = Boolean(action && (action === 'edits' || action === 'delete' || action === 'outside') && matchesSensitivePath(subject, settings.sensitivePathPatterns));
 
-	// Plan + ask: shell всегда с confirm (не allow / autoApprove)
+	// Режим plan + ask: shell всегда с confirm (не allow / autoApprove)
 	const planShellForceAsk = chatMode === 'plan' && action === 'shell' && settings.planShellPolicy === 'ask';
 
-	// permission.task / субагенты: чуть строже (не наследовать sessionAllow, не auto-skip confirm)
+	// permission.task / субагенты: чуть строже (не наследовать sessionAllow, не пропускать confirm автоматически)
 	const nestedStrict = (ext.subagentDepth ?? 0) > 0;
 
 	// Здесь центральный deny / session-allow; ask|review -> карточка ниже (до execute)
@@ -388,7 +389,19 @@ export async function executeAgentTool(name: string, rawArguments: string, ctx: 
 			}
 		}
 
-		const result = await tool.execute(args, ctx);
+		const executeSpan = beginGenOperationSpan(settings, 'tool.execute', { tool: name });
+		let result: ToolResult;
+		try {
+			result = await tool.execute(args, ctx);
+			executeSpan?.end(result.ok ? 'ok' : 'error', {
+				code: result.code,
+				category: result.category,
+				retryable: result.retryable,
+			});
+		} catch (err) {
+			executeSpan?.end('error', { error: err instanceof Error ? err.name : 'unknown' });
+			throw err;
+		}
 		if (result.ok && isMutatingTool(name) && ctx.plan?.isApproved) {
 			ctx.plan.markDoneByPaths(mutationPathsFromArgs(name, args));
 			ctx.onPlanChanged?.();

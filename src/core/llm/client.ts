@@ -5,7 +5,6 @@ import { httpErrorMessage, isAbortError, isRetryableError, LlmHttpError, parseEr
 import type { LlmRetryInfo } from './types';
 import { logLlm } from './log';
 import { beginLlmCompleteSpan } from './otel';
-import { assertProviderUseAllowed } from './providerUsePolicy';
 import { parseModelsListResponse, type LlmModelOption } from './modelLabel';
 import { parseUsage } from './usage';
 import { extractThinkingDelta, splitAssistantPayload } from './thinking';
@@ -286,10 +285,7 @@ export class HttpLlmClient implements LlmClient {
 				throw new Error(vscode.l10n.t('llm.needModel'));
 			}
 
-			// Policy provider.use - до любого HTTP
-			assertProviderUseAllowed(settings, model);
-
-			// Soft probe n_ctx до первого 400 (не блокирует complete)
+			// Мягкий probe n_ctx до первого 400 (не блокирует complete)
 			await this.probeNCtxSoft(settings, model, params.signal);
 
 			const useTools = Boolean(params.tools?.length) && params.toolChoice !== 'none';
@@ -364,7 +360,7 @@ export class HttpLlmClient implements LlmClient {
 					onDelta(text);
 				}
 
-				// Soft-update n_ctx из тела ответа (если сервер отдал)
+				// Мягкое обновление (soft-update) n_ctx из тела ответа (если сервер отдал)
 				softCacheNCtxFromCompletePayload(settings.baseUrl, model, data);
 
 				return {
@@ -475,7 +471,7 @@ export class HttpLlmClient implements LlmClient {
 			setCachedNCtx(baseUrl, modelHint, fromModels);
 		}
 
-		// Soft probe /props (llama.cpp) - мягкий сбой
+		// Мягкий probe /props (llama.cpp) - ошибки не пробрасываем
 		await this.probeNCtxSoft(cfg, modelHint || settings.model, params.signal);
 
 		return options;
@@ -535,7 +531,7 @@ export class HttpLlmClient implements LlmClient {
 		}
 	}
 
-	// Один GET без retry-шума (для optional /props)
+	// Один GET без retry-шума (для необязательного /props)
 	private async requestJsonOnceSoft(
 		path: string,
 		settings: GenSettings,

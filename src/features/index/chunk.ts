@@ -110,8 +110,8 @@ export function chunkFileContent(relativePath: string, content: string): IndexCh
 }
 
 /**
- * AST-aware chunking: один чанк на span (function/class/...); промежутки - line-window.
- * Chunk id = content-hash based для стабильности при правках соседних символов.
+ * Чанкинг с учётом AST: один чанк на span (function/class/...); промежутки - line-window.
+ * id чанка от content-hash для стабильности при правках соседних символов.
  */
 export function chunkFileContentAst(
 	relativePath: string,
@@ -124,7 +124,7 @@ export function chunkFileContentAst(
 		return [];
 	}
 
-	// Ближе к top-level: длиннее/внешние; вложенные отбрасываем, если родитель покрывает
+	// Ближе к верхнему уровню (top-level): длиннее/внешние; вложенные отбрасываем, если родитель покрывает
 	const sorted = [...spans].filter((s) => s.endLine >= s.startLine && s.startLine >= 1 && s.endLine <= total)
 		.sort((a, b) => a.startLine - b.startLine || b.endLine - a.endLine);
 

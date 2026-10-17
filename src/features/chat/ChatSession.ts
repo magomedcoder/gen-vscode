@@ -14,7 +14,7 @@ import { sumUsage } from '../../core/llm/usage';
 import { getSharedDiffProvider, showAgentEditDiff } from '../../host/preview/showDiff';
 import { resolveBangCommands } from './bangCommand';
 import { compactChatMessages } from './compact';
-import { deleteExportArchive, loadExportArchive, saveExportArchive } from './exportArchiveStore';
+import { deleteExportArchive, loadExportArchiveResult, saveExportArchive } from './exportArchiveStore';
 import { completeWithContextGuard, resolveContextBudget, dropSupersededReminders } from './fitContext';
 import { computeMentionBudgetTokens, fitMentionsToBudget, weightForKind, type ContextBlock } from './fitMentionsBudget';
 import { estimateChatMessagesTokens, estimateTextTokens } from '../../core/llm/estimateTokens';
@@ -34,6 +34,7 @@ import { abortSessionRuntime, createSessionRuntime } from './sessionRuntime';
 import type { PendingConfirmInternal, PendingQuestionInternal, SessionRuntime } from './sessionRuntime';
 import { researchJobsBusySummary, upsertResearchJob } from '../agent/researchJobs';
 import { generateSessionTitle } from '../agent/systemAgents';
+import { maskForPrivacy, redactSecrets } from '../agent/secrets';
 import { loadProjectRulesAppendix } from '../project/projectRules';
 import { parseSlashMode, type SlashCommand } from './slashCommands';
 import { parseExportedMarkdown } from './sessionImport';
@@ -52,7 +53,7 @@ import { ensureGenScaffold } from '../project/config';
 const MAX_STORED = 80;
 // Максимум сообщений в очереди, пока занят текущий turn
 const MAX_TURN_QUEUE = 8;
-// Стек undo/redo последних user turns
+// Стек отмены и повтора последних ходов пользователя
 const MAX_TURN_HISTORY = 12;
 
 function messageId(): string {
@@ -66,7 +67,7 @@ function cloneMessages(messages: ChatUiMessage[]): ChatUiMessage[] {
 	}));
 }
 
-// Грубое UI->API для estimate / dropSuperseded
+// Грубое преобразование UI -> API для оценки и dropSuperseded
 function uiMessagesToRoughApi(messages: readonly ChatUiMessage[]): ChatMessage[] {
 	const out: ChatMessage[] = [];
 	for (const m of messages) {
@@ -84,7 +85,7 @@ function uiMessagesToRoughApi(messages: readonly ChatUiMessage[]): ChatMessage[]
 	return out;
 }
 
-// Последний prompt_tokens с сервера (CompleteResult.usage) - точнее char-estimate для budget UI
+// Последний prompt_tokens с сервера (CompleteResult.usage) - точнее посимвольной оценки для бюджета UI
 function lastServerPromptTokens(messages: readonly ChatUiMessage[]): number | undefined {
 	for (let i = messages.length - 1; i >= 0; i -= 1) {
 		const pt = messages[i]?.usage?.promptTokens;
@@ -114,7 +115,7 @@ async function revealAgentFile(uri: vscode.Uri): Promise<void> {
 		return;
 	}
 
-	// focus - обычный preview + фокус редактора (не diff)
+	// focus - обычный предпросмотр с фокусом редактора (не diff)
 	await vscode.window.showTextDocument(uri, { preview: true });
 }
 
@@ -123,7 +124,7 @@ type ChatSessionListener = (state: ChatViewState) => void;
 export class ChatSession {
 	// Runtime текущей вкладки (messages / inflight / queue / ...)
 	private runtime!: SessionRuntime;
-	// Все живые runtime по sessionId - concurrent runs между вкладками
+	// Все активные runtime по sessionId - параллельные запуски между вкладками
 	private readonly runtimes = new Map<string, SessionRuntime>();
 	// postMessage в chat webview (playNotifySound и т.п.)
 	private postToWebview?: (message: ToWebviewMessage) => void;
@@ -134,12 +135,12 @@ export class ChatSession {
 	private planBootstrapped = false;
 	private readonly subs: vscode.Disposable[] = [];
 	private customCommands: CustomCommand[] = [];
-	// Ключ dismissed handoff (title), чтобы баннер не мигал после dismiss
+	// Ключ скрытого handoff (title), чтобы баннер не появлялся снова
 	private dismissedPlanHandoffKey?: string;
 	private readonly sessions: SessionStore;
 	// Поллинг git-sync auto-Keep (пока есть pending-хунки и setting вкл.)
 	private gitSyncKeepDisposable?: { dispose(): void };
-	// Последний context prune (chars/messages) для UI/debug
+	// Последнее сокращение контекста (символы/сообщения) для UI и отладки
 	private lastContextPrune?: { 
 		chars: number; 
 		messages: number 
@@ -152,10 +153,14 @@ export class ChatSession {
 	};
 	private lastMentionsTruncated = false;
 	private lastMentionsTruncatedKinds: string[] = [];
-	// sessionId, для которых уже идёт async hydrate архива с диска
+	// sessionId, для которых уже идёт асинхронная загрузка архива с диска
 	private readonly archiveHydrating = new Set<string>();
-	// Инкремент при drop - отменяет устаревший hydrate
+	// Увеличение при сбросе - отменяет устаревшую загрузку
 	private readonly archiveEpoch = new Map<string, number>();
+	private sessionFilter: { 
+		query?: string; 
+		archived?: boolean 
+	} = {};
 
 	private get messages(): ChatUiMessage[] {
 		return this.runtime.messages;
@@ -209,7 +214,7 @@ export class ChatSession {
 		this.runtime.todos = value;
 	}
 
-	// Research jobs из runtime (state machine заполняет отдельно)
+	// Research jobs из runtime (машина состояний заполняет отдельно)
 	private get researchJobs(): ResearchJobUi[] {
 		return this.runtime.researchJobs ?? [];
 	}
@@ -350,10 +355,24 @@ export class ChatSession {
 		const nCtxWarn = typeof cachedNCtx === 'number'
 			&& cachedNCtx > 0
 			&& settings.maxContextTokens > cachedNCtx;
+		const displayMessages = settings.privacyMode
+			? this.messages.map((message) => ({
+				...message,
+				...(message.role === 'tool' ? { 
+					content: maskForPrivacy(message.content) ?? '' 
+				} : {}),
+				toolArgs: maskForPrivacy(message.toolArgs),
+				toolCalls: message.toolCalls?.map((call) => ({
+					...call,
+					arguments: maskForPrivacy(call.arguments) ?? '',
+					result: maskForPrivacy(call.result),
+				})),
+			}))
+			: this.messages;
 		return {
-			messages: this.messages,
+			messages: displayMessages,
 			busy: Boolean(this.inflight),
-			busyDetail: this.busyDetail,
+			busyDetail: maskForPrivacy(this.busyDetail),
 			queuedCount: this.turnQueue.length,
 			mode: settings.chatMode,
 			usage: sumUsage(this.messages),
@@ -480,7 +499,7 @@ export class ChatSession {
 		this.sessions.saveMessages(rt.messages.slice(-MAX_STORED), id);
 	}
 
-	// Runtime для sessionId: из Map или из persisted messages
+	// Runtime для sessionId: из Map или сохранённых сообщений
 	private ensureRuntime(sessionId: string): SessionRuntime {
 		let rt = this.runtimes.get(sessionId);
 		if (rt) {
@@ -510,13 +529,13 @@ export class ChatSession {
 
 		const epoch = this.archiveEpoch.get(sessionId) ?? 0;
 		this.archiveHydrating.add(sessionId);
-		void loadExportArchive(this.context, sessionId).then((msgs) => {
+		void loadExportArchiveResult(this.context, sessionId).then((loaded) => {
 			this.archiveHydrating.delete(sessionId);
 			if ((this.archiveEpoch.get(sessionId) ?? 0) !== epoch) {
 				return;
 			}
 
-			if (!msgs?.length) {
+			if (loaded.status !== 'ok' || !loaded.messages.length) {
 				return;
 			}
 
@@ -525,7 +544,7 @@ export class ChatSession {
 				return;
 			}
 
-			current.exportArchive = msgs;
+			current.exportArchive = loaded.messages;
 			if (this.sessions.getCurrentSessionId() === sessionId) {
 				this.emit();
 			}
@@ -556,14 +575,14 @@ export class ChatSession {
 		await deleteExportArchive(this.context, sessionId);
 	}
 
-	// Сделать runtime текущим (без abort чужих runs)
+	// Сделать runtime текущим (без прерывания чужих запусков)
 	private activateRuntime(sessionId: string): void {
 		this.runtime = this.ensureRuntime(sessionId);
 	}
 
 	// Список сессий с флагом busy для UI вкладок
 	private listSessionsWithBusy() {
-		return this.sessions.listSessions().map((s) => ({
+		return this.sessions.listSessions(this.sessionFilter).map((s) => ({
 			...s,
 			busy: Boolean(this.runtimes.get(s.id)?.inflight),
 		}));
@@ -587,7 +606,7 @@ export class ChatSession {
 	}
 
 	/**
-	 * При лимите вкладок: по policy закрыть oldest idle (не current, не busy).
+	 * При лимите вкладок: согласно политике закрыть самые старые неактивные (не текущую и не занятые).
 	 * @returns сколько вкладок закрыли
 	 */
 	private evictIdleTabsForSlot(needSlots = 1): number {
@@ -696,6 +715,21 @@ export class ChatSession {
 		this.emit();
 	}
 
+	archiveSession(id: string, archived = true): void {
+		if (!this.sessions.archiveSession(id, archived)) {
+			return;
+		}
+		this.activateRuntime(this.sessions.getCurrentSessionId());
+		this.emit();
+	}
+
+	setSessionFilter(query?: string, archived?: boolean): void {
+		this.sessionFilter = { 
+			query: query?.trim() || undefined, archived 
+		};
+		this.emit();
+	}
+
 	deleteSession(id: string): void {
 		const wasCurrent = id === this.sessions.getCurrentSessionId();
 		const rt = this.runtimes.get(id);
@@ -762,7 +796,8 @@ export class ChatSession {
 		const sessionId = this.sessions.getCurrentSessionId();
 		let archive = this.exportArchive;
 		if (!archive?.length) {
-			archive = await loadExportArchive(this.context, sessionId);
+			const loaded = await loadExportArchiveResult(this.context, sessionId);
+			archive = loaded.status === 'ok' ? loaded.messages : undefined;
 		}
 
 		if (!archive?.length) {
@@ -881,7 +916,7 @@ export class ChatSession {
 		this.emit();
 	}
 
-	// Переключить UI на вкладку (для confirm/question фонового run)
+	// Переключить UI на вкладку (для подтверждения или вопроса фонового запуска)
 	private focusSession(sessionId: string): void {
 		if (sessionId === this.sessions.getCurrentSessionId()) {
 			void focusChatView();
@@ -898,7 +933,7 @@ export class ChatSession {
 		void focusChatView();
 	}
 
-	// Подмешать persisted Always в sessionAllow перед turn (если opt-in)
+	// Добавить сохранённые Always в sessionAllow перед ходом (если включено)
 	private seedSessionAllow(rt: { sessionAllow: string[] }): void {
 		if (!getSettings().persistAlwaysAllow) {
 			return;
@@ -1077,7 +1112,7 @@ export class ChatSession {
 		this.emit();
 	}
 
-	// Отмена одного tool (не всего turn). Если контроллера нет - abort turn
+	// Отмена одного инструмента (не всего хода). Если контроллера нет - прервать ход
 	cancelToolCall(id: string): void {
 		const ctrl = this.toolAborts.get(id);
 		if (ctrl) {
@@ -1088,7 +1123,7 @@ export class ChatSession {
 		this.inflight?.abort();
 	}
 
-	// Research/Teams: interrupt одного job (без Abort родителя)
+	// Research/Teams: прервать одну задачу без остановки родителя
 	interruptResearchJob(id: string): void {
 		const trimmed = id.trim();
 		if (!trimmed) {
@@ -1104,7 +1139,7 @@ export class ChatSession {
 		this.emit();
 	}
 
-	// Interrupt всех research jobs текущей сессии
+	// Прервать все research jobs текущей сессии
 	interruptAllResearch(): void {
 		for (const [id, ctrl] of this.researchAborts) {
 			ctrl.abort();
@@ -1118,7 +1153,7 @@ export class ChatSession {
 		this.emit();
 	}
 
-	// Resume одного research job (после aborted/error) - новый turn с task(resume_job_id)
+	// Возобновить один research job после прерывания или ошибки - новый ход с task(resume_job_id)
 	resumeResearchJob(id: string): void {
 		const trimmed = id.trim();
 		if (!trimmed) {
@@ -1154,7 +1189,7 @@ export class ChatSession {
 		this.switchSession(trimmed);
 	}
 
-	// Прикрепить transcript research job в текущий чат
+	// Прикрепить журнал research job к текущему чату
 	attachResearchTranscript(id: string): void {
 		const trimmed = id.trim();
 		if (!trimmed) {
@@ -1178,7 +1213,7 @@ export class ChatSession {
 		this.emit();
 	}
 
-	// Upsert job + busyDetail из onSubagentJob
+	// Добавить или обновить задачу и busyDetail из onSubagentJob
 	private applySubagentJob(event: {
 		id: string;
 		status: ResearchJobUi['status'];
@@ -1296,7 +1331,7 @@ export class ChatSession {
 		}
 	}
 
-	// Continue после лимита итераций - тот же history + nudge, новый бюджет N
+	// Продолжение после лимита итераций - та же история и подсказка, новый бюджет N
 	async continueAgent(): Promise<void> {
 		if (!this.agentPaused || this.inflight) {
 			return;
@@ -1378,7 +1413,7 @@ export class ChatSession {
 	}
 
 	/**
-	 * Best-effort restore правок агента начиная с хода отредактированного user-сообщения.
+	 * По возможности восстановить правки агента начиная с хода отредактированного сообщения пользователя.
 	 * Берём checkpoint из undoStack (и lastCheckpoint), восстанавливаем от новых к старым.
 	 * Записи стека, относящиеся к этому и более поздним ходам, вычищаются.
 	 */
@@ -1451,8 +1486,8 @@ export class ChatSession {
 		recordActivity({
 			kind: 'review',
 			label: action === 'accept'
-				? `Принято: ${hunk.path ?? found.call.path ?? hunkId}`
-				: `Отклонено: ${hunk.path ?? found.call.path ?? hunkId}`,
+				? vscode.l10n.t('activity.review.accepted', hunk.path ?? found.call.path ?? hunkId)
+				: vscode.l10n.t('activity.review.rejected', hunk.path ?? found.call.path ?? hunkId),
 			path: hunk.path ?? found.call.path,
 			sessionId: this.sessions.getCurrentSessionId(),
 			toolName: found.call.name,
@@ -1499,8 +1534,8 @@ export class ChatSession {
 		recordActivity({
 			kind: 'review',
 			label: action === 'acceptAll'
-				? `Принято все: ${pending.length} хунк(ов)${pathHint ? ` (${pathHint})` : ''}`
-				: `Отклонено все: ${pending.length} хунк(ов)${pathHint ? ` (${pathHint})` : ''}`,
+				? vscode.l10n.t('activity.review.acceptedAll', pending.length, pathHint ? ` (${pathHint})` : '')
+				: vscode.l10n.t('activity.review.rejectedAll', pending.length, pathHint ? ` (${pathHint})` : ''),
 			path: pathHint,
 			sessionId: this.sessions.getCurrentSessionId(),
 			toolName: found.call.name,
@@ -1585,7 +1620,7 @@ export class ChatSession {
 
 		recordActivity({
 			kind: 'review',
-			label: `Отклонено (файл): ${pending.length} хунк(ов) (${target})`,
+			label: vscode.l10n.t('activity.review.rejectedFile', pending.length, target),
 			path: target,
 			sessionId: this.sessions.getCurrentSessionId(),
 			status: 'rejected',
@@ -1634,7 +1669,7 @@ export class ChatSession {
 
 		recordActivity({
 			kind: 'review',
-			label: `Принято (auto-Keep): ${target}`,
+			label: vscode.l10n.t('activity.review.autoKept', target),
 			path: target,
 			sessionId: this.sessions.getCurrentSessionId(),
 			status: 'accepted',
@@ -2124,8 +2159,8 @@ export class ChatSession {
 	}
 
 	/**
-	 * Preflight: rule-based path всегда; LLM compact только если llmAutoCompact=true
-	 * и после оценки history всё ещё over budget.
+	 * Предварительная проверка: путь по правилам выполняется всегда; LLM-сжатие - только при llmAutoCompact=true
+	 * и если после оценки история всё ещё превышает бюджет.
 	 */
 	private async maybeAutoCompactBeforeTurn(
 		signal: AbortSignal,
@@ -2159,7 +2194,7 @@ export class ChatSession {
 			return false;
 		}
 
-		// Default: без LLM - completeWithContextGuard/shrink на следующем шаге
+		// По умолчанию без LLM: completeWithContextGuard/shrink на следующем шаге
 		if (!settings.llmAutoCompact) {
 			return false;
 		}
@@ -2404,7 +2439,7 @@ export class ChatSession {
 
 		const entry = this.undoStack.pop();
 		if (!entry) {
-			// Fallback: старое поведение без стека (один lastCheckpoint)
+			// Резервный вариант: старое поведение без стека (один lastCheckpoint)
 			if (opts.files && this.lastCheckpoint && this.lastCheckpoint.size > 0) {
 				const restored = await this.lastCheckpoint.restore();
 				this.lastCheckpoint = undefined;
@@ -2651,7 +2686,7 @@ export class ChatSession {
 		const llmUserText = bangs.cleanText || mentions.cleanText || trimmed;
 		const mentionsBlocks = [...(mentions.blocks ?? [])];
 		const mentionsLabels = [...(mentions.labels ?? [])];
-		// Debug Mode: авто-inject хвостов терминалов, если пользователь не добавил @terminals
+		// Режим Debug: автоматически добавить хвосты терминалов, если пользователь не указал @terminals
 		if (settings.chatMode === 'debug' && !mentionsLabels.some((l) => l.includes('@terminals'))) {
 			const { formatDebugTerminalsAppendix } = await import('./terminalBuffer');
 			const terminalsAppendix = formatDebugTerminalsAppendix();
@@ -3015,7 +3050,7 @@ export class ChatSession {
 		}
 	}
 
-	// Продолжение после max_steps: history = messages вкладки, nudge в API без дубля user в UI
+	// Продолжение после max_steps: история равна сообщениям вкладки, подсказка в API без дубля пользователя в UI
 	private async runContinueTurn(): Promise<void> {
 		const runSessionId = this.sessions.getCurrentSessionId();
 		const rt = this.ensureRuntime(runSessionId);
@@ -3265,7 +3300,7 @@ export class ChatSession {
 		}
 	}
 
-	// После первого успешного хода: LLM-title на smallModel, если ещё «Новый чат»
+	// После первого успешного хода: LLM-заголовок через smallModel, если всё ещё «Новый чат»
 	private async maybeRenameSessionAfterTurn(
 		signal: AbortSignal,
 		sessionId: string,
@@ -3281,8 +3316,18 @@ export class ChatSession {
 			return;
 		}
 
-		let title = await generateSessionTitle(messages, this.client, { signal });
+		const generated = await generateSessionTitle(messages, this.client, { signal });
+		let title = generated.title;
 		if (!title?.trim()) {
+			recordActivity({
+				kind: 'review',
+				label: vscode.l10n.t(
+					'activity.chat.autoTitleFailed',
+					generated.error ?? vscode.l10n.t('chat.autoTitle.unknownReason'),
+				),
+				sessionId,
+				status: 'error',
+			});
 			title = fallbackTitleFromMessages(messages);
 		}
 
@@ -3296,27 +3341,31 @@ export class ChatSession {
 	}
 
 	async exportSessionMarkdown(): Promise<void> {
-		// Берём архив до compact - lossless история для export
-		const source = this.exportArchive ?? this.messages;
+		// Берём архив до сжатия - полная история для экспорта
+		const source = (this.exportArchive ?? this.messages).map((message) => ({
+			...message,
+			content: redactSecrets(message.content).text,
+			toolArgs: message.toolArgs ? redactSecrets(message.toolArgs).text : message.toolArgs,
+		}));
 		const fromArchive = Boolean(this.exportArchive);
 		const lines = source.map((m) => {
 			if (m.role === 'user') {
-				return `## Пользователь\n\n${m.content}`;
+				return `## ${vscode.l10n.t('chat.export.userHeading')}\n\n${m.content}`;
 			}
 
 			if (m.role === 'assistant') {
-				return `## Ассистент\n\n${m.content}`;
+				return `## ${vscode.l10n.t('chat.export.assistantHeading')}\n\n${m.content}`;
 			}
 
 			if (m.role === 'error') {
-				return `## Ошибка\n\n${m.content}`;
+				return `## ${vscode.l10n.t('chat.export.errorHeading')}\n\n${m.content}`;
 			}
 
-			return `## Tool ${m.toolName ?? ''}\n\n\`\`\`\n${m.content}\n\`\`\``;
+			return `## ${vscode.l10n.t('chat.export.toolHeading', m.toolName ?? '')}\n\n\`\`\`\n${m.content}\n\`\`\``;
 		});
 		const header = fromArchive
-			? '# Экспорт чата Gen\n\n_Экспорт полной истории до compact (архив сессии)._\n'
-			: '# Экспорт чата Gen\n';
+			? `# ${vscode.l10n.t('chat.export.title')}\n\n_${vscode.l10n.t('chat.export.fullHistoryNote')}_\n`
+			: `# ${vscode.l10n.t('chat.export.title')}\n`;
 		const doc = await vscode.workspace.openTextDocument({
 			content: `${header}\n${lines.join('\n\n')}\n`,
 			language: 'markdown',
@@ -3350,7 +3399,7 @@ export class ChatSession {
 				.map((l) => l.trim())
 				.find((l) => l);
 			const fileBase = uri.path.split('/').pop()?.replace(/\.md$/i, '')?.trim();
-			const title = (firstLine || fileBase || 'Import').slice(0, 120);
+			const title = (firstLine || fileBase || vscode.l10n.t('chat.import.defaultTitle')).slice(0, 120);
 
 			if (!this.canCreateTab()) {
 				this.notifyMaxTabs();
@@ -3399,14 +3448,14 @@ export class ChatSession {
 			this.append({
 				id: messageId(),
 				role: 'assistant',
-				content: 'AGENTS.md уже есть. Каталоги `.gen/` проверены. Отредактируй AGENTS.md или добавь `.genrules` для правил Gen.',
+				content: vscode.l10n.t('chat.init.existing'),
 			});
 		} catch {
 			await vscode.workspace.fs.writeFile(uri, new TextEncoder().encode(stub));
 			this.append({
 				id: messageId(),
 				role: 'assistant',
-				content: 'Создан AGENTS.md и каталоги `.gen/` (agents, commands, plugins, skills, tools, references, plans). Заполни правила проекта для агента.',
+				content: vscode.l10n.t('chat.init.created'),
 			});
 			await vscode.window.showTextDocument(uri);
 		}
@@ -3427,12 +3476,12 @@ export class ChatSession {
 		await this.addToChat({
 			text,
 			label: `@file ${rel}`,
-			meta: `lines ${start}-${end}`,
+			meta: vscode.l10n.t('chat.addToChat.lines', start, end),
 			send: true,
 		});
 	}
 
-	// Единая точка «Add to Gen» из editor / terminal / notebook
+	// Единая точка «Добавить в Gen» из редактора, терминала и notebook
 	async addToChat(params: {
 		text: string;
 		label?: string;
@@ -3480,7 +3529,7 @@ export class ChatSession {
 		await this.addToChat({
 			text,
 			label: `@file ${rel}`,
-			meta: `lines ${start}-${end}`,
+			meta: vscode.l10n.t('chat.addToChat.lines', start, end),
 			prefix: instruction,
 			send: true,
 		});
@@ -3493,7 +3542,7 @@ export class ChatSession {
 			return;
 		}
 
-		// VS Code не всегда отдаёт selection API; берём буфер терминала
+		// VSCode не всегда отдаёт selection API; берём буфер терминала
 		const { getTerminalBuffers, ensureTerminalBufferListener } = await import('./terminalBuffer');
 		ensureTerminalBufferListener();
 		const buffers = getTerminalBuffers();
@@ -3529,9 +3578,9 @@ export class ChatSession {
 			generate: 'Сгенерируй или дополни код для этой ячейки notebook по контексту:',
 		};
 		await this.addToChat({
-			text: text || '(empty cell)',
+			text: text || vscode.l10n.t('chat.addToChat.emptyCell'),
 			label: `@file ${path}`,
-			meta: `cell ${cell.index}`,
+			meta: vscode.l10n.t('chat.addToChat.cell', cell.index),
 			prefix: prefixes[mode] || undefined,
 			send: true,
 		});
@@ -3601,10 +3650,10 @@ export class ChatSession {
 
 		const choice = await vscode.window.showQuickPick(
 			[
-				{ label: vscode.l10n.t('chat.slash.undo.files'), description: 'files', id: 'files' as const },
-				{ label: vscode.l10n.t('chat.slash.undo.task'), description: 'task', id: 'task' as const },
-				{ label: vscode.l10n.t('chat.slash.undo.both'), description: 'files+task', id: 'both' as const },
-				{ label: vscode.l10n.t('chat.slash.compare.open'), description: 'diff', id: 'compare' as const },
+				{ label: vscode.l10n.t('chat.slash.undo.files'), description: vscode.l10n.t('chat.slash.undo.filesDescription'), id: 'files' as const },
+				{ label: vscode.l10n.t('chat.slash.undo.task'), description: vscode.l10n.t('chat.slash.undo.taskDescription'), id: 'task' as const },
+				{ label: vscode.l10n.t('chat.slash.undo.both'), description: vscode.l10n.t('chat.slash.undo.bothDescription'), id: 'both' as const },
+				{ label: vscode.l10n.t('chat.slash.compare.open'), description: vscode.l10n.t('chat.slash.compare.description'), id: 'compare' as const },
 			],
 			{ title: vscode.l10n.t('chat.slash.restore.title') },
 		);

@@ -94,8 +94,8 @@ export function needsManifestRepair(result: ManifestParseResult): boolean {
 
 /**
  * Починить in-memory манифест:
- * - corrupt -> emptyManifest
- * - missing dirDigests -> applyDirDigests
+ * - битый JSON -> emptyManifest
+ * - нет dirDigests -> applyDirDigests
  */
 export function repairManifestInMemory(result: ManifestParseResult): {
 	manifest: IndexManifest;

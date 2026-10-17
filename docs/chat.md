@@ -7,7 +7,7 @@ Chat lives in the bottom **Gen** panel.
 ## Modes
 
 | Mode          | How to enable     | Behavior                                                                                                                                                                              |
-| ------------- | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+|---------------|-------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | **Ask**       | button / `/ask`   | Text only, no tools. Not the same as Plan.                                                                                                                                            |
 | **Agent**     | button / `/agent` | Loop: LLM -> tool calls -> tool results -> LLM again (up to the iteration limit).                                                                                                     |
 | **Plan**      | `/plan`           | Read/search + `propose_plan`. Edits denied. Shell: `planShellPolicy` (`ask` default - always confirm; `deny` - hidden). Plan Agent banner after approve; reminder when entering Plan. |
@@ -22,7 +22,7 @@ Type `/` in the input for slash-command autocomplete. You can attach a question:
 Confirmations are controlled in **Settings -> Security** (`approvalPolicy` + `autoApprove`):
 
 | Mode          | Behavior                                                                                                         |
-| ------------- | ---------------------------------------------------------------------------------------------------------------- |
+|---------------|------------------------------------------------------------------------------------------------------------------|
 | `allow`       | Run without asking                                                                                               |
 | `ask`         | Confirmation card (Apply / Always / Skip / Stop)                                                                 |
 | `review`      | Edits: ConfirmCard with unified diff (Accept / Reject / Always) before write; other actions: heuristic ask/allow |
@@ -30,6 +30,8 @@ Confirmations are controlled in **Settings -> Security** (`approvalPolicy` + `au
 | `autoApprove` | Treats `ask` as allow; **deny stays deny**                                                                       |
 
 Per-action keys: `shell`, `edits`, `delete`, `web`, `outside`, `task`, `skill`. Capability toggles (terminal / file / web / ...) are coarse switches on top.
+
+Path/folder ignore is **`.genignore`** (not Settings). Command denylist / secret redact / sensitive write patterns live in user or `.gen/config.json` - see [security.md](security.md).
 
 ## Chat UI
 
@@ -67,7 +69,7 @@ In Ask and Agent, the active file / selection may be included. The agent can als
 In the input, type `@` and choose:
 
 | Mention                         | What is injected                                                              |
-| ------------------------------- | ----------------------------------------------------------------------------- |
+|---------------------------------|-------------------------------------------------------------------------------|
 | `@file path`                    | File contents                                                                 |
 | `@folder path`                  | Files from a folder (capped)                                                  |
 | `@code`                         | Editor selection or symbol near the cursor                                    |

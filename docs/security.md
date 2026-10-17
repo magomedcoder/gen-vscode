@@ -10,16 +10,15 @@ The agent works **only** inside the open workspace:
 - after resolving a symlink, the path is checked again for workspace membership;
 - relative paths are resolved from the workspace root.
 
-## Path deny layers
+## Path ignore layers
 
 A path is unavailable to tools if **any** layer matches:
 
 | Layer               | Source                     | Purpose                                              |
-| ------------------- | -------------------------- | ---------------------------------------------------- |
+|---------------------|----------------------------|------------------------------------------------------|
 | Workspace / symlink | built-in                   | Do not leave the project                             |
 | `.gitignore`        | file at workspace **root** | Like git: build output, `node_modules`, logs...      |
-| `.genignore`        | file at workspace **root** | Gen-only: tracked in git but off-limits to the agent |
-| `deniedPaths`       | settings                   | User globs (`.env`, `*.pem`, ...)                    |
+| `.genignore`        | file at workspace **root** | Hide paths/folders from the agent (gitignore syntax) |
 
 The `.gitignore` / `.genignore` matcher is cached for one agent turn (`ignore` package, **no** `git check-ignore` spawn). The `.git` directory is always closed.
 
@@ -51,15 +50,17 @@ docs/private/
 
 ## Secret redaction
 
-In **Security** settings - JS regexps, one per line.  
+`secretPatterns` in user/project JSON (not Settings UI) - JS regexps, one per line.  
 Matches in text sent to the LLM / shown from tools become `[REDACTED]`.  
 Empty list - no redaction. Invalid regexps are skipped.
+
+Sensitive **writes** (e.g. `.env*`) use `sensitivePathPatterns` in the same JSON files (ask/deny on write even with auto-approve). Folder/path hide-from-agent belongs in `.genignore`, not these keys.
 
 ## Commands (`run_command`)
 
 No shell/pipe.
 
-**Denied binaries** come from **Security -> Denied commands** (`deniedCommands`). Default list includes shells (`sh`, `bash`, ...), network (`curl`, `wget`, `ssh`, ...), destructive (`rm`, `chmod`, ...), containers (`docker`, `kubectl`, ...). Empty list - do not block by binary name.
+**Denied binaries** come from `deniedCommands` in user/project JSON (not Settings UI). Default list includes shells (`sh`, `bash`, ...), network (`curl`, `wget`, `ssh`, ...), destructive (`rm`, `chmod`, ...), containers (`docker`, `kubectl`, ...). Empty list - do not block by binary name.
 
 Still always blocked in code:
 

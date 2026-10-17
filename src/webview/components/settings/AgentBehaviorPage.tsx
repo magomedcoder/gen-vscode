@@ -185,7 +185,7 @@ export function AgentBehaviorPage({ draft, setField }: SettingsPageProps) {
 					hintKey="settings.worktreeStartCommand.hint"
 					value={draft.worktreeStartCommand}
 					onChange={(v) => setField('worktreeStartCommand', v)}
-					placeholder="npm install"
+					placeholder={t('settings.worktreeStartCommand.placeholder')}
 					disabled={!draft.worktreesEnabled}
 				/>
 				<p className="field__hint">{t('settings.worktrees.manageHint')}</p>

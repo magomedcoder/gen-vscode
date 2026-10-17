@@ -42,7 +42,7 @@ function hitFromUnknown(item: unknown): WebSearchHit | undefined {
 			: typeof row.href === 'string' ? row.href
 				: '';
 	const url = urlRaw.trim();
-	if (!url) {
+	if (!/^https?:\/\//i.test(url)) {
 		return undefined;
 	}
 
@@ -75,18 +75,49 @@ export function parseWebSearchJson(data: unknown, cap: number): WebSearchHit[] {
 	}
 
 	const out: WebSearchHit[] = [];
+	const seen = new Set<string>();
 	for (const item of list) {
 		if (out.length >= cap) {
 			break;
 		}
 
 		const hit = hitFromUnknown(item);
-		if (hit) {
+		if (hit && !seen.has(hit.url)) {
 			out.push(hit);
+			seen.add(hit.url);
 		}
 	}
 
 	return out;
+}
+
+export function parseExaSearchJson(data: unknown, cap: number): WebSearchHit[] {
+	if (!data || typeof data !== 'object') {
+		return [];
+	}
+
+	const obj = data as Record<string, unknown>;
+	
+	return parseWebSearchJson(Array.isArray(obj.results) ? obj.results : obj.data, cap);
+}
+
+export function parseParallelSearchJson(data: unknown, cap: number): WebSearchHit[] {
+	if (!data || typeof data !== 'object') {
+		return [];
+	}
+	
+	const obj = data as Record<string, unknown>;
+	const results = obj.results;
+	if (Array.isArray(results)) {
+		return parseWebSearchJson(results, cap);
+	}
+
+	if (results && typeof results === 'object') {
+		const nested = results as Record<string, unknown>;
+		return parseWebSearchJson(nested.pages ?? nested.results ?? nested.items, cap);
+	}
+
+	return parseWebSearchJson(obj.data, cap);
 }
 
 async function resolveWebSearchApiKey(backendLabel: string): Promise<string> {
@@ -160,17 +191,16 @@ export async function searchDuckDuckGo(
 }
 
 /**
- * Exa Search API (best-effort): POST https://api.exa.ai/search
+ * Exa Search API (по best-effort): POST https://api.exa.ai/search
  * Auth: `x-api-key` из SecretStorage `webSearchApiKey`.
  * Тело: `{ query, numResults }` - без contents (только ссылки).
  * Ответ: `{ results: [{ title, url, ... }] }`.
- * Docs: https://exa.ai/docs/reference/search
+ * Документация: https://exa.ai/docs/reference/search
  */
 export async function searchExa(
 	query: string,
 	cap: number,
 	signal: AbortSignal | undefined,
-	_settings?: Pick<GenSettings, 'webSearchApiKey'>,
 ): Promise<WebSearchHit[]> {
 	const apiKey = await resolveWebSearchApiKey('exa');
 	const data = await postJsonSearch(
@@ -185,21 +215,20 @@ export async function searchExa(
 		},
 		signal,
 	);
-	return parseWebSearchJson(data, cap);
+	return parseExaSearchJson(data, cap);
 }
 
 /**
- * Parallel Web Search API (best-effort): POST https://api.parallel.ai/v1/search
+ * Parallel Web Search API (по best-effort): POST https://api.parallel.ai/v1/search
  * Auth: `x-api-key` из SecretStorage `webSearchApiKey`.
  * Тело: `{ objective, search_queries, mode: "fast", advanced_settings: { max_results } }`.
  * Ответ: `{ results: [{ url, title?, excerpts[] }] }` - title может быть null.
- * Docs: https://docs.parallel.ai/api-reference/search/search
+ * Документация: https://docs.parallel.ai/api-reference/search/search
  */
 export async function searchParallel(
 	query: string,
 	cap: number,
 	signal: AbortSignal | undefined,
-	_settings?: Pick<GenSettings, 'webSearchApiKey'>,
 ): Promise<WebSearchHit[]> {
 	const apiKey = await resolveWebSearchApiKey('parallel');
 	const data = await postJsonSearch(
@@ -218,7 +247,7 @@ export async function searchParallel(
 		signal,
 	);
 
-	return parseWebSearchJson(data, cap);
+	return parseParallelSearchJson(data, cap);
 }
 
 /**
@@ -229,7 +258,7 @@ export async function searchHttpJson(
 	query: string,
 	cap: number,
 	signal: AbortSignal | undefined,
-	settings: Pick<GenSettings, 'webSearchHttpUrl' | 'webSearchHttpHeader' | 'webSearchApiKey'>,
+	settings: Pick<GenSettings, 'webSearchHttpUrl' | 'webSearchHttpHeader'>,
 ): Promise<WebSearchHit[]> {
 	const url = buildWebSearchHttpUrl(settings.webSearchHttpUrl, query);
 	if (!url) {
@@ -267,13 +296,13 @@ export async function runWebSearch(
 	query: string,
 	cap: number,
 	signal: AbortSignal | undefined,
-	settings: Pick<GenSettings, 'webSearchHttpUrl' | 'webSearchHttpHeader' | 'webSearchApiKey'>,
+	settings: Pick<GenSettings, 'webSearchHttpUrl' | 'webSearchHttpHeader'>,
 ): Promise<WebSearchHit[]> {
 	switch (backend) {
 		case 'exa':
-			return searchExa(query, cap, signal, settings);
+			return searchExa(query, cap, signal);
 		case 'parallel':
-			return searchParallel(query, cap, signal, settings);
+			return searchParallel(query, cap, signal);
 		case 'http':
 			return searchHttpJson(query, cap, signal, settings);
 		case 'duckduckgo':

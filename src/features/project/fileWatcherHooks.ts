@@ -11,7 +11,7 @@ export function initFileWatcherHooks(context: vscode.ExtensionContext): FileWatc
 	return manager;
 }
 
-// Лёгкий watcher на `.gen/**`: debounce * hook `file.watcher` (notify-only)
+// Лёгкий watcher на `.gen/**`: debounce + hook `file.watcher` (только notify)
 export class FileWatcherHooksManager implements vscode.Disposable {
 	private readonly folderListener: vscode.Disposable;
 	private watchDisposables: vscode.Disposable[] = [];

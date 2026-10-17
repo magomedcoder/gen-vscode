@@ -24,7 +24,7 @@ import { AgentsPage, type AgentsPageData } from './settings/AgentsPage';
 interface SettingsScreenProps {
 	settings: GenSettings;
 	personas?: PersonaOption[];
-	// Admin policy: locked keys баннер
+	// Баннер admin policy: заблокированные ключи
 	adminPolicy?: AdminPolicyInfo;
 	status?: string;
 	apiKeySet: boolean;
@@ -72,9 +72,9 @@ interface SettingsScreenProps {
 	onLoadRulesSkills?: () => void;
 	onLoadPersonas?: () => void;
 	onOpenProjectPath?: (path: string) => void;
-	// Known server n_ctx for maxContextTokens warn
+	// Известный n_ctx сервера для предупреждения о maxContextTokens
 	cachedNCtx?: number;
-	// Live research jobs (Teams) - из chat state, если Settings в том же webview
+	// Активные research jobs (Teams) - из состояния чата, если Settings в том же webview
 	researchJobs?: ResearchJobUi[];
 }
 
@@ -150,7 +150,7 @@ export function SettingsScreen({
 	);
 
 	useEffect(() => {
-		setDraft({ ...settings, webSearchApiKey: '' });
+		setDraft({ ...settings });
 		setApiKeyDraft('');
 		setClearApiKey(false);
 		setWebSearchApiKeyDraft('');
@@ -180,7 +180,7 @@ export function SettingsScreen({
 	}, [models]);
 
 	const setField = <K extends keyof GenSettings>(key: K, value: GenSettings[K]) => {
-		// Locked admin keys - только чтение
+		// Заблокированные admin-ключи - только чтение
 		if (lockedKeySet.has(key)) {
 			return;
 		}
@@ -188,20 +188,18 @@ export function SettingsScreen({
 	};
 
 	const onReset = () => {
-		const next: GenSettings = {
-			...DEFAULT_SETTINGS,
-			deniedPaths: [...DEFAULT_SETTINGS.deniedPaths],
-			sensitivePathPatterns: [...DEFAULT_SETTINGS.sensitivePathPatterns],
-			deniedCommands: [...DEFAULT_SETTINGS.deniedCommands],
-			secretPatterns: [...DEFAULT_SETTINGS.secretPatterns],
-		};
-		// Admin-forced значения остаются из effective settings
+		const next: GenSettings = { ...DEFAULT_SETTINGS };
+		// Принудительные admin-значения остаются из эффективных настроек
 		for (const key of lockedKeySet) {
 			if (key in settings) {
 				(next as unknown as Record<string, unknown>)[key] = settings[key as keyof GenSettings];
 			}
 		}
-		
+		// Команды и redact не из UI; сохраняем эффективное значение (project/user/default)
+		next.sensitivePathPatterns = [...settings.sensitivePathPatterns];
+		next.deniedCommands = [...settings.deniedCommands];
+		next.secretPatterns = [...settings.secretPatterns];
+
 		setDraft(next);
 		setApiKeyDraft('');
 		setClearApiKey(false);
@@ -212,7 +210,7 @@ export function SettingsScreen({
 
 	const onSubmit = (event: SubmitEvent<HTMLFormElement>) => {
 		event.preventDefault();
-		onSave({ ...draft, webSearchApiKey: '' }, {
+		onSave({ ...draft }, {
 			apiKey: clearApiKey ? undefined : apiKeyDraft,
 			clearApiKey: clearApiKey || undefined,
 			webSearchApiKey: clearWebSearchApiKey ? undefined : webSearchApiKeyDraft,
@@ -306,17 +304,7 @@ export function SettingsScreen({
 							/>
 						) : null}
 						{page === 'agent' ? (
-							<>
-								<AgentBehaviorPage draft={draft} setField={setField} />
-								<IndexingPage
-									draft={draft}
-									setField={setField}
-									indexStatus={indexStatus}
-									onLoadIndexStatus={onLoadIndexStatus}
-									onCancelIndex={onCancelIndex}
-									onRepairIndex={onRepairIndex}
-								/>
-							</>
+							<AgentBehaviorPage draft={draft} setField={setField} />
 						) : null}
 						{page === 'security' ? (
 							<>
@@ -331,6 +319,14 @@ export function SettingsScreen({
 						) : null}
 						{page === 'project' ? (
 							<>
+								<IndexingPage
+									draft={draft}
+									setField={setField}
+									indexStatus={indexStatus}
+									onLoadIndexStatus={onLoadIndexStatus}
+									onCancelIndex={onCancelIndex}
+									onRepairIndex={onRepairIndex}
+								/>
 								<RulesSkillsPage
 									data={rulesSkills}
 									onLoad={onLoadRulesSkills}

@@ -7,9 +7,8 @@ const USER_EDITS_APPENDIX_MAX = 2_000;
 
 export function buildAgentSystemPrompt(options?: {
 	toolsAvailable: boolean;
-	// Native tools API недоступен - модель шлёт <tool_call> в тексте
+	// Нативный tools API недоступен - модель шлёт <tool_call> в тексте
 	textToolFormat?: boolean;
-	deniedPaths?: readonly string[];
 	userEditsAppendix?: string;
 	planAppendix?: string;
 	planEditsAppendix?: string;
@@ -24,7 +23,7 @@ export function buildAgentSystemPrompt(options?: {
 	// Фокус режима: agent (по умолчанию), debug, design, plan, multitask, project
 	mode?: ChatMode;
 	/**
-	 * Есть ли `apply_patch` в tool list (model-routed).
+	 * Есть ли `apply_patch` в tool list (маршрутизация по модели).
 	 * false * подсказки про write_file / apply_workspace_edit без apply_patch.
 	 */
 	includeApplyPatch?: boolean;
@@ -50,7 +49,6 @@ export function buildAgentSystemPrompt(options?: {
 		|| options?.mode === 'project'
 			? options.mode
 			: 'agent';
-	const deniedPaths = (options?.deniedPaths ?? []).map((item) => item.trim()).filter((item) => item && !item.startsWith('#'));
 
 	const patchHint = includeApplyPatch ? 'apply_patch' : 'write_file / apply_workspace_edit';
 	const targetedEditHint = includeApplyPatch
@@ -59,7 +57,7 @@ export function buildAgentSystemPrompt(options?: {
 
 	const lines = [
 		mode === 'debug'
-			? 'Ты Gen в режиме Debug - разбираешь ошибки и логи приложения в VS Code.'
+			? 'Ты Gen в режиме Debug - разбираешь ошибки и логи приложения в VSCode.'
 			: mode === 'design'
 				? 'Ты Gen в режиме Design - помогаешь с UI/UX: смотришь страницы через Simple Browser и fetch_page.'
 				: mode === 'plan'
@@ -68,7 +66,7 @@ export function buildAgentSystemPrompt(options?: {
 						? 'Ты Gen в режиме Multitask - координатор. Не правь файлы сам: делегируй через tool task.'
 						: mode === 'project'
 							? 'Ты Gen в режиме Project - тимлид команды. Не правь файлы сам: делегируй подзадачи через tool task и синтезируй отчёты.'
-							: 'Ты Gen - агент-помощник программиста в VS Code.',
+							: 'Ты Gen - агент-помощник программиста в VSCode.',
 		'Отвечай на языке пользователя, кратко и по делу.',
 		'Работай только в рамках текущего workspace; не предлагай действия вне проекта.',
 		'Если дан контекст редактора (файл, выделение), опирайся на него.',
@@ -81,8 +79,8 @@ export function buildAgentSystemPrompt(options?: {
 		);
 	} else if (mode === 'design') {
 		lines.push(
-			`Алгоритм Design: 1) уточни URL preview (часто http://localhost:...); 2) open_browser чтобы показать UI; 3) fetch_page для HTML/текста; 4) опиши проблемы UX и правь код (CSS/разметка) через ${patchHint}.`,
-			'fetch_page не выполняет JS и не кликает по UI - для динамики опирайся на код и описание пользователя. Click-to-code (Design visual) не реализован. Внешние (не localhost) URL требуют подтверждения.',
+			`Алгоритм Design: 1) уточни URL preview (часто http://localhost:...); 2) open_browser чтобы показать UI; 3) fetch_page/design_inspect для HTML, selector и source hints; 4) опиши проблемы UX и правь код (CSS/разметка) через ${patchHint}.`,
+			'Design click bridge best-effort открывает исходник через путь design_inspect: data-component/data-source/sourceMappingURL, затем grep class/id. Полного Simple Browser CDP нет. Внешние (не localhost) URL требуют подтверждения.',
 		);
 	} else if (mode === 'plan') {
 		const shellPolicy = options?.planShellPolicy === 'deny' ? 'deny' : 'ask';
@@ -132,12 +130,9 @@ export function buildAgentSystemPrompt(options?: {
 				? 'Если задача трогает больше одного файла или это составная цель: propose_plan (шаги с path) - план пишется в `.gen/plan.md`. Опциональный slug - ещё `.gen/plans/<slug>.md`. write_plan / list_plans для multi-plan. Прогресс: update_plan. Один файл можно править без плана.'
 				: 'Если задача трогает больше одного файла или это составная цель: propose_plan (шаги с path) - план только в памяти на текущую сессию (запись sticky файла отключена). write_plan всё ещё пишет в `.gen/plans/`. Прогресс: update_plan. Один файл можно править без плана.',
 			planWriteToFile
-				? 'Пока активен план - следуй ему и файлу `.gen/plan.md` (пользователь может править файл; при перезапуске VS Code план загружается только из файла). Новая задача: update_plan replace/clear или удаление `.gen/plan.md`.'
+				? 'Пока активен план - следуй ему и файлу `.gen/plan.md` (пользователь может править файл; при перезапуске VSCode план загружается только из файла). Новая задача: update_plan replace/clear или удаление `.gen/plan.md`.'
 				: 'Пока активен план - следуй ему в текущей сессии. Если есть `.gen/plan.md`, он подхватывается при старте и перед ходом. Новая задача: update_plan replace/clear.',
-			'Пути - относительно корня workspace. Можно писать `/workspace/...` как портативный корень (то же, что `.` / путь от первой папки). Учитывай `.gitignore` и `.genignore` в корне: игнорируемые файлы недоступны для tools.',
-			deniedPaths.length > 0
-				? `Также не трогай файлы по шаблонам из настроек: ${deniedPaths.join(', ')}.`
-				: 'Дополнительные запреты путей задаются в настройках (deniedPaths).',
+			'Пути - относительно корня workspace. Можно писать `/workspace/...` как портативный корень (то же, что `.` / путь от первой папки). Учитывай `.gitignore` и `.genignore` в корне: игнорируемые файлы/папки недоступны для tools. Ignore путей - только в `.genignore` (не в `.gen/config.json`).',
 		);
 		if (readOnly) {
 			lines.push('Сейчас режим только чтения (edits/delete/shell = deny): без записи, удаления и shell-команд.');

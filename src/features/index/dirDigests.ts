@@ -103,7 +103,7 @@ export function recomputeDirDigests(files: Record<string, Pick<IndexFileRecord, 
 	return digests;
 }
 
-// Записать digests в manifest (in-place)
+// Записать digests в manifest (на месте, in-place)
 export function applyDirDigests(manifest: IndexManifest): void {
 	manifest.dirDigests = recomputeDirDigests(manifest.files);
 }

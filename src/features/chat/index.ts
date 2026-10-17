@@ -8,9 +8,10 @@ import { setConfirmHost } from '../../host/ui/confirmDialog';
 import { ensureTerminalBufferListener } from './terminalBuffer';
 import { listAgentWorktrees, removeAgentWorktree } from '../agent/worktree';
 import { enableProject } from '../project/config';
+import { dryRunHookEvent, type HookEvent } from '../project/hooks';
 
 export function registerChat(context: vscode.ExtensionContext): vscode.Disposable {
-	// Одна сессия / один provider на panel + sidebar
+	// Одна сессия и один provider для панели и боковой панели
 	const provider = new ChatViewProvider(context);
 	setConfirmHost((options) => provider.requestConfirm(options));
 
@@ -118,6 +119,44 @@ export function registerChat(context: vscode.ExtensionContext): vscode.Disposabl
 			void vscode.window.showInformationMessage(
 				ok ? vscode.l10n.t('chat.worktrees.removed') : vscode.l10n.t('chat.worktrees.removeFailed'),
 			);
+		}),
+		vscode.commands.registerCommand('gen.dryRunHook', async () => {
+			const event = await vscode.window.showQuickPick(
+				['beforeSubmit', 'beforeShell', 'session.diff', 'session.compacting', 'shell.env', 'file.watcher'] satisfies HookEvent[],
+				{ title: vscode.l10n.t('hooks.dryRun.pickEvent') },
+			) as HookEvent | undefined;
+			if (!event) {
+				return;
+			}
+
+			const subject = event === 'beforeSubmit' || event === 'beforeShell'
+				? await vscode.window.showInputBox({
+					title: vscode.l10n.t('hooks.dryRun.input'),
+					prompt: event === 'beforeSubmit' ? 'GEN_HOOK_TEXT' : 'GEN_HOOK_COMMAND',
+				})
+				: '';
+			if (subject === undefined) {
+				return;
+			}
+
+			const env: Record<string, string> = event === 'beforeSubmit'
+				? { GEN_HOOK_TEXT: subject }
+				: event === 'beforeShell'
+					? { GEN_HOOK_COMMAND: subject }
+					: {};
+			const result = await dryRunHookEvent(event, env);
+			const details = [
+				`event=${event}`,
+				`exit=${String(result.exitCode ?? 0)}`,
+				result.stdout ? `stdout:\n${result.stdout}` : '',
+				result.stderr ? `stderr:\n${result.stderr}` : '',
+			].filter(Boolean).join('\n\n');
+			const doc = await vscode.workspace.openTextDocument({
+				language: 'text',
+				content: details,
+			});
+			
+			await vscode.window.showTextDocument(doc, { preview: true });
 		}),
 	);
 

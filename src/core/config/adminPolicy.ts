@@ -1,17 +1,18 @@
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
+import * as vscode from 'vscode';
 import type { GenSettings } from './types';
 import { DEFAULT_SETTINGS } from './types';
 
 /**
- * Managed / admin policy layer (MDM-паттерн, без полного Enterprise).
+ * Управляемый слой admin policy (MDM-паттерн, без полного Enterprise).
  *
  * Путь к policy.json (первый существующий):
  * 1. `GEN_ADMIN_POLICY` - явный путь к файлу
- * 2. Linux/macOS: `/etc/gen/policy.json`
- * 3. Windows: `%ProgramData%/gen/policy.json`
+ * 2. Linux/macOS - системный файл `/etc/gen/policy.json`
+ * 3. Windows - системный файл `%ProgramData%/gen/policy.json`
  *
- * Ключи из файла принудительно перекрывают user / UI / project.
+ * Ключи из файла принудительно перекрывают пользовательский слой, UI и проект.
  */
 
 // Ключи GenSettings, которые admin policy может заблокировать / форсировать
@@ -27,8 +28,13 @@ export const ADMIN_POLICY_KEYS = [
 	'allowExternalDirectory',
 	'otelEnabled',
 	'otelEndpoint',
-	'providerUsePolicy',
-	'providerUsePatterns',
+	'indexingEnabled',
+	'embeddingsBaseUrl',
+	'baseUrl',
+	'planModel',
+	'actModel',
+	'smallModel',
+	'localEmbeddingsMode',
 ] as const satisfies readonly (keyof GenSettings)[];
 
 export type AdminPolicyKey = (typeof ADMIN_POLICY_KEYS)[number];
@@ -42,10 +48,11 @@ export interface AdminPolicySnapshot {
 	active: boolean;
 	// Абсолютный путь к загруженному файлу
 	path?: string;
-	// Overlay GenSettings (только ADMIN_POLICY_KEYS)
+	// Наложение GenSettings (только ADMIN_POLICY_KEYS)
 	settings: Partial<GenSettings>;
 	// Имена заблокированных ключей
 	lockedKeys: string[];
+	errors?: Array<{ pointer: string; message: string }>;
 }
 
 const EMPTY: AdminPolicySnapshot = {
@@ -75,7 +82,7 @@ export function resolveAdminPolicyCandidates(): string[] {
 	return [path.join('/etc', 'gen', 'policy.json')];
 }
 
-// Простой glob-like match (`*`, prefix*, *suffix)
+// Простое сопоставление как в glob (`*`, prefix*, *suffix)
 export function matchAdminPattern(pattern: string, subject: string): boolean {
 	const p = pattern.trim();
 	const s = subject.trim();
@@ -105,17 +112,25 @@ export function matchAdminPattern(pattern: string, subject: string): boolean {
 export function parseAdminPolicy(raw: unknown): {
 	settings: Partial<GenSettings>;
 	lockedKeys: string[];
+	errors: Array<{ pointer: string; message: string }>;
 } {
 	if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
 		return {
 			settings: {},
-			lockedKeys: []
+			lockedKeys: [],
+			errors: [
+				{ 
+					pointer: '',
+					message: vscode.l10n.t('config.validation.jsonObjectRequired')
+				}
+			],
 		};
 	}
 
 	const obj = raw as Record<string, unknown>;
 	const settings: Partial<GenSettings> = {};
 	const lockedKeys: string[] = [];
+	const errors: Array<{ pointer: string; message: string }> = [];
 
 	for (const [key, value] of Object.entries(obj)) {
 		if (META_KEYS.has(key) || value === undefined) {
@@ -123,9 +138,29 @@ export function parseAdminPolicy(raw: unknown): {
 		}
 
 		if (!ADMIN_POLICY_KEY_SET.has(key)) {
+			errors.push({ pointer: `/${key}`, message: vscode.l10n.t('config.adminPolicy.unknownKey') });
 			continue;
 		}
-		
+
+		const expected = DEFAULT_SETTINGS[key as AdminPolicyKey];
+		const expectedType = Array.isArray(expected) ? 'array' : typeof expected;
+		const actualType = Array.isArray(value) ? 'array' : typeof value;
+		if (expectedType !== actualType) {
+			errors.push({ 
+				pointer: `/${key}`, 
+				message: vscode.l10n.t('config.validation.expectedType', expectedType, actualType)
+			});
+			continue;
+		}
+
+		if (key === 'localEmbeddingsMode' && !['off', 'trigram', 'vector'].includes(String(value))) {
+			errors.push({ 
+				pointer: `/${key}`, 
+				message: vscode.l10n.t('config.adminPolicy.localEmbeddingsModeAllowed')
+			});
+			continue;
+		}
+
 		(settings as Record<string, unknown>)[key] = value;
 		lockedKeys.push(key);
 	}
@@ -133,7 +168,8 @@ export function parseAdminPolicy(raw: unknown): {
 	lockedKeys.sort();
 	return {
 		settings,
-		lockedKeys
+		lockedKeys,
+		errors,
 	};
 }
 
@@ -161,7 +197,7 @@ export function isAdminPolicyActive(): boolean {
 }
 
 /**
- * Применить admin overlay к уже смерженным settings (после user/UI/project).
+ * Применить admin-наложение к уже объединённым настройкам (после пользователя/UI/проекта).
  */
 export function applyAdminPolicy(merged: Partial<GenSettings>): Partial<GenSettings> {
 	if (!snapshot.active || snapshot.lockedKeys.length === 0) {
@@ -219,6 +255,7 @@ export async function reloadAdminPolicy(): Promise<AdminPolicySnapshot> {
 			path: candidate,
 			settings: parsed.settings,
 			lockedKeys: parsed.lockedKeys,
+			errors: parsed.errors,
 		};
 		return snapshot;
 	}

@@ -7,7 +7,7 @@ interface ThinkingBlockProps {
 	display: ThinkingDisplay;
 }
 
-// Collapsible блок reasoning/thinking (как tool-card)
+// Сворачиваемый блок reasoning/thinking (как карточка инструмента)
 export function ThinkingBlock({ thinking, display }: ThinkingBlockProps) {
 	const text = thinking.trim();
 	if (!text || display === 'off') {

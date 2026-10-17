@@ -115,8 +115,8 @@ export async function inspectManifest(folderFsPath: string): Promise<{
 }
 
 /**
- * Починить corrupt / missing-dirDigests манифест на диске.
- * Битый JSON -> emptyManifest; missing digests -> recompute; затем save.
+ * Починить битый / без dirDigests манифест на диске.
+ * Битый JSON -> emptyManifest; нет digests -> recompute; затем save.
  */
 export async function repairManifestFile(folderFsPath: string): Promise<{
 	repaired: boolean;

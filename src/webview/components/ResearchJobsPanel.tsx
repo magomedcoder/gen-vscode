@@ -9,7 +9,7 @@ interface ResearchJobsPanelProps {
 	compact?: boolean;
 	// Показать секцию даже без jobs (Settings / multitask / project)
 	forceVisible?: boolean;
-	// Ключ заголовка (Settings: Teams live)
+	// Ключ заголовка (Settings: активные Teams)
 	titleKey?: string;
 }
 
@@ -38,7 +38,7 @@ function statusLabel(status: ResearchJobStatus): string {
 	}
 }
 
-// Карточки research/subagent jobs: статус, interrupt, child session, worktree
+// Карточки research/subagent jobs: статус, прерывание, дочерняя сессия, worktree
 export function ResearchJobsPanel({
 	jobs,
 	compact = false,

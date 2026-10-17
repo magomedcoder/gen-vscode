@@ -26,7 +26,7 @@ export function weightForKind(kind: string): number {
 		return 90;
 	}
 
-	if (k.includes('git-changes') || k.includes('git_changes')) {
+	if (k.includes('git-changes')) {
 		return 85;
 	}
 
@@ -86,7 +86,7 @@ function clipBlock(text: string, kind: string, maxChars: number): { text: string
 
 /**
  * Ужать блоки контекста (@ / bang / editor) под mentionBudget (токены).
- * Last user text сюда не передаётся.
+ * Последний текст пользователя сюда не передаётся.
  */
 export function fitMentionsToBudget(
 	blocks: ContextBlock[],

@@ -7,7 +7,7 @@ import { needsReviewDiffConfirm } from './reviewEditPreview';
 export type ConfirmChoiceOutcome = 'proceed' | 'denied' | 'abort';
 
 /**
- * Матрица ask UI: apply / always / allow_remaining -> proceed; skip -> denied; abort -> abort.
+ * Матрица ask UI: apply / always / allow_remaining -> продолжить; skip -> denied; abort -> abort.
  * Без UI / vscode - для unit-тестов и единого поведения toolsFallback.
  */
 export function resolveConfirmChoiceOutcome(choice: ConfirmChoice): ConfirmChoiceOutcome {
@@ -22,7 +22,7 @@ export function resolveConfirmChoiceOutcome(choice: ConfirmChoice): ConfirmChoic
 	return 'abort';
 }
 
-// «Allow remaining edits» - proceed + turn-scoped batch (не Always)
+// «Allow remaining edits» - продолжить + batch на этот turn (не Always)
 export function isAllowRemainingConfirmChoice(choice: ConfirmChoice): boolean {
 	return choice === 'allow_remaining';
 }
@@ -66,7 +66,7 @@ export function resolveToolConfirmGating(input: {
 	autoApprove: boolean;
 	sensitiveWrite: boolean;
 	planShellForceAsk: boolean;
-	// Субагент + мутирующий tool: не auto-skip confirm
+	// Субагент + мутирующий tool: не пропускать confirm автоматически
 	nestedStrictMutating: boolean;
 	// После «Allow remaining edits» в этом turn
 	allowRemainingEditsThisTurn?: boolean;
@@ -78,12 +78,12 @@ export function resolveToolConfirmGating(input: {
 	let forceConfirm = false;
 
 	if (input.planShellForceAsk || reviewEdit) {
-		// Plan shell / review edits: всегда карточка (в т.ч. при autoApprove)
+		// Shell в Plan / review edits: всегда карточка (в т.ч. при autoApprove)
 		forceConfirm = true;
 		skipConfirm = false;
 	}
 
-	// Batch: разрешить остальные edits/delete этого turn (не shell; не .env*)
+	// Пакетно: разрешить остальные edits/delete этого turn (не shell; не .env*)
 	if (shouldSkipConfirmForBatchEdits({
 		allowRemainingEditsThisTurn: input.allowRemainingEditsThisTurn,
 		action: input.action,

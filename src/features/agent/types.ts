@@ -38,12 +38,26 @@ export interface ToolContext {
 export interface ToolResult {
 	ok: boolean;
 	content: string;
+	code?: string;
+	category?: 'validation' | 'not_found' | 'permission' | 'timeout' | 'network' | 'execution' | 'internal';
+	retryable?: boolean;
 	denied?: boolean;
 	path?: string;
 	diff?: string;
 	hunks?: DiffHunkPayload[];
 	// Картинки из tool (например read_file) - уйдут в vision на следующем шаге цикла
 	attachments?: ImageAttachment[];
+}
+
+export function makeToolError(
+	content: string,
+	options?: Pick<ToolResult, 'code' | 'category' | 'retryable' | 'path' | 'denied'>,
+): ToolResult {
+	return {
+		ok: false,
+		content,
+		...options,
+	};
 }
 
 export interface ToolDefinition {

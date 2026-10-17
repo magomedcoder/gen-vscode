@@ -4,7 +4,7 @@
 
 Режим **Agent**. Пути только внутри workspace. Модели могут писать `/workspace/...` как портативный алиас корня первой папки workspace.
 
-Учитываются `.gitignore` и `.genignore` в корне workspace (вместе с `deniedPaths` из настроек). Агент **не** обходит ignore «чтобы всё видеть». Подробнее: [security-ru.md](security-ru.md).
+Учитываются `.gitignore` и `.genignore` в корне workspace. Ignore путей/папок - в `.genignore` (не в `config.json`). Агент **не** обходит ignore «чтобы всё видеть». Подробнее: [security-ru.md](security-ru.md).
 
 Подтверждение - **Settings -> Безопасность**: `approvalPolicy` (`allow` / `ask` / `review` / `deny`) и `autoApprove` (ask -> allow; deny остаётся; **review** на edits всё равно требует Accept + diff). Capability-флаги могут полностью отключить terminal / file / web.
 
@@ -15,7 +15,7 @@
 Builtin tools регистрируются через **registry** и лежат в папках категорий. Shared helpers (`confirm.ts`, `postEdit.ts`, `webSearchBackends.ts`) - наверху `tools/`.
 
 | Папка     | Tools (имена)                                                                                                                                                                            |
-| --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+|-----------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `fs/`     | `list_dir`, `read_file`, `write_file`, `apply_patch`, `edit_file`, `apply_workspace_edit`, `edit_notebook`, `delete_file`, `create_dir`                                                  |
 | `search/` | `glob`, `grep`, `file_search`, `find_code`, `find_symbol`, `codebase_search`, `semantic_search`, `search_docs`, `project_map`, `pack_context`, `similar_code`                            |
 | `shell/`  | `run_command`, `await_shell`, `run_tests`, `run_scratch` (+ реализация `task`)                                                                                                           |
@@ -30,12 +30,12 @@ Builtin tools регистрируются через **registry** и лежат
 Подтверждения - **карточка в чате Gen** (Применить / Пропустить / Стоп или Применить / Отклонить). Панель чата фокусируется автоматически; отдельной вкладки нет.
 
 | Tool                      | Действие                                                                                                                   | Подтверждать                                                                |
-| ------------------------- | -------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
+|---------------------------|----------------------------------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------|
 | `get_workspace_info`      | Папки workspace, имя, число документов                                                                                     | нет                                                                         |
 | `get_active_editor`       | Активный редактор: путь, язык, курсор, выделение                                                                           | нет                                                                         |
 | `get_open_editors`        | Открытые вкладки                                                                                                           | нет                                                                         |
 | `list_dir`                | Список файлов/папок (без игнорируемых)                                                                                     | нет                                                                         |
-| `read_file`               | Прочитать файл (опц. диапазон строк); PDF через `pdftotext` (+ первая страница PNG через `pdftoppm` при `visionEnabled`)   | нет                                                                         |
+| `read_file`               | Текст/картинки; PDF: `page`/`pages`/`max_pages`, текст + до 6 PNG по бюджету (первая+последняя для длинных документов)     | нет                                                                         |
 | `glob`                    | Поиск путей по glob                                                                                                        | нет                                                                         |
 | `grep`                    | Точный поиск текста / regex в содержимом файлов                                                                            | нет                                                                         |
 | `find_code`               | Гибридный поиск по намерению (path/text/index/semantic/symbols -> merge; dirty/recent boosts)                              | нет                                                                         |
@@ -62,10 +62,10 @@ Builtin tools регистрируются через **registry** и лежат
 | `find_references`         | Кто ссылается на Y: LSP refs (+ definition); path+pos / path+symbol / symbol; multi-root `folder`/`root`; `limit`/`offset` | нет                                                                         |
 | `find_logs`               | Найти `*.log` / `logs/` в workspace                                                                                        | нет                                                                         |
 | `read_log_tail`           | Хвост лог-файла (последние N строк)                                                                                        | нет                                                                         |
-| `open_browser`            | Открыть URL в Simple Browser VS Code                                                                                       | Спросить                                                                    |
+| `open_browser`            | Открыть URL в Simple Browser VSCode                                                                                        | Спросить                                                                    |
 | `fetch_page`              | HTTP GET текста/HTML (Design Mode); пометки sourceMappingURL                                                               | Спросить; remote (не localhost) - всегда confirm                            |
-| `design_inspect`          | URL + CSS selector -> outerHTML + угаданный исходник (grep class/id; не полный click-to-code)                              | Спросить (как fetch_page)                                                   |
-| `web_search`              | Веб-поиск (`duckduckgo` \| `exa` \| `parallel` \| `http`)                                                                  | Спросить (confirmAlwaysOrSkip)                                              |
+| `design_inspect`          | URL + selector -> outerHTML + исходник (`data-component`/source map, затем grep class/id)                                  | Спросить (как fetch_page)                                                   |
+| `web_search`              | Веб-поиск (`duckduckgo` \                                                                                                  | `exa` \                                                                     | `parallel` \| `http`)                                                                  | Спросить (confirmAlwaysOrSkip)                                              |
 | `run_command`             | Команда в cwd workspace (allow + denylist)                                                                                 | Спросить                                                                    |
 | `run_scratch`             | Запуск файла только из `.gen/scratch/**` (node/python/bash по ext)                                                         | Спросить                                                                    |
 | `await_shell`             | Ждать фоновый job `run_command`; опционально regex `notify_on_output`                                                      | нет                                                                         |
@@ -73,29 +73,29 @@ Builtin tools регистрируются через **registry** и лежат
 | `list_plugins`            | Список локальных `.gen/tools` и `.gen/plugins` (без npm/JS)                                                                | нет                                                                         |
 | `plugin`                  | Загрузить описание plugin/tool по имени в контекст                                                                         | нет                                                                         |
 | `register_ephemeral_tool` | Временный markdown-tool на этот run (без JS; авто-сброс)                                                                   | нет                                                                         |
-| `repo_health`             | MVP: циклы импортов TS/JS + orphan-файлы (JSON)                                                                            | нет                                                                         |
-| `test_impact`             | Связанные `*test*` / `__tests__` по путям или git dirty                                                                    | нет                                                                         |
+| `repo_health`             | Циклы импортов TS/JS/Python/Go + orphans (Tree-sitter + regex; меньше FP на barrel re-export)                              | нет                                                                         |
+| `test_impact`             | Связанные тесты: имя/путь + import-граф + outline + опционально `.gen/coverage-map.json`                                   | нет                                                                         |
 
 ## Замечания
 
 - Локальные plugins/tools: см. [architecture-ru.md](architecture-ru.md#локальные-plugins--tools-mvp). Каталог подмешивается в system prompt; JS не исполняется.
-- Режимы чата **Debug** / **Design** включаются slash-командами `/debug` / `/design` (тот же agent loop со спец. system prompt). Debug: `find_logs` + `read_log_tail` + диагностики; Design: `open_browser` + `fetch_page` / `design_inspect` (без выполнения JS / live DOM-кликов). Полный click-to-code в браузере не подключён - см. `features/design/designVisual.ts`.
+- Режимы чата **Debug** / **Design** включаются slash-командами `/debug` / `/design`. Best-effort click bridge использует путь `design_inspect` (source hints, затем grep) и открывает исходник без полного Simple Browser CDP.
 - Mid-turn: при `shareMode=auto` на каждой итерации tool-loop обновляется короткий live-editor appendix (файл + сниппет выделения) в system prompt.
 - Scratch: скрипты в `.gen/scratch/` (scaffold) и запуск только через `run_scratch` - **без** произвольного JS eval из `.gen/tools` / ephemeral.
-- Качество: `repo_health` (циклы + orphans), `test_impact` (связанные тесты). Eval suite: `src/test/eval/` - gate качества retrieval (precision@k / hit-rate / simpleScore, offline trigram) + smoke permissions/confirm; запуск `npm test -- --grep eval` или `npm run test:eval` (без live LLM / без remote embeddings).
+- Качество: `repo_health` (циклы + orphans), `test_impact` (связанные тесты). Eval suite: `src/test/eval/` + `vectorStore.test.ts` - gate retrieval (trigram + local-vector) + smoke permissions/confirm; `npm test -- --grep eval` или `npm run test:eval` (без live LLM / remote embeddings).
 - Несколько файлов: сначала `propose_plan` -> файл `.gen/plan.md`; прогресс - `update_plan`. План переживает «Очистить» чат.
 - Большой файл: короткая заготовка `write_file`, дальше `apply_patch` кусками.
 - После успешного `write_file` / `apply_patch`, если у файла есть диагностики, в ответ tool добавляется короткая подсказка (tool не падает). Opt-in `formatAfterEdit` в настройках запускает `editor.action.formatDocument` после этих правок.
 - Обзор проекта: `project_map` - кэшированное дерево модулей; предпочтительно `find_code` (intent: `symbol` \| `path` \| `text` \| `mixed`) - fan-out path/text/index/semantic/symbols; `find_symbol` - LSP-кэш; `pack_context` / `similar_code` - компактный pack и похожие фрагменты; `codebase_search` только по триграммному индексу; точный grep - `grep` / `glob`.
 - Если пользователь правил файл после агента: полный `write_file` отклоняется; правь через `apply_patch` / `apply_workspace_edit` по свежему `read_file`.
-- `run_command` без shell/pipe. Запрещённые бинарники - из `deniedCommands`. Eval / git write / package install остаются в коде. Confirm через `approvalPolicy` / `autoApprove` (Безопасность).
+- `run_command` без shell/pipe. Запрещённые бинарники - из `deniedCommands` в user/project JSON (не Settings UI). Eval / git write / package install остаются в коде. Confirm через `approvalPolicy` / `autoApprove` (Settings -> Безопасность).
 - После хода агента можно **Восстановить снимок**.
 - Секреты в результатах tools маскируются по regexp из настроек (если заданы).
 - Опционально `primaryTools` (имена tools, по одному на строку): если непусто - primary-агенту отдаются только они (пустой фильтр - откат ко всем). Субагенты список не применяют.
 - Субагент `task` (`explore` / `general` / `scout` / presets / `.gen/agents/`):
   - `prompt` - один job; или `prompts[]` - fan-out (по умолчанию read-only research).
   - `max_parallel` - параллелизм для `prompts[]` (default 3, max 6).
-  - `background` / `run_in_background` - сразу вернуть job ids; parent не блокируется.
+  - `background` - сразу вернуть job ids; parent не блокируется.
   - `allow_mutating_parallel` - нужен для `prompts[]` у non-readonly (например `general`); каждый job в своём worktree.
   - `synthesize` - записать aggregate markdown в `.gen/reports/` (в Project по умолчанию **true**).
   - `open_child_session` - child-вкладка чата (parent<->child Teams UI).

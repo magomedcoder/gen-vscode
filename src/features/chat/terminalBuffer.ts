@@ -82,7 +82,7 @@ async function streamExecution(
 /**
  * Подписка на вывод терминалов через Shell Integration:
  * - `onDidStartTerminalShellExecution` + `execution.read()` - live stream во время команды
- * - `onDidEndTerminalShellExecution` - exitCode / commandLine
+ * - `onDidEndTerminalShellExecution` - код выхода и командная строка
  *
  * Не используем proposed `onDidWriteTerminalData`.
  * Идемпотентно - повторный вызов безопасен.
@@ -128,7 +128,7 @@ export function ensureTerminalBufferListener(): vscode.Disposable {
 
 			entry.updatedAt = Date.now();
 
-			// Fallback: если start-stream не успел (нет shell integration на start) - дочитаем хвост
+			// Резервный вариант: если стартовый поток не успел подключиться (нет shell integration при запуске), дочитаем хвост
 			if (!entry.text.trim()) {
 				void (async () => {
 					try {
@@ -192,7 +192,7 @@ export function getTerminalBuffers(): TerminalBufferSnapshot[] {
 }
 
 /**
- * Краткий appendix терминалов для Debug Mode (без явного @terminals).
+ * Краткое приложение с терминалами для режима Debug (без явного @terminals).
  * Пусто - если нет терминалов / нет вывода.
  */
 export function formatDebugTerminalsAppendix(maxTotalChars = 3_000): string | undefined {

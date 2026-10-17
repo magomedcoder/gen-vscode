@@ -9,7 +9,7 @@ The main option is local **llama.cpp** with an OpenAI-compatible API. The same p
 In **General**:
 
 1. **Base URL** - for llama.cpp the default is `http://127.0.0.1:8080`. For the cloud, use the provider URL (for example `https://api.openai.com`).
-2. **API key** - stored in VS Code `SecretStorage` (not in settings.json). For local llama.cpp it is usually not needed - leave it empty.
+2. **API key** - stored in VSCode `SecretStorage` (not in settings.json). For local llama.cpp it is usually not needed - leave it empty.
 3. **Model** - pick from the list (loaded from the URL) or type it manually (model name/alias on the server).
 4. If needed, set the key **header** and **scheme** (defaults: `Authorization` + `Bearer`).
 
@@ -21,6 +21,10 @@ Save the settings. If URL/model are missing, chat shows a hint and a button to o
 2. **Agent** mode - the model can call tools (read/edit files, and so on).
 
 Switch mode in the chat header; the default is in **Chat & Agent** settings.
+
+## Optional project scaffold
+
+**Gen: Initialize project (.gen)** or chat `/init` creates `.gen/` (agents/commands/skills, ...), seeds `.genignore` for path/folder ignore, and a starter `.gen/config.json` for command/redact policy. Not required to chat or index - see [security.md](security.md) and [codebase-index.md](codebase-index.md).
 
 ## Check
 

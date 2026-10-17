@@ -45,8 +45,8 @@ export function tokenizeQuery(query: string): string[] {
 }
 
 /**
- * Релевантность текста к query/arg (0..1).
- * Пустой / служебный query -> 0 (порядок сохраняем через tie-break по path).
+ * Релевантность текста запросу или аргументу (0..1).
+ * Пустой или служебный запрос -> 0 (порядок сохраняем разрешением равенства по path).
  */
 export function scoreQueryRelevance(text: string, query: string): number {
 	const q = query.trim().toLowerCase();

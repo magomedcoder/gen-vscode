@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { getSettings, resolveSmallModel } from '../../core/config/settings';
 import type { LlmClient } from '../../core/llm/types';
+import { beginGenOperationSpan } from '../../core/llm/otel';
 import type { ChatUiMessage } from './protocol';
 
 const DEFAULT_KEEP_TURNS = 4;
@@ -13,7 +14,7 @@ export interface CompactOptions {
 	keepTurns?: number;
 	// Агрессивно ужимать tool-контент и args в старых ходах
 	pruneToolResults?: boolean;
-	// Placeholder: зарезервированный headroom токенов (пока не используется)
+	// Резерв контекста после сжатия; это не целевой размер сводки.
 	reservedTokens?: number;
 	signal?: AbortSignal;
 }
@@ -29,7 +30,7 @@ function isTurnStart(msg: ChatUiMessage): boolean {
 	return msg.role === 'user';
 }
 
-// Разбить историю на ходы (каждый ход начинается с user)
+// Разбить историю на ходы (каждый начинается с пользователя)
 export function splitIntoTurns(messages: readonly ChatUiMessage[]): ChatUiMessage[][] {
 	const turns: ChatUiMessage[][] = [];
 	let current: ChatUiMessage[] = [];
@@ -97,12 +98,13 @@ export async function compactChatMessages(
 	opts?: CompactOptions,
 ): Promise<CompactResult> {
 	const settings = getSettings();
+	const span = beginGenOperationSpan(settings, 'chat.compact', { messages: messages.length });
 	const keepTurns = Math.max(1, opts?.keepTurns ?? settings.compactTailTurns ?? DEFAULT_KEEP_TURNS);
 	const pruneToolResults = opts?.pruneToolResults ?? settings.compactPruneToolResults;
-	const reservedTokens = Math.max(0, opts?.reservedTokens ?? settings.compactReservedTokens);
 
 	const turns = splitIntoTurns(messages);
 	if (turns.length <= keepTurns) {
+		span?.end('ok', { compacted: false });
 		return {
 			messages: [...messages],
 			compacted: false,
@@ -122,14 +124,13 @@ export async function compactChatMessages(
 		'## Next step',
 		'## Open questions',
 		'Сохраняй точные пути и идентификаторы. Кратко, на языке пользователя, без воды.',
-		...(reservedTokens > 0
-			? [`Уложи summary примерно в ${reservedTokens} токенов (короче при необходимости).`]
-			: []),
 		'',
 		serializeTurns(older, { pruneToolResults }),
 	].join('\n');
 
-	const result = await client.complete({
+	let result;
+	try {
+		result = await client.complete({
 		messages: [
 			{
 				role: 'system',
@@ -143,10 +144,17 @@ export async function compactChatMessages(
 		model,
 		signal: opts?.signal,
 		toolChoice: 'none',
-	});
+		});
+	} catch (err) {
+		span?.end('error');
+		throw err;
+	}
 
 	const summary = result.content.trim();
 	if (!summary) {
+		span?.end('error', { 
+			reason: 'empty_summary' 
+		});
 		return {
 			messages: [...messages],
 			compacted: false,
@@ -159,6 +167,10 @@ export async function compactChatMessages(
 		role: 'assistant',
 		content: vscode.l10n.t('chat.compact.summaryPrefix', summary),
 	};
+	span?.end('ok', { 
+		compacted: true, 
+		kept_turns: keepTurns 
+	});
 
 	return {
 		messages: [summaryMsg, ...recent.flat()],

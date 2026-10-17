@@ -291,7 +291,7 @@ export function Composer({
 		});
 	};
 
-	// Debounce persist; на unmount - flush, чтобы switch не терял последние символы
+	// Отложенное (debounce) сохранение черновика; на unmount - flush, чтобы switch не терял последние символы
 	useEffect(() => {
 		if (draftTimerRef.current !== undefined) {
 			window.clearTimeout(draftTimerRef.current);
@@ -661,7 +661,7 @@ export function Composer({
 					<ul className="composer-chips" aria-label={t('chat.composer.imagesAria')}>
 						{pendingImages.map((img) => (
 							<li key={img.id} className="composer-chip composer-chip--image">
-								<span className="composer-chip__kind">img</span>
+								<span className="composer-chip__kind">{t('chat.composer.imageBadge')}</span>
 								<span className="composer-chip__label" title={img.name}>{img.name}</span>
 								<button
 									type="button"

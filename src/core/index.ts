@@ -1,5 +1,5 @@
 /**
- * Core host services (config / llm / stores / log).
+ * Сервисы core для хоста (config / llm / stores / log).
  * Импортируй из `../core/config/...` и т.п.
  */
 export { initSettings, getSettings } from './config/settings';

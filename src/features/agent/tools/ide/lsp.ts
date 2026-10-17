@@ -141,7 +141,7 @@ async function enrichLocations(
 
 export const lspTool: ToolDefinition = {
 	name: 'lsp',
-	description: 'Языковые сервисы VS Code: definition | references | hover | symbols. Координаты line и character - 0-based (как LSP). Только чтение.',
+	description: 'Языковые сервисы VSCode: definition | references | hover | symbols. Координаты line и character - 0-based (как LSP). Только чтение.',
 	parameters: {
 		type: 'object',
 		properties: {
@@ -251,7 +251,7 @@ export const lspTool: ToolDefinition = {
 			};
 		}
 
-		// hover
+		// hover (подсказка типа)
 		const hovers = await vscode.commands.executeCommand<vscode.Hover[] | undefined>(
 			'vscode.executeHoverProvider',
 			doc.uri,

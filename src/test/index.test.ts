@@ -77,7 +77,7 @@ suite('dirDigests', () => {
 		};
 		const digests = recomputeDirDigests(files);
 		const manifest: IndexManifest = {
-			version: 1,
+			version: 2,
 			updatedAt: '',
 			files,
 			chunks: {},
@@ -287,7 +287,7 @@ suite('trigram search', () => {
 		const chunks = chunkFileContent('lib/math.ts', 'export function add(a: number, b: number) {\n  return a + b;\n}\n');
 		const trigrams = buildTrigramIndex(chunks);
 		const manifest: IndexManifest = {
-			version: 1,
+			version: 2,
 			updatedAt: '',
 			files: {},
 			chunks: Object.fromEntries(chunks.map((c) => [c.id, c])),
@@ -323,10 +323,27 @@ suite('manifestParse / abort', () => {
 		}
 	});
 
-	test('parseManifestJson: missing dirDigests при непустых files', () => {
+	test('parseManifestJson: manifest v1 -> bad_version', () => {
 		const r = parseManifestJson(
 			JSON.stringify({
 				version: 1,
+				updatedAt: '',
+				files: {},
+				chunks: {},
+				trigrams: {},
+				dirDigests: {},
+			}),
+		);
+		assert.strictEqual(r.ok, false);
+		if (!r.ok) {
+			assert.strictEqual(r.reason, 'bad_version');
+		}
+	});
+
+	test('parseManifestJson: missing dirDigests при непустых files', () => {
+		const r = parseManifestJson(
+			JSON.stringify({
+				version: 2,
 				updatedAt: '2020-01-01T00:00:00.000Z',
 				files: {
 					'a.ts': {
@@ -356,7 +373,7 @@ suite('manifestParse / abort', () => {
 
 		const parsed = parseManifestJson(
 			JSON.stringify({
-				version: 1,
+				version: 2,
 				updatedAt: '2020-01-01T00:00:00.000Z',
 				files: {
 					'src/a.ts': {

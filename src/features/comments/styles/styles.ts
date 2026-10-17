@@ -91,7 +91,7 @@ const LANGUAGE_STYLE: Record<string, CommentStyleId> = {
 	less: 'tsStyle',
 	sass: 'tsStyle',
 
-	// Hash / # 
+	// Комментарии через # (hash-синтаксис)
 	python: 'hash',
 	python2: 'hash',
 	python3: 'hash',
@@ -124,7 +124,7 @@ const LANGUAGE_STYLE: Record<string, CommentStyleId> = {
 	vue: 'html',
 	svelte: 'html',
 
-	// SQL
+	// SQL (-- и /* */)
 	sql: 'sql',
 	mysql: 'sql',
 	postgres: 'sql',
@@ -133,10 +133,10 @@ const LANGUAGE_STYLE: Record<string, CommentStyleId> = {
 	plsql: 'sql',
 	tsql: 'sql',
 
-	// Lua
+	// Lua (-- и --[[ ]])
 	lua: 'lua',
 
-	// PHP: // # /* */
+	// PHP: //, # и блочные /* */
 	php: 'php',
 };
 

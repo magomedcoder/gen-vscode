@@ -75,7 +75,7 @@ function buildOtlpJsonPayload(attrs: LlmSpanEndAttrs, startNs: bigint, endNs: bi
 		resourceSpans: [
 			{
 				resource: {
-					attributes: [otlpStringAttr('service.name', 'gen-agent-vscode')],
+					attributes: [otlpStringAttr('service.name', 'gen-vscode')],
 				},
 				scopeSpans: [
 					{
@@ -116,18 +116,78 @@ function formatConsoleLine(attrs: LlmSpanEndAttrs): string {
 
 async function postOtlp(endpoint: string, payload: string): Promise<void> {
 	try {
-		await fetch(endpoint, {
+		const response = await fetch(endpoint, {
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/json',
 			},
 			body: payload,
 		});
-	} catch {}
+		if (!response.ok) {
+			appendLogLine('llm', `[${new Date().toISOString()}] otel export failed status=${response.status} endpoint=${endpoint}`);
+		}
+	} catch (err) {
+		appendLogLine('llm', `[${new Date().toISOString()}] otel export failed endpoint=${endpoint} error=${err instanceof Error ? err.message : String(err)}`);
+	}
+}
+
+export interface GenOperationSpan {
+	end(status?: 'ok' | 'error', attrs?: Record<string, string | number | boolean | undefined>): void;
+}
+
+export function beginGenOperationSpan(
+	settings: Pick<GenSettings, 'otelEnabled' | 'otelEndpoint'>,
+	name: 'tool.execute' | 'tool.confirm' | 'chat.compact',
+	attrs: Record<string, string | number | boolean | undefined> = {},
+): GenOperationSpan | undefined {
+	if (!settings.otelEnabled) {
+		return undefined;
+	}
+	
+	const startMs = Date.now();
+	return {
+		end(status = 'ok', endAttrs = {}): void {
+			const endMs = Date.now();
+			const allAttrs = { ...attrs, ...endAttrs };
+			const attributes = [
+				otlpStringAttr('gen.operation', name),
+				otlpStringAttr('gen.status', status),
+				...Object.entries(allAttrs)
+					.filter((entry): entry is [string, string | number | boolean] => entry[1] !== undefined)
+					.map(([key, value]) => typeof value === 'number'
+						? otlpIntAttr(`gen.${key}`, value)
+						: otlpStringAttr(`gen.${key}`, String(value))),
+			];
+			const body = JSON.stringify({
+				resourceSpans: [{
+					resource: { attributes: [otlpStringAttr('service.name', 'gen-vscode')] },
+					scopeSpans: [{
+						scope: { name: 'gen.operations', version: '0.1.0' },
+						spans: [{
+							traceId: hexId(16),
+							spanId: hexId(8),
+							name,
+							kind: 1,
+							startTimeUnixNano: (BigInt(startMs) * 1_000_000n).toString(),
+							endTimeUnixNano: (BigInt(endMs) * 1_000_000n).toString(),
+							attributes,
+							status: { code: status === 'ok' ? 1 : 2 },
+						}],
+					}],
+				}],
+			});
+			const endpoint = settings.otelEndpoint.trim();
+			if (!endpoint) {
+				appendLogLine('llm', `[${new Date().toISOString()}] otel ${name} status=${status} ${endMs - startMs}ms`);
+			} else {
+				void postOtlp(endpoint, body);
+			}
+		},
+	};
 }
 
 /**
- * Opt-in span вокруг HttpLlmClient.complete.
+ * Opt-in span вокруг HttpLlmClient.complete (если otelEnabled).
  * otelEnabled=false * no-op; без endpoint * строка в Gen LLM Output; с endpoint * OTLP/JSON HTTP.
  */
 export function beginLlmCompleteSpan(
@@ -217,7 +277,7 @@ export function emitIndexMerkleMetrics(
 		resourceSpans: [
 			{
 				resource: {
-					attributes: [otlpStringAttr('service.name', 'gen-agent-vscode')],
+					attributes: [otlpStringAttr('service.name', 'gen-vscode')],
 				},
 				scopeSpans: [
 					{

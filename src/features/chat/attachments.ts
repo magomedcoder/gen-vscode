@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { getSettings } from '../../core/config/settings';
 import type { ChatContentPart } from '../../core/llm/types';
+import { resizeImageHost } from './imageResize';
 
 export interface IncomingImage {
 	name: string;
@@ -60,15 +61,27 @@ export async function saveImageAttachments(images: readonly IncomingImage[]): Pr
 	for (let i = 0; i < images.length; i += 1) {
 		const img = images[i]!;
 		const mime = (img.mimeType || 'image/png').split(';')[0]!.trim() || 'image/png';
-		const ext = extForMime(mime);
 		const safe = sanitizeFileName(img.name.replace(/\.[^.]+$/, '') || 'image');
+		const raw = Buffer.from(img.base64, 'base64');
+		const settings = getSettings();
+		const processed = settings.attachmentImageAutoResize
+			? await resizeImageHost(raw, mime, {
+				maxWidth: settings.attachmentImageMaxWidth,
+				maxHeight: settings.attachmentImageMaxHeight,
+				quality: settings.attachmentImageQuality,
+			})
+			: { 
+				bytes: raw, 
+				mimeType: mime, 
+				resized: false 
+			};
+		const ext = extForMime(processed.mimeType);
 		const fileName = `${stamp}-${i}-${safe}.${ext}`;
 		const uri = vscode.Uri.joinPath(dir, fileName);
-		const raw = Buffer.from(img.base64, 'base64');
-		await vscode.workspace.fs.writeFile(uri, raw);
+		await vscode.workspace.fs.writeFile(uri, processed.bytes);
 		out.push({
 			path: `.gen/attachments/${fileName}`,
-			mimeType: mime,
+			mimeType: processed.mimeType,
 		});
 	}
 
@@ -98,7 +111,6 @@ export async function buildUserContentWithImages(
 
 	let textBody = text;
 	const imageParts: ChatContentPart[] = [];
-	// autoResize делается в webview (Composer + ImageBitmap); host только режет по maxBase64
 	const maxB64 = settings.attachmentImageMaxBase64;
 	const folder = vscode.workspace.workspaceFolders?.[0];
 
@@ -109,14 +121,27 @@ export async function buildUserContentWithImages(
 
 		try {
 			const uri = vscode.Uri.joinPath(folder.uri, ...att.path.split('/'));
-			const bytes = await vscode.workspace.fs.readFile(uri);
+			let bytes = await vscode.workspace.fs.readFile(uri);
+			let mime = att.mimeType || 'image/png';
+			if (settings.attachmentImageAutoResize) {
+				const processed = await resizeImageHost(bytes, mime, {
+					maxWidth: settings.attachmentImageMaxWidth,
+					maxHeight: settings.attachmentImageMaxHeight,
+					quality: settings.attachmentImageQuality,
+					maxBytes: Math.floor(maxB64 * 0.75),
+				});
+				bytes = processed.bytes;
+				mime = processed.mimeType;
+				if (processed.warning) {
+					textBody += `\n\n[image ${att.path}: ${processed.warning}; using original if within budget]`;
+				}
+			}
 			const b64 = Buffer.from(bytes).toString('base64');
 			if (b64.length > maxB64) {
 				textBody += `\n\n[image ${att.path}: base64 слишком большой (${b64.length} > ${maxB64}), только путь]`;
 				continue;
 			}
 
-			const mime = att.mimeType || 'image/png';
 			imageParts.push({
 				type: 'image_url',
 				image_url: { 

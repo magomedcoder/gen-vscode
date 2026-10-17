@@ -14,7 +14,7 @@ import { IndexAbortFlag, isIndexAbortError, summarizePartialErrors } from './man
 import { buildMerkleDocument, detectMerkleIssues, digestsFromChunks, dropPathFromMerkle, emptyMerkleMetrics, loadMerkle, mergeChunksPreservingDigests, patchMerkleDocument, repairMerkleFromManifest, saveMerkle, syncManifestDirDigests, unchangedSymbolLeaves } from './merkle';
 import type { MerkleDocument, MerkleMetrics } from './merkle';
 import { loadManifest, repairManifestFile, saveManifest } from './store';
-import { maybeRefreshSymbolIndex, removeSymbolIndexPath, updateSymbolIndexForFile } from './symbolIndex';
+import { maybeRefreshSymbolIndex, rebuildSymbolIndex, removeSymbolIndexPath, updateSymbolIndexForFile } from './symbolIndex';
 import { initTreeSitter, parseWithTreeSitter } from './treeSitter';
 import { loadOutlineIndex, maybeRefreshOutlineIndex, outlineSourceBreakdown, removeOutlineIndexPath, updateOutlineIndexForFile } from './tsOutline';
 import { patchManifestTrigrams, rebuildManifestTrigrams, searchTrigrams } from './trigram';
@@ -30,7 +30,7 @@ export class IndexManager implements vscode.Disposable {
 	private readonly onChangeListeners = new Set<() => void>();
 	// Флаги отмены текущей fullIndex по корню workspace
 	private readonly abortByFolder = new Map<string, IndexAbortFlag>();
-	// Debounce инкрементальных outline/symbol после watcher
+	// Отложенная обработка (debounce) инкрементальных outline/symbol после watcher
 	private outlineRefreshTimers = new Map<string, ReturnType<typeof setTimeout>>();
 	private pendingSideIndex = new Map<string, { upsert: Set<string>; remove: Set<string> }>();
 
@@ -120,8 +120,8 @@ export class IndexManager implements vscode.Disposable {
 	}
 
 	/**
-	 * Починить corrupt manifest.json в workspace storage и переиндексировать.
-	 * Битый JSON -> empty; missing dirDigests -> recompute; затем force fullIndex.
+	 * Починить битый manifest.json в workspace storage и переиндексировать.
+	 * Битый JSON -> empty; нет dirDigests -> recompute; затем force fullIndex.
 	 */
 	async repairAndReindex(folder?: vscode.WorkspaceFolder): Promise<void> {
 		const target = folder ?? vscode.workspace.workspaceFolders?.[0];
@@ -171,6 +171,11 @@ export class IndexManager implements vscode.Disposable {
 			if (issues.mismatches.length || issues.orphans.length || issues.missingNodes.length) {
 				console.info(`[gen] merkle repair: mismatch=${issues.mismatches.length} orphan=${issues.orphans.length} missing=${issues.missingNodes.length}`);
 			}
+			try {
+				await rebuildSymbolIndex(target);
+			} catch (err) {
+				console.warn(`[gen] symbol repair: ${err instanceof Error ? err.message : String(err)}`);
+			}
 			await this.scheduleFullIndex(target, true);
 		} catch (err) {
 			if (isIndexAbortError(err)) {
@@ -184,7 +189,7 @@ export class IndexManager implements vscode.Disposable {
 		}
 	}
 
-	// Объединить per-file обновления outline + LSP-символов после reindex/delete от watcher
+	// Объединить пометочные (per-file) обновления outline + LSP-символов после reindex/delete от watcher
 	private scheduleOutlineAndSymbolsRefresh(
 		folder: vscode.WorkspaceFolder,
 		relative?: string,
@@ -457,7 +462,7 @@ export class IndexManager implements vscode.Disposable {
 					fileCount,
 					chunkCount,
 					updatedAt: manifest.updatedAt,
-					lastError: 'Indexing cancelled',
+					lastError: vscode.l10n.t('settings.index.cancelled'),
 					partialErrors: result.partialErrors.length > 0 ? result.partialErrors : undefined,
 				});
 				return;
@@ -482,7 +487,7 @@ export class IndexManager implements vscode.Disposable {
 					fileCount: manifest ? Object.keys(manifest.files).length : 0,
 					chunkCount: manifest ? Object.keys(manifest.chunks).length : 0,
 					updatedAt: manifest?.updatedAt,
-					lastError: 'Indexing cancelled',
+					lastError: vscode.l10n.t('settings.index.cancelled'),
 				});
 				return;
 			}
@@ -508,7 +513,7 @@ export class IndexManager implements vscode.Disposable {
 		const seen = new Set<string>();
 		const partialErrors: string[] = [];
 
-		// Stat size+mtime (дёшево) для пропуска по content-hash Merkle
+		// stat size+mtime (дёшево) для пропуска по content-hash Merkle
 		type FileMeta = {
 			relative: string;
 			uri: vscode.Uri;
@@ -667,7 +672,7 @@ export class IndexManager implements vscode.Disposable {
 			}
 		} catch {}
 
-		// Локальный vector index - только изменённые чанки (no-op stub if unavailable)
+		// Локальный vector index - обновляем только изменённые чанки
 		if (!cancelled) {
 			try {
 				const { rebuildLocalVectorIndex } = await import('./embeddings');
@@ -860,11 +865,11 @@ export class IndexManager implements vscode.Disposable {
 		}
 
 		const pick = await vscode.window.showInformationMessage(
-			'Gen: изменились outlineEngine / chunkEngine / языки Tree-sitter. Переиндексировать workspace?',
-			'Переиндексировать',
-			'Позже',
+			vscode.l10n.t('settings.index.reindexPrompt'),
+			vscode.l10n.t('settings.index.reindexNow'),
+			vscode.l10n.t('settings.index.reindexLater'),
 		);
-		if (pick !== 'Переиндексировать') {
+		if (pick !== vscode.l10n.t('settings.index.reindexNow')) {
 			return;
 		}
 		

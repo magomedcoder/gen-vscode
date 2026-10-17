@@ -10,13 +10,46 @@ export interface PersonaInfo {
 	name: string;
 	description: string;
 	body: string;
-	// Workspace-relative путь; у builtin может быть пустым
+	// Путь относительно workspace; у встроенной персоны может быть пустым
 	path: string;
 	source: PersonaSource;
 }
 
-// Встроенные персоны (без файла на диске). Пока пусто - слот для будущих пресетов
-export const BUILTIN_PERSONAS: ReadonlyArray<Omit<PersonaInfo, 'path'> & { path?: string }> = [];
+export interface PersonaDiscoveryDiagnostic {
+	path: string;
+	message: string;
+}
+
+// Встроенные персоны (без файла на диске)
+export const BUILTIN_PERSONAS: ReadonlyArray<Omit<PersonaInfo, 'path'> & { path?: string }> = [
+	{
+		id: 'reviewer',
+		name: vscode.l10n.t('persona.reviewer.name'),
+		description: vscode.l10n.t('persona.reviewer.description'),
+		body: 'Review critically. Lead with concrete defects and risks, cite relevant paths, and avoid changing code unless explicitly asked.',
+		source: 'builtin',
+	},
+	{
+		id: 'docs',
+		name: vscode.l10n.t('persona.docs.name'),
+		description: vscode.l10n.t('persona.docs.description'),
+		body: 'Write clear documentation for the intended audience. Prefer short examples, define necessary terms, and do not invent unsupported behavior.',
+		source: 'builtin',
+	},
+	{
+		id: 'terse',
+		name: vscode.l10n.t('persona.terse.name'),
+		description: vscode.l10n.t('persona.terse.description'),
+		body: 'Be terse and direct. Lead with the answer, omit pleasantries and repetition, and include only details needed to act.',
+		source: 'builtin',
+	},
+];
+
+let discoveryDiagnostics: PersonaDiscoveryDiagnostic[] = [];
+
+export function getPersonaDiscoveryDiagnostics(): PersonaDiscoveryDiagnostic[] {
+	return discoveryDiagnostics.map((item) => ({ ...item }));
+}
 
 function parseFrontmatter(raw: string): {
 	name?: string;
@@ -25,6 +58,10 @@ function parseFrontmatter(raw: string): {
 } {
 	const match = /^---\r?\n([\s\S]*?)\r?\n---\r?\n([\s\S]*)$/.exec(raw.trim());
 	if (!match) {
+		if (raw.trimStart().startsWith('---')) {
+			throw new Error(vscode.l10n.t('settings.discovery.malformedFrontmatter'));
+		}
+		
 		return { 
 			body: raw.trim() 
 		};
@@ -62,6 +99,7 @@ function listBuiltinPersonas(): PersonaInfo[] {
 
 // Найти персоны в `.gen/personas/*.md` (frontmatter name/description)
 export async function discoverCustomPersonas(): Promise<PersonaInfo[]> {
+	discoveryDiagnostics = [];
 	const folder = vscode.workspace.workspaceFolders?.[0];
 	if (!folder) {
 		return [];
@@ -70,6 +108,7 @@ export async function discoverCustomPersonas(): Promise<PersonaInfo[]> {
 	const uris = await vscode.workspace.findFiles(new vscode.RelativePattern(folder, PERSONAS_GLOB), undefined, 40);
 	const out: PersonaInfo[] = [];
 	const seen = new Set<string>();
+	const diagnostics: PersonaDiscoveryDiagnostic[] = [];
 
 	for (const uri of uris) {
 		try {
@@ -80,6 +119,10 @@ export async function discoverCustomPersonas(): Promise<PersonaInfo[]> {
 			const name = (parsed.name || fileBase).trim();
 			const id = slugify(name);
 			if (seen.has(id)) {
+				diagnostics.push({
+					path: vscode.workspace.asRelativePath(uri),
+					message: vscode.l10n.t('settings.personas.error.duplicateId', id),
+				});
 				continue;
 			}
 
@@ -95,15 +138,20 @@ export async function discoverCustomPersonas(): Promise<PersonaInfo[]> {
 				path: vscode.workspace.asRelativePath(uri),
 				source: 'custom',
 			});
-		} catch {
+		} catch (err) {
+			diagnostics.push({
+				path: vscode.workspace.asRelativePath(uri),
+				message: err instanceof Error ? err.message : String(err),
+			});
 			continue;
 		}
 	}
 
+	discoveryDiagnostics = diagnostics;
 	return out.sort((a, b) => a.name.localeCompare(b.name, 'ru'));
 }
 
-// Builtin (если есть) + кастомные из `.gen/personas/*.md` (кастом перекрывает тот же id)
+// Встроенная персона (если есть) и пользовательские из `.gen/personas/*.md` (пользовательская перекрывает тот же id)
 export async function discoverPersonas(): Promise<PersonaInfo[]> {
 	const byId = new Map<string, PersonaInfo>();
 	for (const p of listBuiltinPersonas()) {

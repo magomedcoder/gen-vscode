@@ -2,9 +2,21 @@
 
 [English version](CHANGELOG.md)
 
-## dev
+## 0.6.0 (30 октября 2026)
 
-- **Index / Tree-sitter + Merkle v2:** wasm Tree-sitter (`@vscode/tree-sitter-wasm`) для outline и AST-чанков (`outlineEngine` / `chunkEngine`); field-based правила Tree-sitter; **строгие** режимы `treesitter` (без fallback); `merkle.json` + опциональный SQLite sidecar (`indexStorageBackend`); patch/unchanged symbol leaves; reuse чанков при правках; Repair пересобирает merkle; индекс не требует `.gen/config.json` (scaffold через `gen.initProject`)
+- **Security:** убраны deny-list UI (`deniedPaths`) и `providerUsePolicy` / `providerUsePatterns` (runtime + schema + admin lock); ignore путей/папок через `.genignore` в корне workspace (seed при `/init` / `gen.initProject`); `deniedCommands` / `sensitivePathPatterns` / `secretPatterns` только в user/project JSON (`UI_LAYER_EXCLUDED_KEYS` - не Settings `globalState`)
+- **Index storage:** индекс и project map перенесены из `.gen/` в VSCode `ExtensionContext.storageUri` (`index/<key>/`, `map/<key>/`); индексация без обязательного `.gen/config.json` (scaffold по-прежнему через `gen.initProject` / `/init`)
+- **Index / Tree-sitter:** runtime `@vscode/tree-sitter-wasm` (грамматики в `dist/tree-sitter/`); outline + AST-чанки через `outlineEngine` / `chunkEngine`; режим `treesitter` - **строгий**; field-based правила; **языки (по умолчанию):** Go/C++/Rust/JS-TS/PHP/Python/HTML/JSON/YAML/SQL/Kotlin/Dart/Swift/CSS (+ java/bash); vendor wasm в `resources/tree-sitter-extra/`; `treeSitterUseWorker` -> реальный `worker_threads` (`dist/treeSitterWorker.js`) с fallback in-process; parser pool + span cache
+- **Index / Merkle v2:** `merkle.json` (узлы, digests чанков/символов, метрики skip); content-hash skip каталогов (`indexForceContentHash`); стабильные id чанков (`contentChunkId` / sha256 prefix); `patchMerkleDocument` + `unchangedSymbolLeaves` при правках; Repair ловит mismatch (`merkleMismatch`) и пересобирает; опциональный SQLite sidecar (`indexStorageBackend=sqlite`, порог `indexSqliteMinFiles`, Node `node:sqlite`)
+- **Index / local vector + remote embeddings:** `localEmbeddingsMode=vector` feature-hash (`vectors.json`); `rebuildLocalVectorIndex` + dirty `onlyChunkIds`; remote `/embeddings` batch + retry/backoff + кэш content-hash/model; engineStatus `local-vector`
+- **Index / symbols:** метрики LSP symbol index (`ok`/`fail`/`partial`) в engineStatus; Repair пересобирает `symbols.json`
+- **Tools:** `repo_health` Tree-sitter + Python/Go, меньше FP на barrel re-export; `test_impact` import-граф / outline / `.gen/coverage-map.json`
+- **Index UI:** движки/языки/storage + статус wasm/AST%/merkle skip%/outline/vectors/symbols на **Settings -> Проект**; смена engine может предложить reindex; `codebase_search` `debug` может показать merkle skip%
+- **OTEL / tests:** spans `index.treesitter` / метрики full index; fixtures + `treeSitter.test.ts` / `merkle.test.ts` / `indexStorage.test.ts` / `vectorStore.test.ts`
+- **Shell / tests:** sandbox cwd (`shellCwd`); `run_tests` ranked failures + фильтры из `test_impact`; `repo_health` -> Activity + `.gen/reports/`
+- **Agents / personas / hooks / plugins:** `generate_agent` + reserved ids; builtin personas; hooks matchers + dry-run; plugin trust/bin audit; dynamic tools как prompt-macros; кэш skills URL
+- **Sessions / config / privacy:** archive/filter/search; exportArchive quarantine + redact; schema errors слоёв; admin locks; Privacy Mode; `compactReservedTokens` = headroom
+- **Design / media:** click-to-code через `design_inspect` + designSession; PDF page budget; host image resize; тесты Exa/Parallel
 
 ## 0.5.0 (30 сентября 2026)
 
@@ -13,7 +25,7 @@
 - **Index:** Merkle `dirDigests` content-hash skip (size+mtime gate; одного path+size недостаточно); инкрементальные outline/symbols per-file (debounce watcher; full rebuild после fullIndex)
 - **Outline:** multi-language MVP - non-JS через LSP `DocumentSymbolProvider` (без Tree-sitter); TS/JS по-прежнему `createSourceFile`; regex fallback только если LSP пуст
 - **Tools:** `repo_health` / `test_impact` - меньше false positives, `ignore[]` + `watcherIgnore`, кэш отчёта 60s, ranked hits с reason/score
-- **Tools:** `pack_context` / `similar_code` - budget токенов (`max_tokens` / `maxTokens`) с eviction низкого score; provenance в каждом hit (path, range, tool, reason, score, estimatedTokens); у `pack_context` в JSON есть `hits` (поле `text` сохранено)
+- **Tools:** `pack_context` / `similar_code` - budget токенов (`max_tokens`) с eviction низкого score; provenance в каждом hit (path, range, tool, reason, score, estimatedTokens); у `pack_context` в JSON есть `hits` (поле `text` сохранено)
 - **Tools:** `find_references` multi-root (`folder`/`root`), опциональный path (workspace symbols), paging `limit`/`offset`/`page` + `total`/`hasMore`/`nextOffset`
 - **Mentions:** пути с пробелами через кавычки / backticks (`@file "my dir/a.ts"`, `@file:"..."`, `` @file:`...` ``); autocomplete и paste квотят такие пути; unquoted без изменений
 - **Permissions:** policy `review` для edits - unified diff в ConfirmCard до Apply (Accept / Reject / Always); больше не heuristic allow для «безопасных» путей; `autoApprove` не пропускает review
@@ -68,7 +80,7 @@
 - Personas: dropdown в Chat + экран Personas (`.gen/personas/`); экран Agents - clone builtin presets в `.gen/agents/`
 - Локальные plugins/tools: discovery `.gen/tools` и `.gen/plugins` (каталог + `list_plugins` / `plugin`)
 - Scaffold проекта: Enable / `/init` создаёт `.gen/{agents,commands,plugins,skills,tools,references,plans}`
-- Слои конфига: user `~/.config/gen/config.json` + project `.gen/config.json`; JSON Schema + валидация VS Code
+- Слои конфига: user `~/.config/gen/config.json` + project `.gen/config.json`; JSON Schema + валидация VSCode
 - Hooks: экран `.gen/hooks.json`; события `beforeSubmit` / `beforeShell` / `session.diff` / `session.compacting` / `shell.env` / `file.watcher`
 - Субагенты: `task` (`explore` / `general`), лимит вложенности, опциональные git worktrees + start command после create
 - Tools: `glob`, `grep`, `file_search`, `web_search`, `todo_write` / `todo_read`, `ask_question`, `edit_notebook`, `lsp`, `semantic_search` / `search_docs`
@@ -80,7 +92,7 @@
 - Indexing: toggles + статус движка (CPU trigram / remote embeddings); opt-in OTEL spans для LLM
 - Settings UI: отдельные экраны (Чат / Агент / Индекс / Права); нав Основное / Дополнительно; все разделы всегда видны; удобнее toggles полей
 - Usage: ledger токенов по моделям (totals/sort); placeholder Quota (OAuth)
-- Поиск по Settings; deep-links в VS Code; sidebar или bottom panel (`chatViewLocation`); light/HC polish
+- Поиск по Settings; deep-links в VSCode; sidebar или bottom panel (`chatViewLocation`); light/HC polish
 - LLM: учёт `Retry-After` при 429/5xx со статусом в composer; параллельные read-only tool batches; обрезка вывода tools
 - Images/attachments: paste/drag + vision; `read_file` изображений; лимиты resize; export/import сессий; lossless archive после compact
 

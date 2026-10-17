@@ -17,7 +17,7 @@ export interface ShellExecRequest {
 	 * Вызывается с накопленным сырым текстом (уже capped).
 	 */
 	onPartialOutput?: (accumulatedRaw: string) => void;
-	// Trusted script runner (run_scratch): бинарь из denylist разрешён
+	// Доверенный script runner (run_scratch): бинарь из denylist разрешён
 	allowDeniedBinary?: boolean;
 }
 
@@ -26,6 +26,7 @@ export interface ShellExecResult {
 	exitCode: number;
 	content: string;
 	commandLine: string;
+	timedOut: boolean;
 }
 
 function clampTimeout(ms: number | undefined): number {
@@ -132,6 +133,7 @@ export async function runShellCommand(request: ShellExecRequest): Promise<ShellE
 			exitCode,
 			content: previewText(body, AGENT_LIMITS.maxCommandOutput),
 			commandLine,
+			timedOut: killedByTimeout,
 		};
 	} catch (err) {
 		if (err instanceof Error && (err.name === 'AbortError' || request.signal?.aborted)) {
@@ -146,6 +148,7 @@ export async function runShellCommand(request: ShellExecRequest): Promise<ShellE
 				exitCode: 1,
 				content: err.message,
 				commandLine,
+				timedOut: false,
 			};
 		}
 
@@ -161,7 +164,7 @@ type SpawnCollectResult = {
 	killedByTimeout: boolean;
 };
 
-// Spawn + сбор stdout/stderr с optional partial callback и отменой без гонок status
+// Spawn + сбор stdout/stderr с необязательным partial callback и отменой без гонок status
 function spawnShellCollect(params: {
 	command: string;
 	args: string[];

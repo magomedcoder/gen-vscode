@@ -51,7 +51,7 @@ export const similarCodeTool: ToolDefinition = {
 			},
 			max_tokens: {
 				type: 'integer',
-				description: `Лимит токенов (оценка) для hits (по умолчанию ${DEFAULT_MAX_TOKENS}, max ${MAX_TOKENS_CAP}). Синоним: maxTokens.`,
+				description: `Лимит токенов (оценка) для hits (по умолчанию ${DEFAULT_MAX_TOKENS}, max ${MAX_TOKENS_CAP}).`,
 			},
 		},
 		required: ['path'],

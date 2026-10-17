@@ -270,7 +270,7 @@ export class AgentSession {
 		maxIterationsOverride?: number;
 		// Id чат-сессии для Activity ledger
 		sessionId?: string;
-		// Мягкая пауза при исчерпании лимита итераций (не hard failure)
+		// Мягкая пауза при исчерпании лимита итераций (не жёсткий сбой)
 		onPaused?: (info: { reason: 'max_steps'; iterations: number }) => void;
 		// Старт tool - зарегистрировать AbortController для cancelToolCall
 		onToolStart?: (toolCallId: string, controller: AbortController) => void;
@@ -372,7 +372,6 @@ export class AgentSession {
 			buildAgentSystemPrompt({
 				toolsAvailable,
 				textToolFormat,
-				deniedPaths: settings.deniedPaths,
 				userEditsAppendix,
 				planAppendix,
 				planEditsAppendix,
@@ -510,7 +509,7 @@ export class AgentSession {
 			},
 		};
 
-		// Doom loop: одинаковый tool+args падает 3 раза подряд -> confirm на следующий вызов
+		// Цикл doom loop: одинаковый tool+args падает 3 раза подряд -> confirm на следующий вызов
 		let doomKey = '';
 		let doomFails = 0;
 		let midLoopCompactDone = false;
@@ -534,7 +533,7 @@ export class AgentSession {
 				throw toAbortError();
 			}
 
-			// Live context mid-turn: короткий appendix активного редактора (если shareMode=auto)
+			// Живой контекст mid-turn: короткий appendix активного редактора (если shareMode=auto)
 			liveEditorAppendix = getLiveEditorAppendix() ?? '';
 			apiMessages[0] = {
 				role: 'system',
@@ -564,7 +563,7 @@ export class AgentSession {
 				getCachedNCtx(settingsNow.baseUrl, modeModel || settingsNow.model),
 			);
 			if (isNearContextBudget(estimateChatMessagesTokens(apiMessages), budget)) {
-				// Opt-in soft-stall: один mid-loop compact до shrink
+				// По настройке: мягкая пауза (soft-stall) - один mid-loop compact до shrink
 				if (settingsNow.midLoopAutoCompact && !midLoopCompactDone) {
 					midLoopCompactDone = true;
 					const soft = softCompactApiMessages(apiMessages, settingsNow);
@@ -657,7 +656,7 @@ export class AgentSession {
 						return;
 					}
 				}
-				// Native tools в API нет - дальше текстовые <tool_call> из content.
+				// Нативный tools API в ответе нет - дальше текстовые <tool_call> из content.
 				toolsEnabled = false;
 				textToolFallback = true;
 				apiMessages[0] = {
@@ -796,7 +795,7 @@ export class AgentSession {
 				if (toolKind !== 'tool') {
 					recordActivity({
 						kind: toolKind,
-						label: `${toolSummary}...`,
+						label: vscode.l10n.t('activity.tool.started', toolSummary),
 						path: toolPathHint,
 						sessionId: params.sessionId,
 						toolName: call.function.name,
@@ -943,7 +942,11 @@ export class AgentSession {
 
 					recordActivity({
 						kind: activityKindFromTool(call.function.name),
-						label: `${summarizeToolActivity(call.function.name, call.function.arguments, resultPath)} * ${status}`,
+						label: status === 'ok'
+							? vscode.l10n.t('activity.tool.ok', summarizeToolActivity(call.function.name, call.function.arguments, resultPath))
+							: status === 'denied'
+								? vscode.l10n.t('activity.tool.denied', summarizeToolActivity(call.function.name, call.function.arguments, resultPath))
+								: vscode.l10n.t('activity.tool.error', summarizeToolActivity(call.function.name, call.function.arguments, resultPath)),
 						path: resultPath,
 						sessionId: params.sessionId,
 						toolName: call.function.name,
@@ -972,7 +975,7 @@ export class AgentSession {
 						finishToolUi('denied', resultText);
 						recordActivity({
 							kind: activityKindFromTool(call.function.name),
-							label: `${toolSummary} * cancelled`,
+							label: vscode.l10n.t('activity.tool.cancelled', toolSummary),
 							path: toolPathHint,
 							sessionId: params.sessionId,
 							toolName: call.function.name,
@@ -1003,7 +1006,7 @@ export class AgentSession {
 					pendingToolImages.push(...atts);
 				}
 			};
-			// Batch «Allow remaining edits» действует только в пределах этого assistant turn
+			// Пакет «Allow remaining edits» действует только в пределах этого assistant turn
 			toolCtxBase.allowRemainingEditsThisTurn = false;
 			let i = 0;
 			while (i < orderedCalls.length) {
@@ -1059,7 +1062,7 @@ export class AgentSession {
 			}
 			apiMessages.push(...toolApiMessages);
 
-			// OpenAI tool role - text-only; image parts на user message перед следующей итерацией
+			// Роль tool OpenAI - только текст; image parts на user message перед следующей итерацией
 			if (pendingToolImages.length > 0) {
 				const visionContent = await buildUserContentWithImages(
 					vscode.l10n.t('agent.toolImagesFollowUp'),
@@ -1076,7 +1079,7 @@ export class AgentSession {
 			return;
 		}
 
-		// Мягкая пауза: не hard failure - UI предложит Continue / Stop
+		// Мягкая пауза: не жёсткий сбой - UI предложит Continue / Stop
 		params.ui.append({
 			id: messageId(),
 			role: 'error',

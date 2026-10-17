@@ -39,7 +39,7 @@ export interface MerkleDocument {
 	nodes: Record<string, MerkleNode>;
 	// chunkId -> content-hash текста чанка
 	chunkDigests: Record<string, string>;
-	// `${path}#${start}-${end}:${name}` -> hash
+	// `${path}#${start}-${end}:${name}` -> digest символа
 	symbolDigests: Record<string, string>;
 	metrics?: MerkleMetrics;
 }

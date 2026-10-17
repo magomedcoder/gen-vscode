@@ -11,7 +11,7 @@ import { GEN_DIR_RELATIVE } from './config';
 export const REFERENCES_JSON_RELATIVE = `${GEN_DIR_RELATIVE}/references.json`;
 // Папка с отдельными JSON на alias (опционально)
 export const REFERENCES_DIR_RELATIVE = `${GEN_DIR_RELATIVE}/references`;
-// Managed-кэш после copy / shallow-clone
+// Управляемый кэш после copy / shallow-clone
 export const REFERENCES_CACHE_RELATIVE = `${GEN_DIR_RELATIVE}/cache/references`;
 
 const META_FILE = '.gen-ref.json';
@@ -23,7 +23,7 @@ export interface ReferenceDef {
 	path?: string;
 	// URL git-репозитория
 	git?: string;
-	// Ветка для shallow-clone
+	// Ветка для shallow-clone (git)
 	branch?: string;
 	description?: string;
 }

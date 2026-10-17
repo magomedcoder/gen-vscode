@@ -2,7 +2,7 @@ import { spawn } from 'node:child_process';
 import * as vscode from 'vscode';
 import { getSettings } from '../../core/config/settings';
 
-// Интервал опроса git status для auto-Keep (мс)
+// Интервал опроса git status для автоматического Keep (мс)
 const POLL_MS = 3000;
 
 function runGit(cwd: string, args: string[], timeoutMs = 2500): Promise<{ ok: boolean; out: string }> {
@@ -43,8 +43,8 @@ function runGit(cwd: string, args: string[], timeoutMs = 2500): Promise<{ ok: bo
 }
 
 /**
- * Файл clean в git: `git status --porcelain -- path` пустой (совпадает с HEAD / нет unstaged).
- * При ошибке git или вне репозитория - false (не auto-Keep).
+ * Файл чист в git: `git status --porcelain -- path` пуст (совпадает с HEAD, нет неиндексированных изменений).
+ * При ошибке git или вне репозитория - false (без автоматического Keep).
  */
 export async function isPathCleanInGit(relativePath: string): Promise<boolean> {
 	const folder = vscode.workspace.workspaceFolders?.[0];
@@ -66,8 +66,8 @@ export interface GitSyncAutoKeepSession {
 }
 
 /**
- * Поллинг каждые 3 с: для clean pending-путей вызвать acceptPath.
- * Пока setting выкл. / нет pending / busy - тик no-op.
+ * Опрос каждые 3 с: вызвать acceptPath для чистых ожидающих путей.
+ * Пока настройка выключена, нет ожидающих изменений или система занята - тик ничего не делает.
  */
 export function startGitSyncAutoKeep(session: GitSyncAutoKeepSession): { dispose(): void } {
 	let disposed = false;

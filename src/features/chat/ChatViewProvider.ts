@@ -12,6 +12,7 @@ import { SettingsPanel } from './SettingsPanel';
 import type { ConfirmDialogOptions } from '../../host/ui/confirmDialog';
 import { isProjectEnabled } from '../project/config';
 import { getIndexManager } from '../index/IndexManager';
+import { handleDesignClick } from '../design/designVisual';
 
 export class ChatViewProvider implements vscode.WebviewViewProvider {
 	// Все активные chat webview (panel + sidebar могут быть одновременно)
@@ -147,9 +148,18 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
 
 	private async onWebviewMessage(msg: FromWebviewMessage): Promise<void> {
 		switch (msg.type) {
+			case 'gen.design.click': {
+				const result = await handleDesignClick(msg);
+				if (!result.ok) {
+					void vscode.window.showInformationMessage(result.message);
+				}
+
+				return;
+			}
+			
 			case 'ready':
 				await this.postState();
-				// Settings нужны webview для loadModels(baseUrl) на экране чата
+				// Настройки нужны webview для loadModels(baseUrl) на экране чата
 				{
 					const snap = getAdminPolicySnapshot();
 					this.post({
@@ -244,6 +254,12 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
 				return;
 			case 'renameSession':
 				this.session.renameSession(msg.id, msg.title);
+				return;
+			case 'archiveSession':
+				this.session.archiveSession(msg.id, msg.archived ?? true);
+				return;
+			case 'setSessionFilter':
+				this.session.setSessionFilter(msg.query, msg.archived);
 				return;
 			case 'deleteSession': {
 				const deleteLabel = vscode.l10n.t('chat.session.delete');

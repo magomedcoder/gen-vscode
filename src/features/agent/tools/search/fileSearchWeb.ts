@@ -117,6 +117,14 @@ export const webSearchTool: ToolDefinition = {
 				content: 'web_search отключён в настройках'
 			};
 		}
+		
+		if (settings.blockNonLocalUrls) {
+			return {
+				ok: false,
+				denied: true,
+				content: 'web_search blocked by blockNonLocalUrls (search backends are remote)',
+			};
+		}
 
 		const query = asString(args, 'query').trim();
 		if (!query) {

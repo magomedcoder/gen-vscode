@@ -1,0 +1,9 @@
+{
+  "results": {
+    "pages": [
+      { "name": "Parallel result", "link": "https://parallel.example/result" },
+      { "title": null, "url": "https://parallel.example/untitled", "excerpts": ["fixture"] },
+      { "title": "missing url" }
+    ]
+  }
+}

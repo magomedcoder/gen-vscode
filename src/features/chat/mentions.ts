@@ -39,8 +39,7 @@ export interface ResolvedMentions {
 // codebase раньше code - иначе @codebase сматчится как @code + arg "base"
 // git_changes раньше git ; problems - argless
 // Args: backticks / "double" / 'single' (через пробел или :); без кавычек = [^\s@]+ (без пробелов)
-const MENTION_RE =
-	/@(file|folder|codebase|code|git-changes|git_changes|git|branch_diff|problems|rules|link|docs|agent|terminals|past|alias|ref|map|symbols)(?:\s+`([^`]+)`|\s+"([^"]+)"|\s+'([^']+)'|:`([^`]+)`|:"([^"]+)"|:'([^']+)'|:([^\s`"']+)|(?:\s+)([^\s@]+))?/gi;
+const MENTION_RE = /@(file|folder|codebase|code|git-changes|git|branch_diff|problems|rules|link|docs|agent|terminals|past|alias|ref|map|symbols)(?:\s+`([^`]+)`|\s+"([^"]+)"|\s+'([^']+)'|:`([^`]+)`|:"([^"]+)"|:'([^']+)'|:([^\s`"']+)|(?:\s+)([^\s@]+))?/gi;
 
 // Kinds без аргумента: не глотать следующее слово как arg
 const ARGLESS_MENTION_KINDS = new Set<MentionKind>(['code', 'git', 'branch_diff', 'git_changes', 'problems', 'rules', 'terminals', 'map']);
@@ -385,7 +384,7 @@ async function resolveAgentContext(name: string | undefined): Promise<string> {
 	return `[agent] файл .gen/agents/${slug || rawName}.md не найден`;
 }
 
-// Хвосты терминалов: rank по query (cleanText) + token quota
+// Хвосты терминалов: ранжирование по запросу (cleanText) и квота токенов
 function resolveTerminalsContext(query?: string): string {
 	ensureTerminalBufferListener();
 	const perCap = Math.min(4_000, getSettings().maxInputChars);
@@ -438,7 +437,7 @@ function lastUserSnippet(messages: ChatUiMessage[], maxLen = 120): string {
 	return '';
 }
 
-// Прошлые чаты: rank сессий / сообщений по query + token quota
+// Прошлые чаты: ранжирование сессий и сообщений по запросу и квота токенов
 function resolvePastChat(arg?: string, query?: string): string {
 	const store = getSessionPeek();
 	if (!store) {

@@ -1,6 +1,6 @@
 /**
  * Состояние research/subagent jobs для Teams UI и interrupt.
- * Pure helpers без vscode.
+ * Чистые helpers без vscode.
  */
 
 export type ResearchJobStatus = 'queued' | 'running' | 'done' | 'error' | 'aborted';
@@ -22,7 +22,7 @@ export interface ResearchJob {
 	reportSnippet?: string;
 }
 
-// Upsert job по id (сохраняем startedAt при переходе running->done)
+// Обновить или вставить job по id (сохраняем startedAt при переходе running->done)
 export function upsertResearchJob(
 	jobs: readonly ResearchJob[],
 	patch: Partial<ResearchJob> & Pick<ResearchJob, 'id'>,

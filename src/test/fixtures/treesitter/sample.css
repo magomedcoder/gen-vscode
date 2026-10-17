@@ -1,7 +1,17 @@
-.widget {
-  color: red;
+@import url("base.css");
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@media (min-width: 768px) {
+  .widget {
+    color: red;
+  }
 }
 
 #app .title {
   font-size: 16px;
+  animation: fade-in 0.2s ease;
 }

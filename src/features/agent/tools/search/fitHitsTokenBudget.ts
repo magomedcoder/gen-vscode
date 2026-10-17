@@ -112,13 +112,13 @@ export function toProvenanceHit(input: {
 	};
 }
 
-// Разобрать max_tokens / maxTokens из args tool с clamp
+// Разобрать max_tokens из args tool с clamp
 export function resolveMaxTokensArg(
 	args: Record<string, unknown>,
 	fallback: number,
 	maxCap: number,
 	asOptionalInt: (args: Record<string, unknown>, key: string) => number | undefined,
 ): number {
-	const raw = asOptionalInt(args, 'max_tokens') ?? asOptionalInt(args, 'maxTokens') ?? fallback;
+	const raw = asOptionalInt(args, 'max_tokens') ?? fallback;
 	return Math.min(maxCap, Math.max(64, raw));
 }

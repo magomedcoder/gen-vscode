@@ -1,4 +1,5 @@
 import { getSettings } from '../../core/config/settings';
+import { EXAMPLE_SECRET_PATTERNS } from '../../core/config/types';
 
 function compilePatterns(patterns: readonly string[]): RegExp[] {
 	const compiled: RegExp[] = [];
@@ -33,4 +34,14 @@ export function redactSecrets(text: string, patterns?: readonly string[]): { tex
 		text: next,
 		count,
 	};
+}
+
+export function maskForPrivacy(text: string | undefined): string | undefined {
+	if (text === undefined || !getSettings().privacyMode) {
+		return text;
+	}
+	
+	const configured = getSettings().secretPatterns;
+	return redactSecrets(text, [...EXAMPLE_SECRET_PATTERNS, ...configured]).text
+		.replace(/([?&](?:key|token|secret|password|signature)=)[^&\s]+/gi, '$1[REDACTED]');
 }

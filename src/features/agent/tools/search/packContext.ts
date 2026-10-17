@@ -35,7 +35,7 @@ export const packContextTool: ToolDefinition = {
 			},
 			max_tokens: {
 				type: 'integer',
-				description: `Лимит токенов (оценка) для packed hits (по умолчанию ${DEFAULT_MAX_TOKENS}, max ${MAX_TOKENS_CAP}). Синоним: maxTokens.`,
+				description: `Лимит токенов (оценка) для packed hits (по умолчанию ${DEFAULT_MAX_TOKENS}, max ${MAX_TOKENS_CAP}).`,
 			},
 			max_hits: {
 				type: 'integer',

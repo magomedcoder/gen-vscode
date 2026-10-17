@@ -17,8 +17,65 @@ const IMAGE_EXT_MIME: Record<string, string> = {
 	'.webp': 'image/webp',
 };
 
-// Макс. страниц PDF, рендерящихся в PNG для vision (poppler pdftoppm)
-const PDF_VISION_MAX_PAGES = 3;
+const PDF_VISION_HARD_MAX_PAGES = 6;
+
+export function selectPdfPages(totalPages: number | undefined, requested: number[], maxPages: number): number[] {
+	const cap = Math.max(1, Math.min(PDF_VISION_HARD_MAX_PAGES, Math.floor(maxPages)));
+	const valid = [...new Set(requested.map(Math.floor).filter((page) => page >= 1 && (!totalPages || page <= totalPages)))];
+	if (valid.length > 0) {
+		return valid.slice(0, cap);
+	}
+
+	if (totalPages && totalPages > cap) {
+		if (cap === 1) {
+			return [1];
+		}
+
+		const firstCount = Math.ceil(cap / 2);
+		const lastCount = cap - firstCount;
+		return [
+			...Array.from({ 
+				length: firstCount 
+			}, (_, i) => i + 1),
+			...Array.from({ 
+				length: lastCount 
+			}, (_, i) => totalPages - lastCount + i + 1),
+		];
+	}
+
+	return Array.from({
+		length: Math.min(totalPages ?? cap, cap)
+	}, (_, i) => i + 1);
+}
+
+function parseRequestedPages(args: Record<string, unknown>): number[] {
+	const page = asOptionalInt(args, 'page');
+	const pages = args.pages;
+	const list = Array.isArray(pages)
+		? pages.map(Number)
+		: typeof pages === 'string'
+			? pages.split(',').map((value) => Number(value.trim()))
+			: [];
+	return [...(page ? [page] : []), ...list].filter(Number.isFinite);
+}
+
+function runPdfInfoPages(fsPath: string, signal?: AbortSignal): Promise<number | undefined> {
+	return new Promise((resolve) => {
+		const child = spawn('pdfinfo', [fsPath], { 
+			stdio: ['ignore', 'pipe', 'ignore'] 
+		});
+		let stdout = '';
+		const onAbort = () => child.kill('SIGTERM');
+		signal?.addEventListener('abort', onAbort, { once: true });
+		child.stdout.on('data', (data) => { stdout += String(data); });
+		child.on('error', () => resolve(undefined));
+		child.on('close', () => {
+			signal?.removeEventListener('abort', onAbort);
+			const match = stdout.match(/^Pages:\s+(\d+)/mi);
+			resolve(match ? Number(match[1]) : undefined);
+		});
+	});
+}
 
 function isPdfPath(relative: string): boolean {
 	return relative.toLowerCase().endsWith('.pdf');
@@ -35,9 +92,10 @@ function imageMimeFromPath(relative: string): string | undefined {
 	return IMAGE_EXT_MIME[lower.slice(dot)];
 }
 
-function runPdftotext(fsPath: string, signal?: AbortSignal): Promise<{ ok: true; text: string } | { ok: false; missing: boolean; error: string }> {
+function runPdftotextOnce(fsPath: string, page: number | undefined, signal?: AbortSignal): Promise<{ ok: true; text: string } | { ok: false; missing: boolean; error: string }> {
 	return new Promise((resolve) => {
-		const child = spawn('pdftotext', ['-layout', fsPath, '-'], {
+		const pageArgs = page ? ['-f', String(page), '-l', String(page)] : [];
+		const child = spawn('pdftotext', ['-layout', ...pageArgs, fsPath, '-'], {
 			stdio: ['ignore', 'pipe', 'pipe'],
 		});
 		let stdout = '';
@@ -81,18 +139,44 @@ function runPdftotext(fsPath: string, signal?: AbortSignal): Promise<{ ok: true;
 	});
 }
 
+async function runPdftotext(
+	fsPath: string,
+	pages: number[],
+	signal?: AbortSignal,
+): Promise<{ ok: true; text: string } | { ok: false; missing: boolean; error: string }> {
+	if (pages.length === 0) {
+		return runPdftotextOnce(fsPath, undefined, signal);
+	}
+
+	const chunks: string[] = [];
+	for (const page of [...new Set(pages.map(Math.floor).filter((value) => value >= 1))]) {
+		const result = await runPdftotextOnce(fsPath, page, signal);
+		if (!result.ok) {
+			return result;
+		}
+		chunks.push(`--- PDF page ${page} ---\n${result.text.trim()}`);
+	}
+
+	return { 
+		ok: true, 
+		text: chunks.join('\n\n') 
+	};
+}
+
 // Конвертация страниц PDF 1..maxPages в PNG через pdftoppm
-function runPdftoppmPages(
+async function runPdftoppmPages(
 	fsPath: string,
 	outPrefix: string,
-	maxPages: number,
+	pages: number[],
 	signal?: AbortSignal,
-): Promise<{ ok: true; pngPaths: string[] } | { ok: false; missing: boolean; error: string }> {
-	const pages = Math.max(1, Math.min(5, Math.floor(maxPages)));
-	return new Promise((resolve) => {
+): Promise<{ ok: true; pngPaths: Array<{ path: string; page: number }> } | { ok: false; missing: boolean; error: string }> {
+	const pngPaths: Array<{ path: string; page: number }> = [];
+	for (const page of pages) {
+		const result = await new Promise<{ ok: true; path: string } | { ok: false; missing: boolean; error: string }>((resolve) => {
+		const prefix = `${outPrefix}-${page}`;
 		const child = spawn(
 			'pdftoppm',
-			['-png', '-f', '1', '-l', String(pages), '-r', '120', fsPath, outPrefix],
+			['-png', '-singlefile', '-f', String(page), '-l', String(page), '-r', '120', fsPath, prefix],
 			{ stdio: ['ignore', 'pipe', 'pipe'] },
 		);
 		let stderr = '';
@@ -120,23 +204,10 @@ function runPdftoppmPages(
 					});
 					return;
 				}
-				const pngPaths: string[] = [];
-				for (let i = 1; i <= pages; i += 1) {
-					const candidate = `${outPrefix}-${i}.png`;
-					try {
-						await fs.access(candidate);
-						pngPaths.push(candidate);
-					} catch {
-						if (i === 1) {
-							const single = `${outPrefix}.png`;
-							try {
-								await fs.access(single);
-								pngPaths.push(single);
-							} catch {}
-						}
-					}
-				}
-				if (pngPaths.length === 0) {
+				const candidate = `${prefix}.png`;
+				try {
+					await fs.access(candidate);
+				} catch {
 					resolve({
 						ok: false,
 						missing: false,
@@ -144,28 +215,45 @@ function runPdftoppmPages(
 					});
 					return;
 				}
-				resolve({ ok: true, pngPaths });
+				resolve({ 
+					ok: true, 
+					path: candidate 
+				});
 			})();
 		});
-	});
+		});
+		if (!result.ok) {
+			return result;
+		}
+		
+		pngPaths.push({ 
+			path: result.path, 
+			page 
+		});
+	}
+	return { 
+		ok: true, 
+		pngPaths 
+	};
 }
 
 async function maybePdfVisionAttachment(
 	pdfFsPath: string,
 	relative: string,
+	pages: number[],
 	signal?: AbortSignal,
 ): Promise<{ attachments?: ToolResult['attachments']; note: string }> {
 	const settings = getSettings();
 	if (!settings.visionEnabled) {
 		return {
-			note: `visionEnabled=false - только текст (pdftotext). Включи vision для страниц PNG (до ${PDF_VISION_MAX_PAGES}).`,
+			note: `visionEnabled=false - только текст (pdftotext). Включи vision для страниц PNG (до ${PDF_VISION_HARD_MAX_PAGES}).`,
 		};
 	}
 
 	const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'gen-pdf-'));
 	const prefix = path.join(tmpDir, 'page');
 	try {
-		const rendered = await runPdftoppmPages(pdfFsPath, prefix, PDF_VISION_MAX_PAGES, signal);
+		const rendered = await runPdftoppmPages(pdfFsPath, prefix, pages, signal);
 		if (!rendered.ok) {
 			if (rendered.missing) {
 				return {
@@ -177,15 +265,14 @@ async function maybePdfVisionAttachment(
 
 		const incoming: IncomingImage[] = [];
 		const baseName = path.basename(relative, path.extname(relative)) || 'pdf';
-		for (let i = 0; i < rendered.pngPaths.length; i += 1) {
-			const pngPath = rendered.pngPaths[i]!;
-			const raw = await fs.readFile(pngPath);
+		for (const renderedPage of rendered.pngPaths) {
+			const raw = await fs.readFile(renderedPage.path);
 			const base64 = raw.toString('base64');
 			if (base64.length > settings.attachmentImageMaxBase64) {
 				continue;
 			}
 			incoming.push({
-				name: `${baseName}-page${i + 1}.png`,
+				name: `${baseName}-page${renderedPage.page}.png`,
 				mimeType: 'image/png',
 				base64,
 			});
@@ -220,10 +307,12 @@ async function maybePdfVisionAttachment(
 
 async function readPdfText(
 	resolved: { uri: vscode.Uri; relative: string; fsPath?: string },
+	requestedPages: number[],
+	requestedMaxPages: number | undefined,
 	signal?: AbortSignal,
 ): Promise<ToolResult> {
 	const fsPath = resolved.uri.fsPath;
-	const extracted = await runPdftotext(fsPath, signal);
+	const extracted = await runPdftotext(fsPath, requestedPages, signal);
 	if (extracted.ok) {
 		const text = extracted.text.trim();
 		if (!text) {
@@ -233,7 +322,11 @@ async function readPdfText(
 			};
 		}
 
-		const vision = await maybePdfVisionAttachment(fsPath, resolved.relative, signal);
+		const settings = getSettings();
+		const totalPages = await runPdfInfoPages(fsPath, signal);
+		const maxPages = Math.min(requestedMaxPages ?? settings.pdfVisionMaxPages, settings.pdfVisionMaxPages, PDF_VISION_HARD_MAX_PAGES);
+		const pages = selectPdfPages(totalPages, requestedPages, maxPages);
+		const vision = await maybePdfVisionAttachment(fsPath, resolved.relative, pages, signal);
 		const header = `${vscode.l10n.t('tool.pdfHeader', resolved.relative)}\n[${vision.note}]\n`;
 		return {
 			ok: true,
@@ -317,7 +410,7 @@ async function readImageFile(
 
 export const readFileTool: ToolDefinition = {
 	name: 'read_file',
-	description: 'Прочитать текстовый файл из workspace (или PDF: pdftotext + до 3 страниц PNG через pdftoppm при visionEnabled; картинки .png/.jpg/.gif/.webp - через vision). Можно указать диапазон строк (1-based, включительно) для текста.',
+	description: 'Прочитать текстовый файл из workspace (PDF: text + selected page PNGs; page/pages/max_pages, vision cap max 6; long PDFs default to first+last pages).',
 	parameters: {
 		type: 'object',
 		properties: {
@@ -333,6 +426,13 @@ export const readFileTool: ToolDefinition = {
 				type: 'integer',
 				description: 'Последняя строка (включительно)',
 			},
+			page: { type: 'integer', description: 'PDF page number (1-based)' },
+			pages: {
+				type: 'array',
+				items: { type: 'integer' },
+				description: 'PDF page numbers (1-based)',
+			},
+			max_pages: { type: 'integer', description: 'PDF vision page cap (also limited by settings and hard max 6)' },
 		},
 		required: ['path'],
 		additionalProperties: false,
@@ -342,7 +442,7 @@ export const readFileTool: ToolDefinition = {
 		const resolved = await resolveWorkspacePath(asString(args, 'path'));
 
 		if (isPdfPath(resolved.relative)) {
-			return readPdfText(resolved, ctx.signal);
+			return readPdfText(resolved, parseRequestedPages(args), asOptionalInt(args, 'max_pages'), ctx.signal);
 		}
 
 		const imageMime = imageMimeFromPath(resolved.relative);

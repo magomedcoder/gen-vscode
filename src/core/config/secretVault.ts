@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import type { ExtensionContext, SecretStorage } from 'vscode';
 
-// Идентификаторы секретов Gen (единый vault поверх VS Code SecretStorage)
+// Идентификаторы секретов Gen (единый vault поверх VSCode SecretStorage)
 export type GenSecretId = 'apiKey' | 'webSearchApiKey';
 
 const SECRET_KEYS: Record<GenSecretId, string> = {

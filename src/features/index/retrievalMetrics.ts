@@ -77,7 +77,7 @@ export function hitAtK(
 }
 
 /**
- * Reciprocal rank: 1/rank первого релевантного (1-based), иначе 0.
+ * Обратный ранг (reciprocal rank): 1/rank первого релевантного (1-based), иначе 0.
  * Rank считается в пределах всего ranked-списка (не только k).
  */
 export function reciprocalRank(
@@ -132,7 +132,7 @@ export interface RetrievalGateThresholds {
 	minSimpleScore: number;
 }
 
-// Пороги CI для offline trigram/merge corpus (без remote embeddings)
+// Пороги CI для offline-корпуса trigram/merge (без remote embeddings)
 export const DEFAULT_RETRIEVAL_GATE: RetrievalGateThresholds = {
 	k: 3,
 	minHitRate: 1,

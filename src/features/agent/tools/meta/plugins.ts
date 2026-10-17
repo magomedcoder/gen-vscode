@@ -1,18 +1,20 @@
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { discoverLocalPlugins, resolveNpmPluginExecutable } from '../../../project/plugins';
-import { asOptionalInt, asString } from '../../types';
+import { asOptionalInt, asString, makeToolError } from '../../types';
 import type { ToolContext, ToolDefinition, ToolResult } from '../../types';
 import { throwIfAborted } from '../../workspacePath';
 import { runShellCommand } from '../../shellExec';
 import { formatCommandLine } from '../../commandPolicy';
 import { confirmAlwaysOrSkip } from '../confirm';
 import { pathIsInside } from '../../policy';
+import { getSettings } from '../../../../core/config/settings';
+import { recordActivity } from '../../../../core/stores/activityStore';
 
 // Список локальных `.gen/tools` / `.gen/plugins` и npm-каталога (без require)
 export const listPluginsTool: ToolDefinition = {
 	name: 'list_plugins',
-	description: 'Список локальных plugins/tools из `.gen/plugins`, `.gen/tools` и npm-каталога (package.json gen/genAgent, `.gen/npm-plugins.json`). Манифесты; npm с command/args/bin можно запустить через run_plugin (spawn).',
+	description: 'Список локальных plugins, prompt-макросов `.gen/tools` и доверенного npm-каталога. `.gen/tools` - только инструкции для модели, не исполняемый host JS. npm запускается только через run_plugin.',
 	parameters: {
 		type: 'object',
 		properties: {},
@@ -41,7 +43,7 @@ export const listPluginsTool: ToolDefinition = {
 // Загрузить инструкции локального plugin/tool по имени в контекст
 export const pluginTool: ToolDefinition = {
 	name: 'plugin',
-	description: 'Загрузить описание локального plugin/tool по имени (из `.gen/plugins` / `.gen/tools` / npm catalog). JS не require в host; для spawn npm см. run_plugin.',
+	description: 'Загрузить описание plugin или prompt-макроса `.gen/tools` по имени. Содержимое - инструкции для модели, не исполняемый host JS; доверенный npm bin запускается через run_plugin.',
 	parameters: {
 		type: 'object',
 		properties: {
@@ -57,19 +59,21 @@ export const pluginTool: ToolDefinition = {
 		throwIfAborted(ctx.signal);
 		const name = asString(args, 'name').trim().toLowerCase();
 		if (!name) {
-			return {
-				ok: false,
-				content: 'plugin: нужен параметр name',
-			};
+			return makeToolError('plugin: нужен параметр name', {
+				code: 'missing_plugin_name', 
+				category: 'validation', 
+				retryable: false,
+			});
 		}
 
 		const items = await discoverLocalPlugins();
 		const hit = items.find((item) => item.name.toLowerCase() === name);
 		if (!hit) {
-			return {
-				ok: false,
-				content: `Неизвестный plugin/tool "${name}". Доступны: ${items.map((i) => i.name).join(', ') || '(нет)'}`,
-			};
+			return makeToolError(`Неизвестный plugin/tool "${name}". Доступны: ${items.map((i) => i.name).join(', ') || '(нет)'}`, {
+				code: 'plugin_not_found', 
+				category: 'not_found', 
+				retryable: false,
+			});
 		}
 
 		const kindLabel = hit.kind === 'tool' ? 'Tool' : hit.kind === 'npm' ? 'npm' : 'Plugin';
@@ -110,12 +114,12 @@ function extraArgsFromJson(raw: unknown): string[] {
 }
 
 /**
- * Spawn объявленной команды npm-плагина (только workspace / node_modules). Без require() в extension host.
+ * Запуск объявленной команды npm-плагина (только workspace/node_modules). Без require() в процессе расширения.
  * Риски/права shell (confirmAlwaysOrSkip + политика runShellCommand).
  */
 export const runPluginTool: ToolDefinition = {
 	name: 'run_plugin',
-	description: 'Запустить объявленную команду npm-плагина (package.json gen/genAgent или `.gen/npm-plugins.json`: command/args или bin). Spawn с cwd=workspace, timeout, stdout; без require() в host. Пути вне workspace запрещены.',
+	description: 'Запустить только declared bin доверенного, точно pinned npm-плагина. Allowlist: `.gen/npm-plugins.json` или config.trustedPlugins; optional SHA-256 bin integrity. Произвольные PATH-команды и host JS запрещены.',
 	parameters: {
 		type: 'object',
 		properties: {
@@ -138,20 +142,22 @@ export const runPluginTool: ToolDefinition = {
 		throwIfAborted(ctx.signal);
 		const name = asString(args, 'name').trim();
 		if (!name) {
-			return { 
-				ok: false, 
-				content: 'run_plugin: нужен параметр name' 
-			};
+			return makeToolError('run_plugin: нужен параметр name', {
+				code: 'missing_plugin_name', 
+				category: 'validation', 
+				retryable: false,
+			});
 		}
 
 		const hit = await resolveNpmPluginExecutable(name);
 		if (!hit?.executable) {
 			const items = await discoverLocalPlugins();
 			const runnable = items.filter((i) => i.kind === 'npm' && i.executable).map((i) => i.name);
-			return {
-				ok: false,
-				content: `run_plugin: нет runnable npm-плагина "${name}". Доступны: ${runnable.join(', ') || '(нет)'}`,
-			};
+			return makeToolError(`run_plugin: нет runnable npm-плагина "${name}". Доступны: ${runnable.join(', ') || '(нет)'}`, {
+				code: 'plugin_not_runnable', 
+				category: 'not_found', 
+				retryable: false,
+			});
 		}
 
 		const folder = vscode.workspace.workspaceFolders?.[0];
@@ -200,12 +206,32 @@ export const runPluginTool: ToolDefinition = {
 		}
 
 		const timeoutMs = asOptionalInt(args, 'timeout_ms');
+		const settings = getSettings();
+		const effectiveTimeoutMs = Math.min(
+			settings.maxToolTimeoutMs,
+			Math.max(1000, Math.floor(timeoutMs ?? settings.defaultToolTimeoutMs)),
+		);
 		const result = await runShellCommand({
 			command: exe.command,
 			args: cmdArgs,
 			cwd: workspaceRoot,
 			timeoutMs: timeoutMs ?? undefined,
 			signal: ctx.signal,
+		});
+		recordActivity({
+			kind: 'shell',
+			toolName: 'run_plugin',
+			label: result.ok
+				? vscode.l10n.t('activity.plugin.runSucceeded', hit.name)
+				: vscode.l10n.t('activity.plugin.runFailed', hit.name),
+			path: vscode.workspace.asRelativePath(workspaceRoot, false) || '.',
+			status: result.ok ? 'ok' : 'error',
+			cwd: workspaceRoot,
+			resolvedBin: exe.args[0] ?? exe.command,
+			args: sanitizeAuditArgs(cmdArgs),
+			exitCode: result.exitCode,
+			timeoutMs: effectiveTimeoutMs,
+			timedOut: result.timedOut,
 		});
 		return {
 			ok: result.ok,
@@ -214,3 +240,24 @@ export const runPluginTool: ToolDefinition = {
 		};
 	},
 };
+
+function sanitizeAuditArgs(args: string[]): string[] {
+	let redactNext = false;
+	return args.map((arg) => {
+		if (redactNext) {
+			redactNext = false;
+			return '[redacted]';
+		}
+		
+		if (/^--?(?:token|password|passwd|secret|api[-_]?key)$/i.test(arg)) {
+			redactNext = true;
+			return arg;
+		}
+
+		if (/^--?(?:token|password|passwd|secret|api[-_]?key)=/i.test(arg)) {
+			return `${arg.slice(0, arg.indexOf('=') + 1)}[redacted]`;
+		}
+
+		return arg.slice(0, 300);
+	});
+}

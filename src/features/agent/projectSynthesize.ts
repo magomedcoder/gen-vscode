@@ -91,12 +91,12 @@ export function formatResearchAggregateMarkdown(
 	return lines.join('\n');
 }
 
-// Открыть отчёт в редакторе (best-effort)
+// Открыть отчёт в редакторе (по best-effort)
 export async function revealProjectReport(absolutePath: string): Promise<void> {
 	try {
 		const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(absolutePath));
 		await vscode.window.showTextDocument(doc, { preview: true });
 	} catch {
-		// ignore
+		// ошибку открытия отчёта игнорируем
 	}
 }

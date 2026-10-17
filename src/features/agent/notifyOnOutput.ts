@@ -9,7 +9,7 @@ export interface NotifyOnOutputMatchOptions {
 }
 
 /**
- * Совпадение notify_on_output только по **новому** выводу (без false positive на старый буфер).
+ * Совпадение notify_on_output только по **новому** выводу (без ложного срабатывания на старый буфер).
  * Перед regex срезаем ANSI.
  */
 export function matchNotifyOnOutput(opts: NotifyOnOutputMatchOptions): {

@@ -1,11 +1,11 @@
-import { generateAgentStub } from '../../../project/customAgents';
+import { generateAgentStub, isReservedAgentId } from '../../../project/customAgents';
 import { asString, type ToolDefinition, type ToolResult } from '../../types';
 import { throwIfAborted } from '../../workspacePath';
 import { confirmAlwaysOrSkip } from '../confirm';
 
 export const generateAgentTool: ToolDefinition = {
 	name: 'generate_agent',
-	description: 'Создать stub кастомного агента в `.gen/agents/{name}.md` по описанию. Builtin presets: docs-researcher, code-reviewer - можно материализовать по имени. Затем доступен через tool task.',
+	description: 'Создать кастомного агента в `.gen/agents/{name}.md`: по описанию выводятся mode, readonly, preferred tools и полноценные system instructions. Builtin presets: docs-researcher, code-reviewer.',
 	parameters: {
 		type: 'object',
 		properties: {
@@ -39,6 +39,12 @@ export const generateAgentTool: ToolDefinition = {
 				content: 'Нужны name и description'
 			};
 		}
+		if (isReservedAgentId(name)) {
+			return {
+				ok: false,
+				content: `Agent id "${name.trim().toLowerCase()}" is reserved (explore, general, scout). Choose another name.`,
+			};
+		}
 
 		const denied = await confirmAlwaysOrSkip(ctx, `Создать агента «${name}»`, description.slice(0, 400));
 		if (denied) {
@@ -50,7 +56,7 @@ export const generateAgentTool: ToolDefinition = {
 				name,
 				description,
 				mode: asString(args, 'mode') || undefined,
-				readonly: args.readonly === true,
+				readonly: typeof args.readonly === 'boolean' ? args.readonly : undefined,
 			});
 			return {
 				ok: true,

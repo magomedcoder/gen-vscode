@@ -5,6 +5,7 @@ export interface DetectedTestCommand {
 	command: string;
 	args: string[];
 	label: string;
+	runner: 'jest' | 'vitest' | 'node' | 'go' | 'cargo' | 'pytest' | 'django';
 }
 
 async function fileExists(filePath: string): Promise<boolean> {
@@ -53,11 +54,17 @@ async function detectFromPackageJson(cwd: string): Promise<DetectedTestCommand |
 	}
 
 	const pm = await packageManager(cwd);
+	const runner = /\bvitest\b/.test(testScript)
+		? 'vitest'
+		: /\bjest\b/.test(testScript)
+			? 'jest'
+			: 'node';
 	if (pm === 'yarn') {
 		return {
 			command: 'yarn',
 			args: ['test'],
-			label: 'yarn test'
+			label: 'yarn test',
+			runner,
 		};
 	}
 
@@ -65,14 +72,16 @@ async function detectFromPackageJson(cwd: string): Promise<DetectedTestCommand |
 		return {
 			command: 'pnpm',
 			args: ['test'],
-			label: 'pnpm test'
+			label: 'pnpm test',
+			runner,
 		};
 	}
 
 	return {
 		command: 'npm',
 		args: ['test'],
-		label: 'npm test'
+		label: 'npm test',
+		runner,
 	};
 }
 
@@ -87,6 +96,7 @@ export async function detectTestCommand(cwd: string): Promise<DetectedTestComman
 			command: 'go',
 			args: ['test', './...'],
 			label: 'go test ./...',
+			runner: 'go',
 		};
 	}
 
@@ -95,6 +105,7 @@ export async function detectTestCommand(cwd: string): Promise<DetectedTestComman
 			command: 'cargo',
 			args: ['test'],
 			label: 'cargo test',
+			runner: 'cargo',
 		};
 	}
 
@@ -103,6 +114,7 @@ export async function detectTestCommand(cwd: string): Promise<DetectedTestComman
 			command: 'pytest',
 			args: [],
 			label: 'pytest',
+			runner: 'pytest',
 		};
 	}
 
@@ -111,6 +123,7 @@ export async function detectTestCommand(cwd: string): Promise<DetectedTestComman
 			command: 'python',
 			args: ['manage.py', 'test'],
 			label: 'python manage.py test',
+			runner: 'django',
 		};
 	}
 

@@ -81,22 +81,40 @@ suite('tree-sitter wasm fixtures', () => {
 		await assertHasAnyName('sample.java', ['App', 'main', 'greet']);
 	});
 
-	test('tsx / javascript / cpp / c# / ruby / php / bash', async () => {
+	test('tsx / javascript / cpp / php / bash', async () => {
 		await assertHasAnyName('sample.tsx', ['App', 'label']);
 		await assertHasAnyName('sample.js', ['greet', 'Person', 'hello']);
 		await assertHasAnyName('sample.cpp', ['Widget', 'main', 'demo', 'render']);
-		await assertHasAnyName('sample.cs', ['Widget', 'Render', 'Program', 'Main', 'Demo']);
-		await assertHasAnyName('sample.rb', ['Greeter', 'hello', 'main']);
 		await assertHasAnyName('sample.php', ['Greeter', 'hello', 'main']);
 		await assertHasAnyName('sample.sh', ['greet', 'main']);
 	});
 
-	test('css opt-in (wasm в пакете)', async () => {
+	test('dart / kotlin / swift (vendor wasm)', async () => {
+		await assertHasAnyName('sample.dart', ['Greeter', 'hello', 'main']);
+		await assertHasAnyName('sample.kt', ['Greeter', 'hello', 'main']);
+		await assertHasAnyName('sample.swift', ['Greeter', 'hello', 'main']);
+	});
+
+	test('css в MVP (wasm в пакете)', async () => {
 		const src = readFixture('sample.css');
 		const parsed = await parseWithTreeSitter('sample.css', src);
-		// css grammar может дать мало именованных span - достаточно успешного parse
 		assert.ok(parsed);
 		assert.strictEqual(parsed!.lang, 'css');
+		assert.ok(parsed!.spans.length >= 1, 'ожидали хотя бы один CSS span');
+	});
+
+	test('MVP markup/data: html / json / yaml / sql / css', async () => {
+		for (const [file, lang] of [
+			['sample.html', 'html'],
+			['sample.json', 'json'],
+			['sample.yaml', 'yaml'],
+			['sample.sql', 'sql'],
+			['sample.css', 'css'],
+		] as const) {
+			const parsed = await parseWithTreeSitter(file, readFixture(file));
+			assert.ok(parsed, `parse ${file}`);
+			assert.strictEqual(parsed!.lang, lang);
+		}
 	});
 
 	test('кэш spans: повторный parse того же файла', async () => {
@@ -116,8 +134,16 @@ suite('tree-sitter wasm fixtures', () => {
 		assert.ok(getTreeSitterMetrics().oversized >= 1);
 	});
 
-	test('MVP allowlist отключает css', async () => {
+	test('пустой allowlist = полный MVP (включая css)', async () => {
 		setTreeSitterLanguageAllowlist([]);
+		const parsed = await parseWithTreeSitter('sample.css', readFixture('sample.css'));
+		assert.ok(parsed);
+		assert.strictEqual(parsed!.lang, 'css');
+		setTreeSitterLanguageAllowlist(['*']);
+	});
+
+	test('явный allowlist без css отключает css', async () => {
+		setTreeSitterLanguageAllowlist(['typescript', 'python']);
 		const parsed = await parseWithTreeSitter('sample.css', readFixture('sample.css'));
 		assert.strictEqual(parsed, undefined);
 		setTreeSitterLanguageAllowlist(['*']);

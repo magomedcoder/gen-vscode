@@ -323,7 +323,7 @@ export const editNotebookTool: ToolDefinition = {
 		}
 
 		if (!outcome.ok) {
-			// API вернул ошибку (не исключение) - попробуем JSON fallback для .ipynb
+			// API вернул ошибку (не исключение) - попробуем запасной JSON для .ipynb
 			if (resolved.relative.toLowerCase().endsWith('.ipynb')) {
 				try {
 					outcome = await editViaFsJson(resolved.uri, cellIdx, isNewCell, cellLanguage, oldString, newString);

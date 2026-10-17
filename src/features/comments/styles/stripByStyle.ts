@@ -69,7 +69,7 @@ export function stripByStyle(source: string, style: CommentStyleConfig): string 
 			if (ch === ' ' || ch === '\t') {
 				result += ch;
 				i += 1;
-				// onlyWsSinceLineStart остаётся true, если ещё не было кода
+				// onlyWsSinceLineStart остаётся true, пока с начала строки только пробелы
 				continue;
 			}
 
@@ -112,7 +112,7 @@ export function stripByStyle(source: string, style: CommentStyleConfig): string 
 			continue;
 		}
 
-		// string
+		// строковый литерал
 		const { rule } = state;
 		const escape = rule.escape !== false && !rule.doubledEscape;
 

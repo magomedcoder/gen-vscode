@@ -1,9 +1,11 @@
 import * as vscode from 'vscode';
 import { AGENT_LIMITS } from '../../policy';
-import { asString, type ToolContext, type ToolDefinition, type ToolResult } from '../../types';
+import { asString, makeToolError, type ToolContext, type ToolDefinition, type ToolResult } from '../../types';
 import { throwIfAborted } from '../../workspacePath';
 import { confirmAlwaysOrSkip, confirmOrSkip, shouldConfirmWrites } from '../confirm';
-import { annotateHtmlWithSourceHints, extractSelectorOuterHtml, selectorSearchTokens, DESIGN_SIMPLE_BROWSER_NOTE } from '../../../design/designVisual';
+import { annotateHtmlWithSourceHints, extractDesignSourceHints, extractSelectorOuterHtml, selectorSearchTokens, DESIGN_SIMPLE_BROWSER_NOTE } from '../../../design/designVisual';
+import { getSettings } from '../../../../core/config/settings';
+import { setLastDesignSelection } from '../../../design/designSession';
 
 const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '::1', '[::1]']);
 
@@ -51,7 +53,7 @@ async function fetchHtml(href: string, signal?: AbortSignal): Promise<{
 			redirect: 'follow',
 			headers: {
 				Accept: 'text/html,application/xhtml+xml,text/plain;q=0.9,*/*;q=0.1',
-				'User-Agent': 'Gen-VSCode-Agent/0.2',
+				'User-Agent': 'Gen-VSCode/0.2',
 			},
 		});
 		const buf = await res.arrayBuffer();
@@ -74,9 +76,9 @@ async function fetchHtml(href: string, signal?: AbortSignal): Promise<{
 	}
 }
 
-async function guessSourceFiles(tokens: string[], signal?: AbortSignal): Promise<Array<{ path: string; line: number; snippet: string; token: string }>> {
+async function guessSourceFiles(tokens: string[], hints: ReturnType<typeof extractDesignSourceHints>, signal?: AbortSignal): Promise<Array<{ path: string; line: number; snippet: string; token: string }>> {
 	const folder = vscode.workspace.workspaceFolders?.[0];
-	if (!folder || tokens.length === 0) {
+	if (!folder || (tokens.length === 0 && hints.length === 0)) {
 		return [];
 	}
 
@@ -87,7 +89,11 @@ async function guessSourceFiles(tokens: string[], signal?: AbortSignal): Promise
 	);
 
 	const hits: Array<{ path: string; line: number; snippet: string; token: string }> = [];
-	for (const uri of uris) {
+	const hintedNames = hints.flatMap((hint) => hint.kind === 'component' && !/[./\\]/.test(hint.value)
+		? [`${hint.value}.tsx`, `${hint.value}.jsx`, `${hint.value}.vue`, `${hint.value}.svelte`]
+		: [hint.value.split(/[/\\]/).pop()!]);
+	const orderedUris = [...uris].sort((a, b) => Number(hintedNames.some((name) => b.path.endsWith(`/${name}`))) - Number(hintedNames.some((name) => a.path.endsWith(`/${name}`))));
+	for (const uri of orderedUris) {
 		if (hits.length >= 12) {
 			break;
 		}
@@ -102,6 +108,22 @@ async function guessSourceFiles(tokens: string[], signal?: AbortSignal): Promise
 
 			const rel = vscode.workspace.asRelativePath(uri, false).replace(/\\/g, '/');
 			const lines = text.split(/\r?\n/);
+			const exactHint = hintedNames.find((name) => uri.path.endsWith(`/${name}`));
+			if (exactHint) {
+				const component = hints.find((hint) => hint.kind === 'component')?.value;
+				const line = component ? lines.findIndex((entry) => entry.includes(component)) : 0;
+				hits.push({
+					path: rel,
+					line: Math.max(0, line) + 1,
+					snippet: lines[Math.max(0, line)]?.trim().slice(0, 200) ?? '',
+					token: `hint:${exactHint}`,
+				});
+
+				if (hits.length >= 12) {
+					return hits;
+				}
+			}
+
 			for (const token of tokens) {
 				const patterns = [
 					`className`,
@@ -143,7 +165,7 @@ async function guessSourceFiles(tokens: string[], signal?: AbortSignal): Promise
 	return hits;
 }
 
-// Эвристический click-to-code lite: fetch страницы, extract outerHTML селектора, grep workspace по class/id.
+// Упрощённая эвристика click-to-code: загрузить страницу, извлечь outerHTML селектора и найти class/id в workspace.
 export const designInspectTool: ToolDefinition = {
 	name: 'design_inspect',
 	description: 'Design Mode visual MVP: по URL + CSS selector скачать HTML (как fetch_page), вернуть outerHTML совпадения и угаданный исходник через grep className/id. Не полный click-to-code в браузере.',
@@ -166,22 +188,32 @@ export const designInspectTool: ToolDefinition = {
 		throwIfAborted(ctx.signal);
 		const parsed = normalizeUrl(asString(args, 'url'));
 		if (!parsed) {
-			return { 
-				ok: false, 
-				content: vscode.l10n.t('tool.browserBadUrl') 
-			};
+			return makeToolError(vscode.l10n.t('tool.browserBadUrl'), {
+				code: 'invalid_url', 
+				category: 'validation', 
+				retryable: false,
+			});
 		}
 
 		const selector = asString(args, 'selector').trim();
 		if (!selector) {
-			return { 
-				ok: false, 
-				content: 'design_inspect: нужен selector (#id | .class | tag)' 
-			};
+			return makeToolError('design_inspect: нужен selector (#id | .class | tag)', {
+				code: 'missing_selector', 
+				category: 'validation', 
+				retryable: false,
+			});
 		}
 
 		const href = parsed.toString();
 		const local = isLocalUrl(parsed);
+		if (!local && getSettings().blockNonLocalUrls) {
+			return { 
+				ok: false, 
+				denied: true, 
+				content: `design_inspect blocked non-local URL: ${href}` 
+			};
+		}
+
 		if (!local) {
 			const denied = await confirmAlwaysOrSkip(
 				ctx,
@@ -207,7 +239,16 @@ export const designInspectTool: ToolDefinition = {
 			const annotated = annotateHtmlWithSourceHints(page.body, href);
 			const extracted = extractSelectorOuterHtml(annotated.html, selector);
 			const tokens = selectorSearchTokens(selector);
-			const guessedFiles = await guessSourceFiles(tokens, ctx.signal);
+			const sourceHints = extractDesignSourceHints(extracted.outerHtml ?? annotated.html);
+			const guessedFiles = await guessSourceFiles(tokens, sourceHints, ctx.signal);
+			const best = guessedFiles[0];
+			await setLastDesignSelection({
+				url: href,
+				selector,
+				sourcePath: best?.path,
+				line: best?.line,
+				inspectedAt: Date.now(),
+			});
 
 			return {
 				ok: page.ok && extracted.matched,
@@ -220,6 +261,7 @@ export const designInspectTool: ToolDefinition = {
 						matchedBy: extracted.matchedBy ?? null,
 						outerHtml: extracted.outerHtml ?? null,
 						sourceMapHint: annotated.sourceMapHint ?? null,
+						sourceHints,
 						guessedFiles,
 						note: DESIGN_SIMPLE_BROWSER_NOTE,
 					},
@@ -228,13 +270,17 @@ export const designInspectTool: ToolDefinition = {
 				),
 			};
 		} catch (err) {
-			return {
-				ok: false,
-				content: vscode.l10n.t(
+			return makeToolError(
+				vscode.l10n.t(
 					'tool.fetchPageFailed',
 					err instanceof Error ? err.message : String(err),
 				),
-			};
+				{ 
+					code: 'fetch_failed', 
+					category: 'network', 
+					retryable: true 
+				},
+			);
 		}
 	},
 };

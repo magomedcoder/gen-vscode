@@ -70,14 +70,10 @@ suite('fitHitsTokenBudget', () => {
 		assert.ok(estimateHitTokens(hit) >= estimateTextTokens(hit.snippet));
 	});
 
-	test('resolveMaxTokensArg accepts max_tokens and maxTokens', () => {
+	test('resolveMaxTokensArg accepts max_tokens', () => {
 		assert.strictEqual(
 			resolveMaxTokensArg({ max_tokens: 500 }, 3000, 16_000, asOptionalInt),
 			500,
-		);
-		assert.strictEqual(
-			resolveMaxTokensArg({ maxTokens: 800 }, 3000, 16_000, asOptionalInt),
-			800,
 		);
 		assert.strictEqual(
 			resolveMaxTokensArg({}, 3000, 16_000, asOptionalInt),

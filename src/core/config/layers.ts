@@ -7,18 +7,39 @@ import { DEFAULT_SETTINGS, type GenSettings } from './types';
 import { getGenUserConfigPath } from './userPaths';
 
 /**
- * Слои JSON-конфига (MVP, без remote `.well-known`).
+ * Слои JSON-конфигурации (MVP, без удалённого `.well-known`).
  *
  * Приоритет (низкий * высокий):
- * 1. `DEFAULT_SETTINGS`
- * 2. user: `~/.config/gen/config.json` (XDG / APPDATA - см. userPaths)
+ * 1. `DEFAULT_SETTINGS` (встроенные значения по умолчанию)
+ * 2. пользователь: `~/.config/gen/config.json` (XDG/APPDATA - см. userPaths)
  * 3. Gen Settings UI (`globalState`) - только ключи, отличающиеся от defaults
- * 4. project: `<workspace>/.gen/config.json`
+ *    (без `UI_LAYER_EXCLUDED_KEYS` - команды/redact только в пользовательском/проектном JSON)
+ * 4. проект: `<workspace>/.gen/config.json`
  * 5. admin policy (`GEN_ADMIN_POLICY` / `/etc/gen/policy.json` / ProgramData) - locked-ключи
  *
- * VS Code `contributes.configuration` сейчас только `gen.chatViewLocation` (синхронизируется из effective settings) - не отдельный файл-слой.
- * UI Settings не ломаем: слои аддитивны; project перекрывает user и UI только по ключам, явно заданным в JSON; admin нельзя обойти.
+ * VSCode `contributes.configuration` сейчас только `gen.chatViewLocation` (синхронизируется из effective settings) - не отдельный файл-слой.
+ * UI настроек не ломаем: слои аддитивны; проект перекрывает пользователя и UI только по явно заданным в JSON ключам; admin нельзя обойти.
  */
+
+/**
+ * Не из UI настроек/globalState - только пользовательский/проектный JSON.
+ * Игнор путей/папок - `.genignore`, не эти ключи.
+ */
+export const UI_LAYER_EXCLUDED_KEYS = [
+	'sensitivePathPatterns',
+	'deniedCommands',
+	'secretPatterns',
+] as const satisfies readonly (keyof GenSettings)[];
+
+// Убрать из blob ключи, которые UI-слой не хранит
+export function stripUiExcludedKeys<T extends Partial<GenSettings>>(input: T): T {
+	const out = { ...input } as Record<string, unknown>;
+	for (const key of UI_LAYER_EXCLUDED_KEYS) {
+		delete out[key];
+	}
+
+	return out as T;
+}
 
 /** Ключи GenSettings, которые можно задать в JSON-слоях */
 export const FILE_LAYER_KEYS = [
@@ -32,17 +53,17 @@ export const FILE_LAYER_KEYS = [
 	'webSearchHttpUrl',
 	'webSearchHttpHeader',
 	'webFetchEnabled',
+	'privacyMode',
+	'blockNonLocalUrls',
 	'skillsPaths',
 	'skillsUrls',
 	'instructionUrls',
+	'trustedPlugins',
 	'personaId',
 	'usernameDisplay',
-	'deniedPaths',
 	'deniedCommands',
 	'sensitivePathPatterns',
 	'secretPatterns',
-	'providerUsePolicy',
-	'providerUsePatterns',
 	'allowExternalDirectory',
 	'enableTerminal',
 	'enableFileReading',
@@ -103,6 +124,8 @@ export const FILE_LAYER_KEYS = [
 	'otelEnabled',
 	'otelEndpoint',
 	'visionEnabled',
+	'attachmentImageQuality',
+	'pdfVisionMaxPages',
 	'chatTextSize',
 	'thinkingDisplay',
 	'chatViewLocation',
@@ -115,15 +138,15 @@ export type FileLayerKey = (typeof FILE_LAYER_KEYS)[number];
 
 const FILE_LAYER_KEY_SET = new Set<string>(FILE_LAYER_KEYS);
 
-// Метаданные `.gen/config.json` - не маппятся в GenSettings
+// Метаданные `.gen/config.json` - не отображаются в GenSettings
 const META_KEYS = new Set(['version', 'createdAt', '$schema']);
 
 export interface ParsedFileConfig {
-	// Overlay для GenSettings (только известные ключи)
+	// Наложение для GenSettings (только известные ключи)
 	settings: Partial<GenSettings>;
 	// Относительный/абсолютный путь к hooks.json
 	hooksPath?: string;
-	// Inline-хуки из конфига (`hooks: { beforeSubmit: ... }`)
+	// Встроенные hooks из конфигурации (`hooks: { beforeSubmit: ... }`)
 	hooks?: Record<string, unknown>;
 }
 
@@ -134,6 +157,19 @@ export interface ConfigLayersSnapshot {
 	projectPath: string | undefined;
 	// Путь загруженной admin policy (если active)
 	adminPolicyPath: string | undefined;
+}
+
+export interface ConfigLayerError {
+	layer: 'user' | 'project';
+	path: string;
+	pointer: string;
+	message: string;
+}
+
+export let lastConfigLayerErrors: ConfigLayerError[] = [];
+
+export function getLastConfigLayerErrors(): readonly ConfigLayerError[] {
+	return lastConfigLayerErrors;
 }
 
 const EMPTY_PARSED: ParsedFileConfig = {
@@ -151,8 +187,8 @@ let snapshot: ConfigLayersSnapshot = {
 const layerListeners = new Set<() => void>();
 
 /**
- * Deep-merge: объекты рекурсивно, массивы и примитивы - заменой.
- * `undefined` в source пропускаем (не затираем target).
+ * Глубокое слияние (deep-merge): объекты рекурсивно, массивы и примитивы - заменой.
+ * `undefined` в источнике пропускаем (не затираем цель).
  */
 export function deepMerge<T>(target: T, ...sources: unknown[]): T {
 	let result: unknown = target;
@@ -221,17 +257,104 @@ export function parseFileConfig(raw: unknown): ParsedFileConfig {
 	return out;
 }
 
-async function readJsonFile(filePath: string): Promise<unknown | undefined> {
+function valueType(value: unknown): string {
+	if (Array.isArray(value)) {
+		return 'array';
+	}
+
+	if (value === null) {
+		return 'null';
+	}
+
+	return typeof value;
+}
+
+function pointer(key: string): string {
+	return `/${key.replace(/~/g, '~0').replace(/\//g, '~1')}`;
+}
+
+export function validateFileConfig(raw: unknown): Array<{ pointer: string; message: string }> {
+	if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+		return [{ 
+			pointer: '', 
+			message: vscode.l10n.t('config.validation.jsonObjectRequired')
+		}];
+	}
+
+	const errors: Array<{ pointer: string; message: string }> = [];
+	const obj = raw as Record<string, unknown>;
+	for (const [key, value] of Object.entries(obj)) {
+		if (!META_KEYS.has(key) && key !== 'hooks' && key !== 'hooksPath' && !FILE_LAYER_KEY_SET.has(key)) {
+			errors.push({ pointer: pointer(key), message: vscode.l10n.t('config.validation.unknownKey') });
+			continue;
+		}
+
+		if (value === undefined || META_KEYS.has(key)) {
+			continue;
+		}
+
+		if (key === 'hooksPath' && typeof value !== 'string') {
+			errors.push({ pointer: pointer(key), message: vscode.l10n.t('config.validation.expectedType', 'string', valueType(value)) });
+			continue;
+		}
+
+		if (key === 'hooks' && (!value || typeof value !== 'object' || Array.isArray(value))) {
+			errors.push({ pointer: pointer(key), message: vscode.l10n.t('config.validation.expectedType', 'object', valueType(value)) });
+			continue;
+		}
+
+		if (!FILE_LAYER_KEY_SET.has(key)) {
+			continue;
+		}
+
+		const expected = DEFAULT_SETTINGS[key as keyof GenSettings];
+		const expectedType = valueType(expected);
+		if (valueType(value) !== expectedType) {
+			errors.push({ pointer: pointer(key), message: vscode.l10n.t('config.validation.expectedType', expectedType, valueType(value)) });
+			continue;
+		}
+
+		if (Array.isArray(expected) && Array.isArray(value) && value.some((item) => typeof item !== 'string')) {
+			errors.push({ pointer: pointer(key), message: vscode.l10n.t('config.validation.stringArrayRequired') });
+		}
+	}
+
+	return errors;
+}
+
+export async function saveConfigLayerJson(filePath: string, raw: unknown): Promise<void> {
+	const errors = validateFileConfig(raw);
+	if (errors.length > 0) {
+		const detail = errors.map((error) => `${error.pointer || '/'}: ${error.message}`).join('; ');
+		throw new Error(vscode.l10n.t('config.validation.invalidConfig', detail));
+	}
+
+	await fs.mkdir(path.dirname(filePath), { recursive: true });
+	await fs.writeFile(filePath, `${JSON.stringify(raw, null, 2)}\n`, 'utf8');
+}
+
+type JsonReadResult = | { kind: 'missing' }
+	| { kind: 'ok'; value: unknown }
+	| { kind: 'error'; message: string };
+
+async function readJsonFile(filePath: string): Promise<JsonReadResult> {
 	try {
 		const text = await fs.readFile(filePath, 'utf8');
 		const trimmed = text.trim();
 		if (!trimmed) {
-			return undefined;
+			return { kind: 'error', message: vscode.l10n.t('config.validation.emptyFile') };
 		}
 
-		return JSON.parse(trimmed) as unknown;
-	} catch {
-		return undefined;
+		return { kind: 'ok', value: JSON.parse(trimmed) as unknown };
+	} catch (err) {
+		if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+			return { kind: 'missing' };
+		}
+		
+		return { 
+			kind: 'error', 
+			message: err instanceof Error ? err.message : String(err) 
+		};
 	}
 }
 
@@ -244,12 +367,12 @@ function projectConfigPath(): string | undefined {
 	return path.join(root, GEN_CONFIG_RELATIVE);
 }
 
-// Текущий снимок слоёв (sync cache)
+// Текущий снимок слоёв (синхронный кэш)
 export function getConfigLayersSnapshot(): ConfigLayersSnapshot {
 	return snapshot;
 }
 
-// Overlay settings из файлов с приоритетом project > user (без UI - UI мержится в getSettings)
+// Наложение настроек из файлов с приоритетом project > user (без UI; UI объединяется в getSettings)
 export function getFileSettingsOverlay(): {
 	user: Partial<GenSettings>;
 	project: Partial<GenSettings>;
@@ -265,7 +388,7 @@ export function getEffectiveHooksPath(): string | undefined {
 	return snapshot.project.hooksPath ?? snapshot.user.hooksPath;
 }
 
-// Inline-хуки: deep-merge user <- project
+// Встроенные hooks: глубокое объединение user <- project
 export function getEffectiveHooksInline(): Record<string, unknown> | undefined {
 	const user = snapshot.user.hooks;
 	const project = snapshot.project.hooks;
@@ -291,29 +414,59 @@ function notifyLayerListeners(): void {
 	}
 }
 
-// Перечитать user + project + admin policy в cache
+// Перечитать пользовательский и проектный слои и admin policy в кэш
 export async function reloadConfigLayers(): Promise<ConfigLayersSnapshot> {
 	const userPath = getGenUserConfigPath();
 	const projPath = projectConfigPath();
 
 	const [userRaw, projectRaw] = await Promise.all([
 		readJsonFile(userPath),
-		projPath ? readJsonFile(projPath) : Promise.resolve(undefined),
+		projPath ? readJsonFile(projPath) : Promise.resolve({ kind: 'missing' } as JsonReadResult),
 	]);
 	await reloadAdminPolicy();
 
 	const admin = getAdminPolicySnapshot();
+	const errors: ConfigLayerError[] = [];
+	const resolveLayer = (
+		layer: 'user' | 'project',
+		filePath: string | undefined,
+		result: JsonReadResult,
+		previous: ParsedFileConfig,
+	): ParsedFileConfig => {
+		if (result.kind === 'missing') {
+			return { settings: {} };
+		}
+
+		if (result.kind === 'error') {
+			errors.push({ 
+				layer, 
+				path: filePath ?? '', 
+				pointer: '', 
+				message: result.message 
+			});
+			return previous;
+		}
+
+		const validation = validateFileConfig(result.value);
+		if (validation.length > 0) {
+			errors.push(...validation.map((error) => ({ 
+				layer, 
+				path: filePath ?? '', 
+				...error 
+			})));
+			return previous;
+		}
+
+		return parseFileConfig(result.value);
+	};
 	snapshot = {
-		user: userRaw !== undefined ? parseFileConfig(userRaw) : { 
-			settings: {} 
-		},
-		project: projectRaw !== undefined ? parseFileConfig(projectRaw) : { 
-			settings: {} 
-		},
+		user: resolveLayer('user', userPath, userRaw, snapshot.user),
+		project: resolveLayer('project', projPath, projectRaw, snapshot.project),
 		userPath,
 		projectPath: projPath,
 		adminPolicyPath: admin.active ? admin.path : undefined,
 	};
+	lastConfigLayerErrors = errors;
 
 	notifyLayerListeners();
 	return snapshot;
@@ -330,6 +483,10 @@ export function pickNonDefaultSettings(stored: Partial<GenSettings> | undefined)
 
 	const out: Partial<GenSettings> = {};
 	for (const key of Object.keys(DEFAULT_SETTINGS) as (keyof GenSettings)[]) {
+		if ((UI_LAYER_EXCLUDED_KEYS as readonly string[]).includes(key)) {
+			continue;
+		}
+		
 		if (!(key in stored)) {
 			continue;
 		}
@@ -405,7 +562,7 @@ export function initConfigLayers(context: vscode.ExtensionContext): void {
 		}),
 	);
 
-	// User config вне workspace - AbsolutePattern / путь к файлу
+	// Пользовательская конфигурация вне workspace - AbsolutePattern или путь к файлу
 	const userPath = getGenUserConfigPath();
 	try {
 		const userWatcher = vscode.workspace.createFileSystemWatcher(userPath);

@@ -8,7 +8,7 @@ import * as vscode from 'vscode';
 
 export const MAX_CONTEXT_OVERFLOW_RETRIES = 1;
 
-// Сколько последних tool-сообщений оставлять с обычным cap (остальные -> digest)
+// Сколько последних сообщений инструментов оставлять с обычным лимитом (остальные -> сводка)
 export const DEFAULT_RECENT_TOOL_KEEP = 4;
 
 const TOOL_DIGEST_PREVIEW_CHARS = 80;
@@ -214,7 +214,7 @@ function cloneMessages(messages: readonly ChatMessage[]): ChatMessage[] {
 	});
 }
 
-// N последних tool: compactTailTurns (default 4), иначе DEFAULT_RECENT_TOOL_KEEP
+// Последние N инструментов: compactTailTurns (по умолчанию 4), иначе DEFAULT_RECENT_TOOL_KEEP
 export function recentToolKeepCount(settings: GenSettings): number {
 	const n = settings.compactTailTurns;
 	if (typeof n === 'number' && Number.isFinite(n) && n >= 1) {
@@ -224,7 +224,7 @@ export function recentToolKeepCount(settings: GenSettings): number {
 	return DEFAULT_RECENT_TOOL_KEEP;
 }
 
-// Короткий digest вместо полного tool body
+// Короткая сводка вместо полного тела ответа инструмента
 export function pruneToolToDigest(content: string): string {
 	const raw = content ?? '';
 	if (raw.startsWith('[pruned tool result]')) {
@@ -395,7 +395,7 @@ export function dedupToolResults(messages: readonly ChatMessage[]): ShrinkResult
 	return { messages: current, changed, prunedChars, prunedMessages };
 }
 
-// Soft mid-loop compact без LLM: system + digest старых ходов + последние N ходов
+// Мягкое сжатие в середине цикла без LLM: system, сводка старых ходов и последние N ходов
 export function softCompactApiMessages(
 	messages: readonly ChatMessage[],
 	settings: GenSettings,
@@ -451,9 +451,9 @@ export function softCompactApiMessages(
 
 /**
  * Ужать apiMessages под budget.
- * Порядок eviction: (0) drop superseded reminders + dedup tools ->
- * (1) старые tool bodies -> (2) старые assistant thoughts ->
- * (3) middle turns -> (4) никогда не трогаем last user; system/plan вне shrink.
+ * Порядок вытеснения: (0) удалить заменённые напоминания и дубликаты инструментов ->
+ * (1) старые тела ответов инструментов -> (2) старые рассуждения ассистента ->
+ * (3) средние ходы -> (4) никогда не трогаем последнее сообщение пользователя; system/plan вне сокращения.
  */
 export function shrinkApiMessages(
 	messages: readonly ChatMessage[],
@@ -575,7 +575,7 @@ export function shrinkApiMessages(
 		}
 	};
 
-	// (1) тела tool: age-weighted + лимиты user/assistant
+	// (1) тела инструментов: вес по возрасту и лимиты пользователя/ассистента
 	applyToolCapsAgeWeighted(toolCap);
 	applyUserAssistantCaps(toolCap);
 	if (!isOverContextBudget(estimateChatMessagesTokens(current), budget)) {
@@ -606,7 +606,7 @@ export function shrinkApiMessages(
 		};
 	}
 
-	// (3) middle turns; (4) никогда не удаляем last user; system[0] сохраняем
+	// (3) средние ходы; (4) никогда не удаляем последнее сообщение пользователя; system[0] сохраняем
 	const keepTail = KEEP_TAIL_MESSAGES;
 	while (current.length > keepTail + 1 && isOverContextBudget(estimateChatMessagesTokens(current), budget)) {
 		const lastUserIdx = findLastUserIndex(current);
@@ -662,14 +662,14 @@ export interface CompleteWithContextGuardOptions {
 	getMessages: () => ChatMessage[];
 	setMessages: (messages: ChatMessage[]) => void;
 	complete: (messages: ChatMessage[]) => Promise<CompleteResult>;
-	// Уведомление UI о retry/compact
+	// Уведомление UI о повторе или сжатии
 	onStatus?: (detail: string) => void;
-	// Счётчики prune для UI/debug
+	// Счётчики сокращения для UI и отладки
 	onPrune?: (info: ShrinkStats) => void;
 	signal?: AbortSignal;
 }
 
-// Preflight shrink + reactive overflow retry вокруг одного complete()
+// Предварительное сокращение и реактивный повтор при переполнении вокруг одного complete()
 export async function completeWithContextGuard(opts: CompleteWithContextGuardOptions): Promise<CompleteResult> {
 	const policy = opts.settings.contextOverflowPolicy;
 	let retries = 0;

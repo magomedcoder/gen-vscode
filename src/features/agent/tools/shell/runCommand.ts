@@ -62,13 +62,20 @@ export const runCommandTool: ToolDefinition = {
 
 		let cwd: string;
 		let relative: string;
-		if (shell) {
-			cwd = shell.resolveCwd(asString(args, 'cwd', ''));
-			relative = vscode.workspace.asRelativePath(cwd, false);
-		} else {
-			const resolved = await resolveCommandCwd(asString(args, 'cwd', '.'));
-			cwd = resolved.cwd;
-			relative = resolved.relative;
+		try {
+			if (shell) {
+				cwd = await shell.resolveCwd(asString(args, 'cwd', ''));
+				relative = vscode.workspace.asRelativePath(cwd, false);
+			} else {
+				const resolved = await resolveCommandCwd(asString(args, 'cwd', '.'));
+				cwd = resolved.cwd;
+				relative = resolved.relative;
+			}
+		} catch (err) {
+			return {
+				ok: false,
+				content: err instanceof Error ? err.message : String(err),
+			};
 		}
 
 		const commandLine = formatCommandLine(command, cmdArgs);
@@ -90,7 +97,7 @@ export const runCommandTool: ToolDefinition = {
 			};
 		}
 
-		// shell.env: inject/modify env или veto перед spawn
+		// shell.env: inject/изменение env или veto перед spawn
 		const envHook = await runShellEnvHook(commandLine, cwd, ctx.signal);
 		if (envHook.vetoed) {
 			return {
@@ -123,8 +130,8 @@ export const runCommandTool: ToolDefinition = {
 				};
 			}
 
-			const job = shell.startBackground(command, cmdArgs, cwd, ctx.signal, envExtra);
-			shell.applyCd(command, cmdArgs);
+			const job = await shell.startBackground(command, cmdArgs, cwd, ctx.signal, envExtra);
+			await shell.applyCd(command, cmdArgs);
 			return {
 				ok: true,
 				path: relative,
@@ -157,7 +164,7 @@ export const runCommandTool: ToolDefinition = {
 				: undefined,
 		});
 		if (shell && result.ok) {
-			shell.applyCd(command, cmdArgs);
+			await shell.applyCd(command, cmdArgs);
 		}
 
 		return {
