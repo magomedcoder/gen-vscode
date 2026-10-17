@@ -2,7 +2,7 @@
 
 [English version](CHANGELOG.md)
 
-## 0.6.0 (30 октября 2026)
+## 0.6.0 (17 октября 2026)
 
 - **Security:** убраны deny-list UI (`deniedPaths`) и `providerUsePolicy` / `providerUsePatterns` (runtime + schema + admin lock); ignore путей/папок через `.genignore` в корне workspace (seed при `/init` / `gen.initProject`); `deniedCommands` / `sensitivePathPatterns` / `secretPatterns` только в user/project JSON (`UI_LAYER_EXCLUDED_KEYS` - не Settings `globalState`)
 - **Index storage:** индекс и project map перенесены из `.gen/` в VSCode `ExtensionContext.storageUri` (`index/<key>/`, `map/<key>/`); индексация без обязательного `.gen/config.json` (scaffold по-прежнему через `gen.initProject` / `/init`)
