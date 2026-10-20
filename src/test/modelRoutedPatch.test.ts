@@ -26,11 +26,13 @@ suite('modelRoutedPatch', () => {
 		assert.strictEqual(includeApplyPatchForModel('', false), true);
 	});
 
-	test('system prompt без apply_patch для non-GPT', () => {
+	test('system prompt без apply_patch для non-GPT; apply_diff всегда', () => {
 		const withPatch = buildAgentSystemPrompt({ toolsAvailable: true, includeApplyPatch: true });
 		const without = buildAgentSystemPrompt({ toolsAvailable: true, includeApplyPatch: false });
 		assert.ok(withPatch.includes('apply_patch'));
+		assert.ok(withPatch.includes('apply_diff'));
 		assert.ok(!without.includes('apply_patch'));
+		assert.ok(without.includes('apply_diff'));
 		assert.ok(without.includes('apply_workspace_edit'));
 	});
 });

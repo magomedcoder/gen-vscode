@@ -2,6 +2,7 @@
 
 ## dev
 
+- **Patch apply:** tool `apply_diff` (unified diff primary, multi-file); search-replace fallback with resilient `old_string` (exact -> newline -> unique whitespace) + chained `apply_workspace_edit`; on fail: one retry + auto `read_file` in tool result
 - **Chat modes:** shared `CHAT_MODE_DEFS` registry; composer mode `<select>`; Settings + slash from the same list; removed legacy Ask/Agent toggle, mode-badge
 - **IDE / DX:** `gen.generateCommitMessage` (+ Abort) on SCM title; opt-in gen Tab `InlineCompletionItemProvider` (`inlineCompletionEnabled`)
 - **Browser CU:** tool `browser_action` (launch/click/type/scroll/screenshot/close) + settings viewport/CDP/Chrome path (`browserComputerUseEnabled`); screenshot includes console logs

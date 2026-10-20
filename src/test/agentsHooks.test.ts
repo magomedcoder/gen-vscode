@@ -22,6 +22,7 @@ suite('agents and hooks', () => {
 		});
 		assert.strictEqual(spec.readonly, false);
 		assert.strictEqual(spec.mode, 'agent');
+		assert.ok(spec.tools.includes('apply_diff'));
 		assert.ok(spec.tools.includes('apply_patch'));
 		assert.match(spec.body, /focused changes/i);
 	});

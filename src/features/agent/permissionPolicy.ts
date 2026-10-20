@@ -9,7 +9,7 @@ const DELETE_TOOLS = new Set(['delete_file']);
 const TASK_TOOLS = new Set(['task']);
 const SKILL_TOOLS = new Set(['skill']);
 // Запасной путь, пока meta ещё не зарегистрирована (тесты / ранний вызов)
-const WRITE_TOOLS = new Set(['write_file', 'apply_patch', 'apply_workspace_edit', 'edit_file', 'create_dir', 'edit_notebook']);
+const WRITE_TOOLS = new Set(['write_file', 'apply_diff', 'apply_patch', 'apply_workspace_edit', 'edit_file', 'create_dir', 'edit_notebook']);
 const SHELL_TOOLS = new Set(['run_command', 'run_tests', 'await_shell', 'run_scratch']);
 const WEB_TOOLS = new Set(['fetch_page', 'web_search', 'open_browser']);
 

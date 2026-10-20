@@ -22,8 +22,8 @@ Comment command
 
 ## Collaborative editing
 
-- After a successful `write_file` / `apply_patch` / `apply_workspace_edit`, the session keeps a snapshot of “how the agent left it” (`AgentWriteTracker`).
-- If the buffer diverges from the snapshot: full `write_file` is blocked; `apply_patch` / `apply_workspace_edit` apply on current text + confirm on conflict.
+- After a successful `write_file` / `apply_diff` / `apply_patch` / `apply_workspace_edit`, the session keeps a snapshot of “how the agent left it” (`AgentWriteTracker`).
+- If the buffer diverges from the snapshot: full `write_file` is blocked; `apply_diff` / `apply_patch` / `apply_workspace_edit` apply on current text + confirm on conflict.
 - A short user-diff for touched files is injected into the system prompt each turn.
 
 ## Sticky plan

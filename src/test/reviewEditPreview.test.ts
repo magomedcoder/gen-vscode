@@ -75,6 +75,22 @@ suite('reviewEditPreview', () => {
 		assert.ok(entries![0]!.after.includes('const x = 2;'));
 	});
 
+	test('buildEditReviewEntriesFromArgs: apply_diff', () => {
+		const files = new Map([['f.ts', 'const x = 1;\n']]);
+		const patch = [
+			'--- a/f.ts',
+			'+++ b/f.ts',
+			'@@ -1,1 +1,1 @@',
+			'-const x = 1;',
+			'+const x = 2;',
+			'',
+		].join('\n');
+		assert.deepStrictEqual(editPathsFromToolArgs('apply_diff', { patch }), ['f.ts']);
+		const entries = buildEditReviewEntriesFromArgs('apply_diff', { patch }, files);
+		assert.ok(entries);
+		assert.ok(entries![0]!.after.includes('const x = 2;'));
+	});
+
 	test('buildEditReviewEntriesFromArgs: edit_file content -> write', () => {
 		const entries = buildEditReviewEntriesFromArgs('edit_file', {
 			path: 'new.ts',

@@ -14,7 +14,7 @@ const VALID_MODES: readonly ChatMode[] = ['ask', 'agent', 'debug', 'design', 'pl
 export const PLAN_ENTER_REMINDER = [
 	'Режим Plan включён.',
 	'Используй только чтение/поиск (read_file, glob, grep, codebase_search и т.п.) и propose_plan / write_plan.',
-	'Правки файлов (write_file, apply_patch, delete_file) запрещены.',
+	'Правки файлов (write_file, apply_diff, apply_patch, delete_file) запрещены.',
 	'Shell (run_command / run_tests): только с подтверждением пользователя, если planShellPolicy=ask; иначе недоступен - перейди в Agent (/agent или plan_exit).',
 	'Когда план готов - propose_plan; после подтверждения пользователя перейди в agent через plan_exit или /agent.',
 ].join(' ');

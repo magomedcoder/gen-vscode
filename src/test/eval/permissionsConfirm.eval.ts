@@ -12,6 +12,7 @@ suite('eval/permissions-confirm', () => {
 	test('smoke: default policy - edits/shell ask, skill allow, read без action', () => {
 		assert.strictEqual(toolActionType('write_file'), 'edits');
 		assert.strictEqual(toolActionType('apply_patch'), 'edits');
+		assert.strictEqual(toolActionType('apply_diff'), 'edits');
 		assert.strictEqual(toolActionType('run_command'), 'shell');
 		assert.strictEqual(toolActionType('web_search'), 'web');
 		assert.strictEqual(toolActionType('delete_file'), 'delete');

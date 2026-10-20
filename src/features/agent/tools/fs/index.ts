@@ -1,4 +1,5 @@
 import { registerTool } from '../registry';
+import { applyDiffTool } from './applyDiff';
 import { applyPatchTool } from './applyPatch';
 import { applyWorkspaceEditTool } from './applyWorkspaceEdit';
 import { createDirTool } from './createDir';
@@ -21,6 +22,10 @@ export function registerFsTools(): void {
 	registerTool(writeFileTool, { 
 		tags: ['fs'], 
 		risk: 'write' 
+	});
+	registerTool(applyDiffTool, {
+		tags: ['fs'],
+		risk: 'write',
 	});
 	registerTool(applyPatchTool, { 
 		tags: ['fs'], 

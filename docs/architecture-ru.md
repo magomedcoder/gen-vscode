@@ -22,8 +22,8 @@ Comment command
 
 ## Совместное редактирование
 
-- После успешного `write_file` / `apply_patch` / `apply_workspace_edit` сессия хранит снимок «как агент оставил» (`AgentWriteTracker`).
-- Если буфер расходится со снимком: полный `write_file` запрещён; `apply_patch` / `apply_workspace_edit` - поверх актуального текста + confirm при конфликте.
+- После успешного `write_file` / `apply_diff` / `apply_patch` / `apply_workspace_edit` сессия хранит снимок «как агент оставил» (`AgentWriteTracker`).
+- Если буфер расходится со снимком: полный `write_file` запрещён; `apply_diff` / `apply_patch` / `apply_workspace_edit` - поверх актуального текста + confirm при конфликте.
 - В system prompt на ход подмешивается краткий user-diff по затронутым файлам.
 
 ## Sticky plan

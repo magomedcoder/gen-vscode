@@ -3,6 +3,7 @@ import { getSettings } from '../../core/config/settings';
 
 const WRITE_TOOLS = new Set([
 	'write_file',
+	'apply_diff',
 	'apply_patch',
 	'apply_workspace_edit',
 	'edit_file',

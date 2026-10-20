@@ -1,11 +1,12 @@
 import * as vscode from 'vscode';
 import { computeMiniDiff, toDiffHunkPayloads } from '../../diff';
-import { applySearchReplace } from '../../patch';
+import { applySearchReplaceChain } from '../../patch';
 import { AGENT_LIMITS } from '../../policy';
-import { asBoolean, asObjectArray, asString} from '../../types';
+import { asBoolean, asObjectArray, asString } from '../../types';
 import type { ToolContext, ToolDefinition, ToolResult } from '../../types';
 import { resolveWorkspacePath, throwIfAborted } from '../../workspacePath';
 import { confirmAlwaysOrSkip, withForcedConfirm } from '../confirm';
+import { appendFreshFileReads } from '../patchFailRead';
 
 export interface SearchReplaceEdit {
 	path: string;
@@ -25,7 +26,7 @@ export function parseWorkspaceEdits(args: Record<string, unknown>): SearchReplac
 
 export const applyWorkspaceEditTool: ToolDefinition = {
 	name: 'apply_workspace_edit',
-	description: 'Несколько точечных правок (old_string -> new_string) атомарно через WorkspaceEdit. Либо все применятся, либо ни одна.',
+	description: 'Несколько точечных правок (old_string -> new_string) атомарно через WorkspaceEdit. Несколько правок одного файла применяются по цепочке. Либо все применятся, либо ни одна.',
 	parameters: {
 		type: 'object',
 		properties: {
@@ -36,18 +37,16 @@ export const applyWorkspaceEditTool: ToolDefinition = {
 					type: 'object',
 					properties: {
 						path: {
-							type: 'string'
+							type: 'string',
 						},
 						old_string: {
-							type: 'string'
+							type: 'string',
 						},
 						new_string: {
-							type: 'string'
-
+							type: 'string',
 						},
 						replace_all: {
-							type: 'boolean'
-
+							type: 'boolean',
 						},
 					},
 					required: ['path', 'old_string', 'new_string'],
@@ -63,7 +62,7 @@ export const applyWorkspaceEditTool: ToolDefinition = {
 		if (parsed.length === 0) {
 			return {
 				ok: false,
-				content: vscode.l10n.t('tool.needEdits')
+				content: vscode.l10n.t('tool.needEdits'),
 			};
 		}
 
@@ -74,19 +73,12 @@ export const applyWorkspaceEditTool: ToolDefinition = {
 			};
 		}
 
-		type Prepared = {
-			old_string: string;
-			new_string: string;
-			replace_all: boolean;
+		// Сохранить порядок правок внутри файла (цепочка)
+		const groups = new Map<string, {
 			uri: vscode.Uri;
 			relative: string;
-			original: string;
-			text: string;
-			count: number;
-			userDiff?: string;
-		};
-
-		const prepared: Prepared[] = [];
+			edits: SearchReplaceEdit[];
+		}>();
 
 		for (const item of parsed) {
 			throwIfAborted(ctx.signal);
@@ -98,38 +90,68 @@ export const applyWorkspaceEditTool: ToolDefinition = {
 			}
 
 			const resolved = await resolveWorkspacePath(item.path);
-			const doc = await vscode.workspace.openTextDocument(resolved.uri);
+			const key = resolved.relative.replace(/\\/g, '/');
+			let group = groups.get(key);
+			if (!group) {
+				group = {
+					uri: resolved.uri,
+					relative: resolved.relative,
+					edits: [],
+				};
+				groups.set(key, group);
+			}
+			group.edits.push(item);
+		}
+
+		type Prepared = {
+			uri: vscode.Uri;
+			relative: string;
+			edits: SearchReplaceEdit[];
+			original: string;
+			text: string;
+			count: number;
+			userDiff?: string;
+		};
+
+		const prepared: Prepared[] = [];
+
+		for (const group of groups.values()) {
+			throwIfAborted(ctx.signal);
+			const doc = await vscode.workspace.openTextDocument(group.uri);
 			const original = doc.getText();
-			let next: { text: string; count: number };
+			let chained: { text: string; totalCount: number };
 			try {
-				next = applySearchReplace(original, item.old_string, item.new_string, item.replace_all);
+				chained = applySearchReplaceChain(original, group.edits);
 			} catch (err) {
+				const msg = `${group.relative}: ${err instanceof Error ? err.message : String(err)}`;
+				const paths = [...groups.values()].map((g) => g.relative);
 				return {
 					ok: false,
-					content: `${resolved.relative}: ${err instanceof Error ? err.message : String(err)}`,
+					path: group.relative,
+					content: await appendFreshFileReads(msg, paths, 6_000),
+					retryable: true,
+					category: 'execution',
+					code: 'patch_not_found',
 				};
 			}
-			if (new TextEncoder().encode(next.text).byteLength > AGENT_LIMITS.maxWriteBytes) {
+			if (new TextEncoder().encode(chained.text).byteLength > AGENT_LIMITS.maxWriteBytes) {
 				return {
 					ok: false,
-					content: vscode.l10n.t('tool.resultTooLarge', resolved.relative),
+					content: vscode.l10n.t('tool.resultTooLarge', group.relative),
 				};
 			}
 
 			prepared.push({
-				old_string: item.old_string,
-				new_string: item.new_string,
-				replace_all: item.replace_all,
-				uri: doc.uri,
-				relative: resolved.relative,
+				uri: group.uri,
+				relative: group.relative,
+				edits: group.edits,
 				original,
-				text: next.text,
-				count: next.count,
-				userDiff: ctx.writes?.userDiff(doc.uri, original),
+				text: chained.text,
+				count: chained.totalCount,
+				userDiff: ctx.writes?.userDiff(group.uri, original),
 			});
 		}
 
-		// Обычный ask/review - только central confirm. Здесь лишь конфликт с правками пользователя.
 		const drifted = prepared.filter((p) => p.userDiff);
 		if (drifted.length > 0) {
 			const detail = drifted.map((p) => `${p.relative}:\n${p.userDiff}`).join('\n\n');
@@ -159,9 +181,9 @@ export const applyWorkspaceEditTool: ToolDefinition = {
 			throwIfAborted(ctx.signal);
 			const doc = await vscode.workspace.openTextDocument(item.uri);
 			const original = doc.getText();
-			let next: { text: string; count: number };
+			let chained: { text: string; totalCount: number };
 			try {
-				next = applySearchReplace(original, item.old_string, item.new_string, item.replace_all);
+				chained = applySearchReplaceChain(original, item.edits);
 			} catch (err) {
 				return {
 					ok: false,
@@ -176,8 +198,8 @@ export const applyWorkspaceEditTool: ToolDefinition = {
 				relative: item.relative,
 				range: new vscode.Range(0, 0, last, doc.lineAt(last).text.length),
 				original,
-				text: next.text,
-				count: next.count,
+				text: chained.text,
+				count: chained.totalCount,
 			});
 		}
 
@@ -209,7 +231,7 @@ export const applyWorkspaceEditTool: ToolDefinition = {
 			relative: p.relative,
 			mini: computeMiniDiff(p.original, p.text),
 		}));
-		const hunks = fileDiffs.flatMap((item, fileIndex) => toDiffHunkPayloads(item.mini.hunks, refreshed[fileIndex].original, {
+		const hunks = fileDiffs.flatMap((item, fileIndex) => toDiffHunkPayloads(item.mini.hunks, refreshed[fileIndex]!.original, {
 			path: item.relative,
 			idPrefix: `f${fileIndex}`,
 		}));

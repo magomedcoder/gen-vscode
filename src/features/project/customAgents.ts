@@ -145,11 +145,11 @@ export function inferGeneratedAgentSpec(description: string, input?: {
 			: planning
 				? ['read_file', 'grep', 'glob', 'find_code', 'project_map', 'propose_plan']
 				: testing
-					? ['read_file', 'grep', 'glob', 'run_tests', 'run_command', 'apply_patch']
-					: ['read_file', 'grep', 'glob', 'apply_patch', 'run_command', 'run_tests'];
+					? ['read_file', 'grep', 'glob', 'run_tests', 'run_command', 'apply_diff', 'apply_patch']
+					: ['read_file', 'grep', 'glob', 'apply_diff', 'apply_patch', 'run_command', 'run_tests'];
 	const tools = readonly
-		? inferredTools.filter((tool) => !['apply_patch', 'run_command', 'run_tests'].includes(tool))
-		: [...new Set([...inferredTools, 'apply_patch', 'run_command', 'run_tests'])];
+		? inferredTools.filter((tool) => !['apply_diff', 'apply_patch', 'run_command', 'run_tests'].includes(tool))
+		: [...new Set([...inferredTools, 'apply_diff', 'apply_patch', 'run_command', 'run_tests'])];
 	const displayName = input?.name?.trim() || 'agent';
 	const constraints = readonly
 		? [

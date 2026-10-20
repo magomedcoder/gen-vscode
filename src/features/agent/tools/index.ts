@@ -141,6 +141,11 @@ export function getAgentLlmTools(mode?: string, opts?: {
 function subjectFromArgs(name: string, rawArguments: string): string {
 	try {
 		const args = parseToolArguments(rawArguments);
+		if (name === 'apply_diff' && typeof args.patch === 'string') {
+			const paths = mutationPathsFromArgs(name, args);
+			return paths[0] ?? name;
+		}
+
 		if (typeof args.path === 'string') {
 			return args.path;
 		}
@@ -189,7 +194,15 @@ export async function executeAgentTool(name: string, rawArguments: string, ctx: 
 	const pathLike = Boolean(extractPathFromPartialJson(rawArguments) || (() => {
 		try {
 			const args = parseToolArguments(rawArguments);
-			return typeof args.path === 'string';
+			if (typeof args.path === 'string') {
+				return true;
+			}
+			
+			if (name === 'apply_diff' && typeof args.patch === 'string') {
+				return mutationPathsFromArgs(name, args).length > 0;
+			}
+
+			return false;
 		} catch {
 			return false;
 		}
@@ -231,7 +244,7 @@ export async function executeAgentTool(name: string, rawArguments: string, ctx: 
 
 	// external_directory: путь вне workspace -> action `outside` или deny (запрет)
 	// Исключение: cwd субагента в git worktree (может быть sibling вне workspace folders)
-	if (pathLike && (action === 'edits' || action === 'delete' || name === 'read_file' || name === 'list_dir' || name === 'open_file' || name === 'create_dir' || name === 'apply_patch' || name === 'apply_workspace_edit' || name === 'write_file' || name === 'edit_file' || name === 'delete_file' || name === 'edit_notebook' || name === 'run_scratch')) {
+	if (pathLike && (action === 'edits' || action === 'delete' || name === 'read_file' || name === 'list_dir' || name === 'open_file' || name === 'create_dir' || name === 'apply_diff' || name === 'apply_patch' || name === 'apply_workspace_edit' || name === 'write_file' || name === 'edit_file' || name === 'delete_file' || name === 'edit_notebook' || name === 'run_scratch')) {
 		const agentRoot = getAgentRoot();
 		const insideAgentRoot = Boolean(agentRoot && subject && (pathIsInside(subject, agentRoot) || !subject.includes('/') && !subject.includes('\\')));
 		const outside = !insideAgentRoot && isOutsideWorkspaceInput(subject, workspaceFoldersFs());

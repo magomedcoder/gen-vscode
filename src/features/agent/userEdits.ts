@@ -94,7 +94,7 @@ export class AgentWriteTracker {
 		const body = drifts.map((item) => `Файл ${item.relative} (правки пользователя после агента):\n${item.diff}`).join('\n\n');
 		const truncated = body.length > MAX_CONTEXT_CHARS ? `${body.slice(0, MAX_CONTEXT_CHARS)}\n... [обрезано]` : body;
 
-		return `Пользователь правил файлы после агента. Не откатывай эти правки, если задача явно не требует. Не используй полный write_file поверх них - только точечные правки (apply_patch / apply_workspace_edit, что есть в tools) по актуальному тексту (сначала read_file).\n${truncated}`;
+		return `Пользователь правил файлы после агента. Не откатывай эти правки, если задача явно не требует. Не используй полный write_file поверх них - только точечные правки (apply_diff / apply_patch / apply_workspace_edit, что есть в tools) по актуальному тексту (сначала read_file).\n${truncated}`;
 	}
 }
 
@@ -102,7 +102,7 @@ export function denyWriteOverUserEdits(relative: string, userDiff: string): stri
 	return [
 		`Файл ${relative} изменён пользователем после последней записи агента.`,
 		'Полный write_file запрещён - затрёт правки пользователя.',
-		'Сделай read_file, затем точечные правки (apply_patch или apply_workspace_edit - что доступно) по актуальному тексту.',
+		'Сделай read_file, затем точечные правки (apply_diff, apply_patch или apply_workspace_edit - что доступно) по актуальному тексту.',
 		userDiff ? `\nПравки пользователя (снимок агента -> сейчас):\n${userDiff}` : '',
 	]
 		.filter(Boolean)

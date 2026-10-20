@@ -5,11 +5,12 @@ import { AGENT_LIMITS } from '../../policy';
 import { asBoolean, asString, type ToolContext, type ToolDefinition, type ToolResult } from '../../types';
 import { pathExists, resolveWorkspacePath, throwIfAborted } from '../../workspacePath';
 import { confirmAlwaysOrSkip, withForcedConfirm } from '../confirm';
+import { appendFreshFileReads } from '../patchFailRead';
 import { enhanceSuccessfulWrite } from '../postEdit';
 
 export const applyPatchTool: ToolDefinition = {
 	name: 'apply_patch',
-	description: 'Точечная правка файла: заменить old_string на new_string по актуальному содержимому. Для нового файла используйте write_file. Не откатывай правки пользователя без явной необходимости.',
+	description: 'Точечная правка файла: заменить old_string на new_string по актуальному содержимому (exact, затем нормализация переносов, затем unique whitespace-match). Для нового файла используйте write_file. Не откатывай правки пользователя без явной необходимости.',
 	parameters: {
 		type: 'object',
 		properties: {
@@ -65,9 +66,14 @@ export const applyPatchTool: ToolDefinition = {
 		try {
 			next = applySearchReplace(original, oldString, newString, replaceAll);
 		} catch (err) {
+			const msg = err instanceof Error ? err.message : String(err);
 			return {
 				ok: false,
-				content: err instanceof Error ? err.message : String(err),
+				path: resolved.relative,
+				content: await appendFreshFileReads(msg, [resolved.relative], 6_000),
+				retryable: true,
+				category: 'execution',
+				code: 'patch_not_found',
 			};
 		}
 
@@ -99,10 +105,14 @@ export const applyPatchTool: ToolDefinition = {
 		try {
 			next = applySearchReplace(original, oldString, newString, replaceAll);
 		} catch (err) {
+			const stale = vscode.l10n.t('tool.patchStale', err instanceof Error ? err.message : String(err));
 			return {
 				ok: false,
 				path: resolved.relative,
-				content: vscode.l10n.t('tool.patchStale', err instanceof Error ? err.message : String(err)),
+				content: await appendFreshFileReads(stale, [resolved.relative], 6_000),
+				retryable: true,
+				category: 'execution',
+				code: 'patch_stale',
 			};
 		}
 

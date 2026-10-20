@@ -10,10 +10,7 @@ import { getToolMeta } from '../features/agent/tools/registry.js';
 import type { ConfirmChoice } from '../features/agent/types.js';
 import { AgentWriteTracker } from '../features/agent/userEdits.js';
 
-/**
- * Матрица confirm/policy без LLM:
- * ask|deny|allow(+Always)|skip|abort * edits/shell (+ web stubs) + toolsFallback Continue/Stop.
- */
+// Матрица confirm/policy без LLM: ask|deny|allow(+Always)|skip|abort * edits/shell (+ web stubs) + toolsFallback Continue/Stop
 suite('permission confirm matrix', () => {
 	suiteSetup(() => {
 		registerBuiltins();
@@ -282,6 +279,7 @@ suite('permission confirm matrix', () => {
 				['write_file', 'write', 'edits'],
 				['edit_file', 'write', 'edits'],
 				['apply_patch', 'write', 'edits'],
+				['apply_diff', 'write', 'edits'],
 				['run_command', 'shell', 'shell'],
 				['run_tests', 'shell', 'shell'],
 				['web_search', 'web', 'web'],

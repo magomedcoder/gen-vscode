@@ -1,7 +1,7 @@
 import * as assert from 'assert';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
-import { applySearchReplace, PatchError } from '../features/agent/patch.js';
+import { applySearchReplace, applySearchReplaceChain, applyUnifiedDiffToFiles, normalizePatchPath, parseUnifiedDiff, PatchError, pathsFromUnifiedDiff } from '../features/agent/patch.js';
 import { assertAllowedPath, isDeniedRelativePath, isOutsideWorkspaceInput, pathIsInside, resolveAgainstFolders, rewriteWorkspaceAlias } from '../features/agent/policy.js';
 import { parseWorkspaceEdits } from '../features/agent/tools/fs/applyWorkspaceEdit.js';
 import { assertAllowedCommand, CommandPolicyError, formatCommandLine } from '../features/agent/commandPolicy.js';
@@ -95,6 +95,104 @@ suite('applySearchReplace', () => {
 
 	test('фрагмент не найден', () => {
 		assert.throws(() => applySearchReplace('abc', 'zzz', 'q', false));
+	});
+
+	test('нормализация CRLF', () => {
+		const file = 'line1\r\nline2\r\n';
+		const result = applySearchReplace(file, 'line1\nline2\n', 'A\nB\n', false);
+		assert.strictEqual(result.mode, 'newline');
+		assert.ok(result.text.includes('\r\n'));
+		assert.strictEqual(result.text, 'A\r\nB\r\n');
+	});
+
+	test('unique whitespace-flexible', () => {
+		const file = '\tfoo   bar\n';
+		const result = applySearchReplace(file, 'foo bar', 'foo baz', false);
+		assert.strictEqual(result.mode, 'whitespace');
+		assert.strictEqual(result.text, '\tfoo baz\n');
+	});
+
+	test('цепочка правок', () => {
+		const chained = applySearchReplaceChain('a b c', [
+			{ old_string: 'a', new_string: 'A' },
+			{ old_string: 'b', new_string: 'B' },
+		]);
+		assert.strictEqual(chained.text, 'A B c');
+		assert.strictEqual(chained.totalCount, 2);
+	});
+});
+
+suite('unified diff apply', () => {
+	test('normalizePatchPath снимает a/b и /dev/null', () => {
+		assert.strictEqual(normalizePatchPath('a/src/foo.ts'), 'src/foo.ts');
+		assert.strictEqual(normalizePatchPath('b/src/foo.ts'), 'src/foo.ts');
+		assert.strictEqual(normalizePatchPath('/dev/null'), undefined);
+	});
+
+	test('parse + apply multi-file', () => {
+		const patch = [
+			'--- a/a.ts',
+			'+++ b/a.ts',
+			'@@ -1,2 +1,2 @@',
+			' keep',
+			'-old',
+			'+new',
+			'--- a/b.ts',
+			'+++ b/b.ts',
+			'@@ -1,1 +1,1 @@',
+			'-x',
+			'+y',
+			'',
+		].join('\n');
+		assert.deepStrictEqual(pathsFromUnifiedDiff(patch), ['a.ts', 'b.ts']);
+		const files = new Map([
+			['a.ts', 'keep\nold\n'],
+			['b.ts', 'x\n'],
+		]);
+		const result = applyUnifiedDiffToFiles(files, patch);
+		assert.strictEqual(result.length, 2);
+		assert.strictEqual(result[0]!.after, 'keep\nnew\n');
+		assert.strictEqual(result[1]!.after, 'y\n');
+	});
+
+	test('add / delete', () => {
+		const addPatch = [
+			'--- /dev/null',
+			'+++ b/new.ts',
+			'@@ -0,0 +1,1 @@',
+			'+hello',
+			'',
+		].join('\n');
+		const added = applyUnifiedDiffToFiles(new Map(), addPatch);
+		assert.strictEqual(added[0]!.kind, 'add');
+		assert.strictEqual(added[0]!.after, 'hello\n');
+
+		const delPatch = [
+			'--- a/gone.ts',
+			'+++ /dev/null',
+			'@@ -1,1 +0,0 @@',
+			'-bye',
+			'',
+		].join('\n');
+		const deleted = applyUnifiedDiffToFiles(new Map([['gone.ts', 'bye\n']]), delPatch);
+		assert.strictEqual(deleted[0]!.kind, 'delete');
+		assert.strictEqual(deleted[0]!.after, '');
+	});
+
+	test('mismatch throws (no blind fuzzy)', () => {
+		const patch = [
+			'--- a/f.ts',
+			'+++ b/f.ts',
+			'@@ -1,1 +1,1 @@',
+			'-missing',
+			'+here',
+			'',
+		].join('\n');
+		assert.throws(
+			() => applyUnifiedDiffToFiles(new Map([['f.ts', 'other\n']]), patch),
+			(err: unknown) => err instanceof PatchError,
+		);
+		assert.strictEqual(parseUnifiedDiff(patch)[0]!.path, 'f.ts');
 	});
 });
 

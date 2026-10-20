@@ -1,6 +1,7 @@
 import { formatMiniDiff } from '../diff';
-import { applySearchReplace } from '../patch';
+import { applySearchReplace, applySearchReplaceChain, pathsFromUnifiedDiff } from '../patch';
 import type { ApprovalActionType, PermissionDecision } from '../permissionPolicy';
+import { previewUnifiedDiff } from './fs/applyDiff';
 import { parseWorkspaceEdits } from './fs/applyWorkspaceEdit';
 
 export interface EditReviewEntry {
@@ -24,6 +25,10 @@ export function editPathsFromToolArgs(toolName: string, args: Record<string, unk
 			.map((e) => e.path.trim())
 			.filter(Boolean);
 		return [...new Set(paths)];
+	}
+
+	if (toolName === 'apply_diff' && typeof args.patch === 'string') {
+		return pathsFromUnifiedDiff(args.patch);
 	}
 
 	if (typeof args.path === 'string' && args.path.trim()) {
@@ -54,6 +59,24 @@ export function buildEditReviewEntriesFromArgs(
 			before: files.get(path) ?? '',
 			after: content,
 		}];
+	}
+
+	if (toolName === 'apply_diff') {
+		const patch = typeof args.patch === 'string' ? args.patch : '';
+		if (!patch.trim()) {
+			return undefined;
+		}
+		
+		const preview = previewUnifiedDiff(patch, files);
+		if (!preview || preview.length === 0) {
+			return undefined;
+		}
+
+		return preview.map((item) => ({
+			path: item.path,
+			before: item.before,
+			after: item.after,
+		}));
 	}
 
 	if (toolName === 'apply_patch') {
@@ -94,26 +117,27 @@ export function buildEditReviewEntriesFromArgs(
 			byPath.set(path, files.get(path) ?? '');
 		}
 
-		const entries: EditReviewEntry[] = [];
+		const editsByPath = new Map<string, typeof edits>();
 		for (const edit of edits) {
 			const path = edit.path.trim();
 			if (!path || !edit.old_string) {
 				return undefined;
 			}
-
-			const before = byPath.get(path) ?? '';
-			try {
-				const next = applySearchReplace(before, edit.old_string, edit.new_string, edit.replace_all);
-				byPath.set(path, next.text);
-			} catch {
-				return undefined;
-			}
+			const list = editsByPath.get(path) ?? [];
+			list.push(edit);
+			editsByPath.set(path, list);
 		}
 
-		for (const [path, after] of byPath) {
-			const original = files.get(path) ?? '';
-			if (original !== after) {
-				entries.push({ path, before: original, after });
+		const entries: EditReviewEntry[] = [];
+		for (const [path, pathEdits] of editsByPath) {
+			const original = files.get(path) ?? byPath.get(path) ?? '';
+			try {
+				const next = applySearchReplaceChain(original, pathEdits);
+				if (original !== next.text) {
+					entries.push({ path, before: original, after: next.text });
+				}
+			} catch {
+				return undefined;
 			}
 		}
 

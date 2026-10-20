@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { pathsFromUnifiedDiff } from './patch';
 import { AGENT_LIMITS } from './policy';
 import { asObjectArray, asString, type ToolResult } from './types';
 
@@ -114,6 +115,10 @@ export function formatStickyPlanForPrompt(plan: StickyPlanSnapshot): string {
 export function mutationPathsFromArgs(name: string, args: Record<string, unknown>): string[] {
 	if (name === 'apply_workspace_edit') {
 		return [...new Set(asObjectArray(args, 'edits').map((item) => asString(item, 'path').trim()).filter(Boolean))];
+	}
+
+	if (name === 'apply_diff') {
+		return pathsFromUnifiedDiff(asString(args, 'patch'));
 	}
 
 	const path = asString(args, 'path').trim();

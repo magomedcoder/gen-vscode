@@ -56,10 +56,12 @@ export function buildAgentSystemPrompt(options?: {
 			? options.mode
 			: 'agent';
 
-	const patchHint = includeApplyPatch ? 'apply_patch' : 'write_file / apply_workspace_edit';
+	const patchHint = includeApplyPatch
+		? 'apply_diff (unified) / apply_patch'
+		: 'apply_diff (unified) / apply_workspace_edit';
 	const targetedEditHint = includeApplyPatch
-		? 'apply_patch / apply_workspace_edit'
-		: 'apply_workspace_edit (точечные правки) или короткий write_file';
+		? 'apply_diff / apply_patch / apply_workspace_edit'
+		: 'apply_diff / apply_workspace_edit (точечные правки) или короткий write_file';
 
 	const lines = [
 		mode === 'debug'
@@ -92,8 +94,8 @@ export function buildAgentSystemPrompt(options?: {
 		const shellPolicy = options?.planShellPolicy === 'deny' ? 'deny' : 'ask';
 		lines.push(
 			includeApplyPatch
-				? 'Режим Plan: используй read/search/codebase_search/glob/grep и propose_plan / write_plan. Не вызывай write_file, apply_patch, delete_file.'
-				: 'Режим Plan: используй read/search/codebase_search/glob/grep и propose_plan / write_plan. Не вызывай write_file, apply_workspace_edit, delete_file.',
+				? 'Режим Plan: используй read/search/codebase_search/glob/grep и propose_plan / write_plan. Не вызывай write_file, apply_diff, apply_patch, delete_file.'
+				: 'Режим Plan: используй read/search/codebase_search/glob/grep и propose_plan / write_plan. Не вызывай write_file, apply_diff, apply_workspace_edit, delete_file.',
 			shellPolicy === 'ask'
 				? 'Shell (run_command / run_tests): только с подтверждением пользователя (даже если approvalPolicy=allow). Не запускай мутирующие команды без нужды.'
 				: 'Shell недоступен (planShellPolicy=deny). Для команд перейди в Agent: plan_exit или /agent. /ask - это текстовый чат без tools, не путай с Plan.',
@@ -121,12 +123,15 @@ export function buildAgentSystemPrompt(options?: {
 			'Не выдумывай содержимое файлов - перед любой записью заново read_file / get_active_editor; не опирайся на старый снимок из истории tools.',
 			'Одноразовый анализатор/мигратор: напиши скрипт в `.gen/scratch/` (write_file / edit_file), затем `run_scratch` или `run_command`/`await_shell`. Не eval JS из `.gen/tools`.',
 			`Правки пользователя важнее: не откатывай их, если задача явно не требует. Если файл расходится со снимком агента - полный write_file запрещён, только ${targetedEditHint} по актуальному тексту.`,
+			'Правки файлов: предпочитай apply_diff с unified diff (как git apply) - несколько hunks/файлов в одном вызове. Мелкая точечная замена: '
+				+ (includeApplyPatch ? 'apply_patch (old_string/new_string) или ' : '')
+				+ 'apply_workspace_edit. Не делай слепой fuzzy replace.',
 			includeApplyPatch
-				? 'Для нового файла: write_file только если файл короткий. Большой файл: короткая заготовка write_file, дальше apply_patch небольшими фрагментами. Несколько файлов сразу: apply_workspace_edit. Не клади весь большой файл в один write_file: JSON аргументов обрежется.'
-				: 'Для нового файла: write_file только если файл короткий. Большой файл правь по частям через apply_workspace_edit или несколько коротких write_file. Несколько файлов сразу: apply_workspace_edit. Не клади весь большой файл в один write_file: JSON аргументов обрежется.',
+				? 'Для нового файла: write_file только если файл короткий. Большой файл: короткая заготовка write_file, дальше apply_diff (или apply_patch небольшими фрагментами). Несколько файлов: apply_diff или apply_workspace_edit. Не клади весь большой файл в один write_file: JSON аргументов обрежется.'
+				: 'Для нового файла: write_file только если файл короткий. Большой файл: apply_diff или apply_workspace_edit по частям. Несколько файлов: apply_diff / apply_workspace_edit. Не клади весь большой файл в один write_file: JSON аргументов обрежется.',
 			includeApplyPatch
-				? 'Если инструмент вернул ошибку про невалидный JSON - повтори меньшим куском через apply_patch, не повторяй тот же огромный write_file.'
-				: 'Если инструмент вернул ошибку про невалидный JSON - повтори меньшим куском (короткий write_file или apply_workspace_edit), не повторяй тот же огромный write_file.',
+				? 'Если apply_diff/apply_patch вернул ошибку - в ответе уже есть актуальный read_file; исправь patch/old_string и повтори один раз. При невалидном JSON - меньший кусок, не огромный write_file.'
+				: 'Если apply_diff вернул ошибку - в ответе уже есть актуальный read_file; исправь diff и повтори один раз. При невалидном JSON - меньший кусок (короткий write_file или apply_workspace_edit).',
 			'Навигация: open_file, reveal_line, close_file. Состояние редактора: get_active_editor, get_open_editors.',
 			'После правок проверяй get_diagnostics. git_status - только чтение, без commit/push.',
 			'Логи: find_logs, read_log_tail. UI: open_browser, fetch_page.',

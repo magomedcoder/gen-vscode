@@ -8,7 +8,7 @@ import { enhanceSuccessfulWrite } from '../postEdit';
 
 export const writeFileTool: ToolDefinition = {
 	name: 'write_file',
-	description: 'Создать или полностью перезаписать короткий текстовый файл (UTF-8). Для длинных файлов сначала короткая заготовка, дальше точечные правки (apply_patch или apply_workspace_edit) - большой content в JSON обрежется. Если файл уже правил пользователь после агента - write_file запрещён, используй точечные правки.',
+	description: 'Создать или полностью перезаписать короткий текстовый файл (UTF-8). Для длинных файлов сначала короткая заготовка, дальше точечные правки (apply_diff / apply_patch / apply_workspace_edit) - большой content в JSON обрежется. Если файл уже правил пользователь после агента - write_file запрещён, используй точечные правки.',
 	parameters: {
 		type: 'object',
 		properties: {
