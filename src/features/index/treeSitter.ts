@@ -549,22 +549,6 @@ async function flushTreeSitterMetrics(): Promise<void> {
 	const line = `treesitter: ok=${snap.ok} fail=${snap.fail} timeout=${snap.timeout}` +
 		` oversized=${snap.oversized} cacheHit=${snap.cacheHit}` +
 		(snap.lastError ? ` last=${snap.lastError}` : '');
-	try {
-		const { getSettings } = await import('../../core/config/settings');
-		const { emitTreeSitterMetrics } = await import('../../core/llm/otel');
-		emitTreeSitterMetrics(getSettings(), snap);
-	} catch {}
-
-	try {
-		const mod = await import('../../core/stores/activityStore');
-		mod.recordActivity({
-			kind: 'tool',
-			label: line,
-			toolName: 'index_treesitter',
-			status: snap.fail > snap.ok ? 'error' : 'ok',
-		});
-	} catch {}
-
 	console.info(`[gen] ${line}`);
 }
 

@@ -51,7 +51,7 @@ Discovery is exposed through the system-prompt catalog and tools `list_plugins` 
 
 The agent loads prompt-macro/plugin bodies via `plugin` or `read_file`; no `.gen/tools` host JS is evaluated.
 
-npm plugins are catalogued from `.gen/npm-plugins.json`, or from `package.json` only when matched by `trustedPlugins`. Trust entries pin an exact `package@version` and may add `#sha256=<declared-bin digest>`. `run_plugin` can spawn only the package's declared `bin` under the workspace-never an arbitrary `command`/PATH executable-and still uses shell confirmation and timeout policy. Runs add structured Activity audit data (cwd, resolved bin, sanitized args, exit and timeout).
+npm plugins are catalogued from `.gen/npm-plugins.json`, or from `package.json` only when matched by `trustedPlugins`. Trust entries pin an exact `package@version` and may add `#sha256=<declared-bin digest>`. `run_plugin` can spawn only the package's declared `bin` under the workspace-never an arbitrary `command`/PATH executable-and still uses shell confirmation and timeout policy.
 
 Remote skills and instruction URLs use a persistent cache, accept optional `#sha256=<content digest>`, and fall back to matching stale cache content when offline. Settings also previews duplicate Markdown headings across merged project, user, and remote rules.
 

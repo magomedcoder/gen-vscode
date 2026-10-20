@@ -6,7 +6,7 @@
 	"command.commentFile.title": "Gen: Comment entire file",
 	"command.openChat.title": "Open chat",
 	"command.openChatPanel.title": "Open chat (panel)",
-	"command.openChatSidebar.title": "Open chat (sidebar)",
+	"command.openChatEditor.title": "Open chat (editor tab)",
 	"command.initProject.title": "Initialize project (.gen)",
 	"command.addSelectionToChat.title": "Gen: Add selection to chat",
 	"command.addToChat.title": "Gen: Add to chat",
@@ -22,12 +22,8 @@
 	"command.designPickFromClipboard.title": "Gen: Design pick from clipboard URL",
 	"command.hunkAccept.title": "Accept hunk (Keep)",
 	"command.hunkReject.title": "Reject hunk (Undo)",
-	"configuration.gen.title": "Gen",
-	"config.gen.chatViewLocation.description": "Where to show Gen chat",
-	"config.gen.chatViewLocation.panel": "Bottom panel only",
-	"config.gen.chatViewLocation.sidebar": "Activity bar sidebar only",
-	"config.gen.chatViewLocation.both": "Both panel and sidebar",
+	"command.generateCommitMessage.title": "Gen: Generate Commit Message",
+	"command.abortCommitMessage.title": "Gen: Abort Commit Message",
 	"viewsContainers.panel.gen.title": "Gen",
-	"viewsContainers.activitybar.gen-sidebar.title": "Gen",
 	"views.gen.chatView.name": "Chat"
 }

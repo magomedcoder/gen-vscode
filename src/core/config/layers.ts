@@ -17,7 +17,7 @@ import { getGenUserConfigPath } from './userPaths';
  * 4. проект: `<workspace>/.gen/config.json`
  * 5. admin policy (`GEN_ADMIN_POLICY` / `/etc/gen/policy.json` / ProgramData) - locked-ключи
  *
- * VSCode `contributes.configuration` сейчас только `gen.chatViewLocation` (синхронизируется из effective settings) - не отдельный файл-слой.
+ * VSCode `contributes.configuration` пуст (чат только в panel); knobs - Gen Settings / JSON-слои.
  * UI настроек не ломаем: слои аддитивны; проект перекрывает пользователя и UI только по явно заданным в JSON ключам; admin нельзя обойти.
  */
 
@@ -54,6 +54,12 @@ export const FILE_LAYER_KEYS = [
 	'webSearchHttpHeader',
 	'webFetchEnabled',
 	'designScreenshotEnabled',
+	'browserComputerUseEnabled',
+	'browserViewportWidth',
+	'browserViewportHeight',
+	'browserCdpEndpoint',
+	'browserChromePath',
+	'inlineCompletionEnabled',
 	'privacyMode',
 	'blockNonLocalUrls',
 	'skillsPaths',
@@ -61,7 +67,6 @@ export const FILE_LAYER_KEYS = [
 	'instructionUrls',
 	'trustedPlugins',
 	'personaId',
-	'usernameDisplay',
 	'deniedCommands',
 	'sensitivePathPatterns',
 	'secretPatterns',
@@ -122,14 +127,11 @@ export const FILE_LAYER_KEYS = [
 	'notifyOnComplete',
 	'notifySoundOnComplete',
 	'loggingEnabled',
-	'otelEnabled',
-	'otelEndpoint',
 	'visionEnabled',
 	'attachmentImageQuality',
 	'pdfVisionMaxPages',
-	'chatTextSize',
 	'thinkingDisplay',
-	'chatViewLocation',
+	'toolDetailsExpanded',
 	'maxTabCount',
 	'maxConcurrentRuns',
 	'tabEvictionPolicy',

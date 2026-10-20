@@ -4,9 +4,10 @@
  */
 
 import * as fs from 'node:fs/promises';
+import * as path from 'node:path';
 import { contentHash } from './hash';
 import { indexDirForFolder, indexFilePath, isIndexStorageAvailable } from './indexStorage';
-import { loadManifest } from './store';
+import { loadManifest, loadManifestCached } from './store';
 import type { IndexChunk, IndexManifest } from './types';
 
 export const INDEX_VECTORS_FILE = 'vectors.json';
@@ -39,18 +40,144 @@ export function vectorsPathForFolder(folderFsPath: string): string | undefined {
 	return indexFilePath(folderFsPath, INDEX_VECTORS_FILE);
 }
 
+// In-memory кэш vectors.json по пути файла: избегаем full read/parse на каждый hit / search
+type VectorsCacheEntry = {
+	doc: VectorsDocument;
+	// stat снимок последней записи/чтения с диска (валидация внешних изменений)
+	mtimeMs: number;
+	size: number;
+	// Есть незаписанные правки (batched flush)
+	dirty: boolean;
+};
+
+const vectorsCache = new Map<string, VectorsCacheEntry>();
+const vectorsFlushTimers = new Map<string, ReturnType<typeof setTimeout>>();
+const VECTORS_FLUSH_DEBOUNCE_MS = 1500;
+
+async function readVectorsFromDisk(file: string): Promise<VectorsCacheEntry | undefined> {
+	try {
+		const [raw, st] = await Promise.all([fs.readFile(file, 'utf8'), fs.stat(file)]);
+		const doc = parseVectorsJson(raw);
+		return doc ? { 
+			doc, 
+			mtimeMs: st.mtimeMs, 
+			size: st.size, 
+			dirty: false 
+		} : undefined;
+	} catch {
+		return undefined;
+	}
+}
+
+// Кэшированный документ (shared reference; мутации допустимы только вместе с save/markDirty)
+async function getVectorsDocumentCached(folderFsPath: string): Promise<VectorsDocument | undefined> {
+	const file = vectorsPathForFolder(folderFsPath);
+	if (!file) {
+		return undefined;
+	}
+
+	const cached = vectorsCache.get(file);
+	if (cached?.dirty) {
+		return cached.doc;
+	}
+
+	if (cached) {
+		try {
+			const st = await fs.stat(file);
+			if (st.mtimeMs === cached.mtimeMs && st.size === cached.size) {
+				return cached.doc;
+			}
+		} catch {}
+
+		vectorsCache.delete(file);
+	}
+
+	const loaded = await readVectorsFromDisk(file);
+	if (loaded) {
+		vectorsCache.set(file, loaded);
+	}
+
+	return loaded?.doc;
+}
+
+// Записать отложенные правки (batched flush) для папки или всех папок
+export async function flushVectorsCache(folderFsPath?: string): Promise<void> {
+	const files = folderFsPath
+		? [vectorsPathForFolder(folderFsPath)].filter((f): f is string => Boolean(f))
+		: [...vectorsCache.keys()];
+	for (const file of files) {
+		const timer = vectorsFlushTimers.get(file);
+		if (timer) {
+			clearTimeout(timer);
+			vectorsFlushTimers.delete(file);
+		}
+
+		const entry = vectorsCache.get(file);
+		if (!entry?.dirty) {
+			continue;
+		}
+
+		await writeVectorsFile(file, entry.doc);
+	}
+}
+
+function scheduleVectorsFlush(file: string): void {
+	if (vectorsFlushTimers.has(file)) {
+		return;
+	}
+
+	vectorsFlushTimers.set(file, setTimeout(() => {
+		vectorsFlushTimers.delete(file);
+		const entry = vectorsCache.get(file);
+		if (entry?.dirty) {
+			void writeVectorsFile(file, entry.doc).catch(() => {});
+		}
+	}, VECTORS_FLUSH_DEBOUNCE_MS));
+}
+
+async function writeVectorsFile(file: string, doc: VectorsDocument): Promise<void> {
+	await fs.mkdir(path.dirname(file), { recursive: true });
+	doc.updatedAt = new Date().toISOString();
+	// Помечаем clean до await: правки во время записи снова выставят dirty
+	const entry = vectorsCache.get(file);
+	if (entry) {
+		entry.dirty = false;
+	}
+
+	try {
+		await fs.writeFile(file, JSON.stringify(doc), 'utf8');
+		const st = await fs.stat(file);
+		const current = vectorsCache.get(file);
+		if (current && current.doc === doc && !current.dirty) {
+			current.mtimeMs = st.mtimeMs;
+			current.size = st.size;
+		} else if (!current) {
+			vectorsCache.set(file, { 
+				doc, 
+				mtimeMs: st.mtimeMs, 
+				size: st.size, 
+				dirty: false 
+			});
+		}
+	} catch (err) {
+		const current = vectorsCache.get(file);
+		if (current) {
+			current.dirty = true;
+		}
+
+		throw err;
+	}
+}
+
+// Чтение с диска (после flush pending-правок): для внешних читателей (UI status)
 export async function loadVectorsDocument(folderFsPath: string): Promise<VectorsDocument | undefined> {
 	const file = vectorsPathForFolder(folderFsPath);
 	if (!file) {
 		return undefined;
 	}
 
-	try {
-		const raw = await fs.readFile(file, 'utf8');
-		return parseVectorsJson(raw);
-	} catch {
-		return undefined;
-	}
+	await flushVectorsCache(folderFsPath).catch(() => {});
+	return (await readVectorsFromDisk(file))?.doc;
 }
 
 export function parseVectorsJson(raw: string): VectorsDocument | undefined {
@@ -78,9 +205,19 @@ export async function saveVectorsDocument(folderFsPath: string, doc: VectorsDocu
 		throw new Error('vectorStore: index storage unavailable');
 	}
 
-	await fs.mkdir(dir, { recursive: true });
-	doc.updatedAt = new Date().toISOString();
-	await fs.writeFile(file, JSON.stringify(doc), 'utf8');
+	const timer = vectorsFlushTimers.get(file);
+	if (timer) {
+		clearTimeout(timer);
+		vectorsFlushTimers.delete(file);
+	}
+
+	vectorsCache.set(file, { 
+		doc, 
+		mtimeMs: 0, 
+		size: -1, 
+		dirty: true 
+	});
+	await writeVectorsFile(file, doc);
 }
 
 // Хеш FNV-1a, 32-bit
@@ -173,7 +310,7 @@ export async function syncLocalFeatureVectors(
 
 	const manifest = opts?.manifest ?? (await loadManifest(folderFsPath));
 	const only = opts?.onlyChunkIds ? new Set(opts.onlyChunkIds) : undefined;
-	let doc = (await loadVectorsDocument(folderFsPath)) ?? emptyVectorsDocument(LOCAL_VECTOR_MODEL);
+	let doc = (await getVectorsDocumentCached(folderFsPath)) ?? emptyVectorsDocument(LOCAL_VECTOR_MODEL);
 
 	// Несовпадение модели -> полная пересборка локального хранилища
 	if (doc.model !== LOCAL_VECTOR_MODEL) {
@@ -231,11 +368,11 @@ export async function searchLocalVectors(
 	query: string,
 	maxResults: number,
 ): Promise<LocalVectorHit[]> {
-	const manifest = await loadManifest(folderFsPath);
-	let doc = await loadVectorsDocument(folderFsPath);
+	const manifest = await loadManifestCached(folderFsPath);
+	let doc = await getVectorsDocumentCached(folderFsPath);
 	if (!doc || doc.model !== LOCAL_VECTOR_MODEL || Object.keys(doc.vectors).length === 0) {
 		await syncLocalFeatureVectors(folderFsPath, { manifest });
-		doc = await loadVectorsDocument(folderFsPath);
+		doc = await getVectorsDocumentCached(folderFsPath);
 	}
 
 	if (!doc) {
@@ -279,7 +416,7 @@ export async function getCachedRemoteVector(
 	textHash: string,
 	model: string,
 ): Promise<number[] | undefined> {
-	const doc = await loadVectorsDocument(folderFsPath);
+	const doc = await getVectorsDocumentCached(folderFsPath);
 	if (!doc) {
 		return undefined;
 	}
@@ -303,12 +440,20 @@ export async function putCachedRemoteVector(
 		return;
 	}
 
-	let doc = (await loadVectorsDocument(folderFsPath)) ?? emptyVectorsDocument(model);
+	const file = vectorsPathForFolder(folderFsPath);
+	if (!file) {
+		return;
+	}
+
+	// In-memory doc + batched flush: не full read/rewrite vectors.json на каждый hit
+	const existing = await getVectorsDocumentCached(folderFsPath);
+	// Повторная проверка кэша после await: параллельный put мог уже создать документ
+	const doc = vectorsCache.get(file)?.doc ?? existing ?? emptyVectorsDocument(model);
 	const key = `remote:${model}:${textHash}`;
-	doc.vectors[key] = { 
-		hash: textHash, 
-		model, 
-		vec 
+	doc.vectors[key] = {
+		hash: textHash,
+		model,
+		vec
 	};
 
 	// Сохранить тег локальной модели для смешанных документов: выбрать LOCAL при наличии локального
@@ -319,7 +464,19 @@ export async function putCachedRemoteVector(
 		doc.model = LOCAL_VECTOR_MODEL;
 	}
 
-	await saveVectorsDocument(folderFsPath, doc);
+	const entry = vectorsCache.get(file);
+	if (entry && entry.doc === doc) {
+		entry.dirty = true;
+	} else {
+		vectorsCache.set(file, { 
+			doc, 
+			mtimeMs: 0, 
+			size: -1, 
+			dirty: true 
+		});
+	}
+
+	scheduleVectorsFlush(file);
 }
 
 export function localVectorCount(doc: VectorsDocument | undefined): number {

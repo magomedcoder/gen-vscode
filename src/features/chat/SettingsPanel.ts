@@ -1,34 +1,31 @@
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { getEffectiveHooksPath } from '../../core/config/layers';
-import { getSettings, hasApiKey, hasEmbeddingsApiKey, hasWebSearchApiKey, isAdminPolicyActive, setSessionModel, updateSettings, getAdminPolicySnapshot } from '../../core/config/settings';
-import { applySaveSettingsSecrets, pickSecretFileRef } from './secretHost';
+import { getSettings, isAdminPolicyActive, updateSettings, getAdminPolicySnapshot } from '../../core/config/settings';
 import { getPersistedAlwaysAllow, setPersistedAlwaysAllow } from '../../core/stores/alwaysAllowStore';
 import { collectIndexEngineStatus } from '../index/engineStatus';
 import { getIndexManagerInstance } from '../index/IndexManager';
 import { HttpLlmClient } from '../../core/llm/client';
 import { loadWebviewL10n } from '../../l10n/loadBundle';
 import { revealLogsFolder } from '../../core/log/logger';
-import { discoverPersonas, getPersonaDiscoveryDiagnostics } from '../project/personas';
+import { discoverPersonas } from '../project/personas';
 import { BUILTIN_PRESETS, cloneBuiltinPreset, discoverCustomAgents, getAgentDiscoveryDiagnostics } from '../project/customAgents';
 import { listRulesCandidates, previewRulesMergeConflicts } from '../project/projectRules';
 import { discoverSkills } from '../project/skills';
 import { discoverLocalPlugins } from '../project/plugins';
 import { dryRunHookEvent, type HookEvent } from '../project/hooks';
-import { clearActivity, readActivity, recordActivity } from '../../core/stores/activityStore';
 import { readUsage, resetUsage } from '../../core/stores/usageStore';
 import { createNonce, renderChatHtml } from './chatHtml';
+import { LlmHostRequests } from './llmHostHelpers';
 import { buildDesignSessionMessage } from '../design/designSessionBridge';
 import type { AdminPolicyInfo, FromWebviewMessage, PersonaOption, ToWebviewMessage } from './protocol';
 const VIEW_TYPE = 'gen.settings';
-function isAbortError(err: unknown): boolean {
-	return err instanceof Error && err.name === 'AbortError';
-}
 
 export class SettingsPanel {
 	private static current?: SettingsPanel;
-	private modelsAbort?: AbortController;
 	private readonly client = new HttpLlmClient();
+	// loadModels / checkConnection (общий хелпер с ChatViewProvider)
+	private readonly llmHost = new LlmHostRequests(this.client, (message) => this.post(message));
 	private indexChangeSub?: vscode.Disposable;
 
 	static show(context: vscode.ExtensionContext): void {
@@ -80,7 +77,7 @@ export class SettingsPanel {
 			messageSub.dispose();
 			this.indexChangeSub?.dispose();
 			this.indexChangeSub = undefined;
-			this.modelsAbort?.abort();
+			this.llmHost.abort();
 			if (SettingsPanel.current === this) {
 				SettingsPanel.current = undefined;
 			}
@@ -109,15 +106,6 @@ export class SettingsPanel {
 	// Отправить актуальный список персон в webview (Reload на странице Personas)
 	private async postPersonasData(): Promise<void> {
 		const personas = await this.listPersonaOptions();
-		for (const diagnostic of getPersonaDiscoveryDiagnostics()) {
-			recordActivity({
-				kind: 'tool',
-				toolName: 'personas',
-				label: vscode.l10n.t('activity.personas.discoveryError', diagnostic.message),
-				path: diagnostic.path,
-				status: 'error',
-			});
-		}
 		this.post({
 			type: 'personasData',
 			personas,
@@ -137,9 +125,6 @@ export class SettingsPanel {
 		this.post({
 			type: 'settings',
 			settings: getSettings(),
-			apiKeySet: await hasApiKey(),
-			webSearchApiKeySet: await hasWebSearchApiKey(),
-			embeddingsApiKeySet: await hasEmbeddingsApiKey(),
 			persistedAlwaysAllow: getPersistedAlwaysAllow(),
 			personas: await this.listPersonaOptions(),
 			adminPolicy: this.adminPolicyInfo(),
@@ -170,10 +155,10 @@ export class SettingsPanel {
 				return;
 			}
 			case 'loadModels':
-				await this.handleLoadModels(msg.baseUrl, msg.requestId);
+				await this.llmHost.loadModels(msg.baseUrl, msg.requestId);
 				return;
 			case 'checkConnection':
-				await this.handleCheckConnection(msg.baseUrl, msg.requestId);
+				await this.llmHost.checkConnection(msg.baseUrl, msg.requestId);
 				return;
 			case 'openLogsFolder':
 				await revealLogsFolder();
@@ -189,19 +174,6 @@ export class SettingsPanel {
 				this.post({
 					type: 'usageLedger',
 					ledger: readUsage(),
-				});
-				return;
-			case 'loadActivity':
-				this.post({
-					type: 'activityLedger',
-					entries: readActivity(),
-				});
-				return;
-			case 'clearActivity':
-				clearActivity();
-				this.post({
-					type: 'activityLedger',
-					entries: readActivity(),
 				});
 				return;
 			case 'loadIndexStatus':
@@ -252,26 +224,8 @@ export class SettingsPanel {
 			case 'openProjectPath':
 				await this.handleOpenProjectPath(msg.path);
 				return;
-			case 'pickSecretFile': {
-				const value = await pickSecretFileRef();
-				this.post({
-					type: 'secretFilePicked',
-					requestId: msg.requestId,
-					value,
-				});
-				return;
-			}
 			case 'saveSettings':
 				try {
-					const secretsOk = await applySaveSettingsSecrets(msg);
-					if (!secretsOk) {
-						this.post({
-							type: 'settingsError',
-							message: vscode.l10n.t('settings.secret.clearCancelled'),
-						});
-						return;
-					}
-
 					if (Array.isArray(msg.persistedAlwaysAllow)) {
 						await setPersistedAlwaysAllow(msg.persistedAlwaysAllow);
 					}
@@ -280,9 +234,6 @@ export class SettingsPanel {
 					this.post({
 						type: 'settingsSaved',
 						settings: saved,
-						apiKeySet: await hasApiKey(),
-						webSearchApiKeySet: await hasWebSearchApiKey(),
-						embeddingsApiKeySet: await hasEmbeddingsApiKey(),
 						persistedAlwaysAllow: getPersistedAlwaysAllow(),
 						personas: await this.listPersonaOptions(),
 						adminPolicy: this.adminPolicyInfo(),
@@ -542,17 +493,6 @@ export class SettingsPanel {
 
 		try {
 			const result = await dryRunHookEvent(event, env);
-			recordActivity({
-				kind: 'shell',
-				label: vscode.l10n.t(
-					'activity.hooks.dryRun',
-					event,
-					String(result.exitCode ?? 0),
-				),
-				toolName: 'hooks.dryRun',
-				status: result.ok ? 'ok' : 'error',
-				exitCode: typeof result.exitCode === 'number' ? result.exitCode : undefined,
-			});
 			this.post({
 				type: 'hookDryRunResult',
 				event,
@@ -563,12 +503,6 @@ export class SettingsPanel {
 			});
 		} catch (err) {
 			const message = err instanceof Error ? err.message : String(err);
-			recordActivity({
-				kind: 'shell',
-				label: vscode.l10n.t('activity.hooks.dryRunFailed', event, message.slice(0, 120)),
-				toolName: 'hooks.dryRun',
-				status: 'error',
-			});
 			this.post({
 				type: 'hookDryRunResult',
 				event,
@@ -651,15 +585,6 @@ export class SettingsPanel {
 		try {
 			const custom = await discoverCustomAgents();
 			const diagnostics = getAgentDiscoveryDiagnostics();
-			for (const diagnostic of diagnostics) {
-				recordActivity({
-					kind: 'tool',
-					toolName: 'agents',
-					label: vscode.l10n.t('activity.agents.discoveryError', diagnostic.message),
-					path: diagnostic.path,
-					status: 'error',
-				});
-			}
 			this.post({
 				type: 'agentsData',
 				presets: BUILTIN_PRESETS.map((p) => ({
@@ -720,89 +645,6 @@ export class SettingsPanel {
 				created: false,
 				error: err instanceof Error ? err.message : String(err),
 			});
-		}
-	}
-
-	private async handleCheckConnection(baseUrl: string, requestId: number): Promise<void> {
-		this.modelsAbort?.abort();
-		const controller = new AbortController();
-		this.modelsAbort = controller;
-
-		try {
-			const health = await this.client.checkConnectionHealth({
-				baseUrl,
-				signal: controller.signal,
-			});
-			if (controller.signal.aborted) {
-				return;
-			}
-
-			this.post({
-				type: 'connectionHealth',
-				ok: health.ok,
-				modelCount: health.modelCount,
-				message: health.message,
-				requestId,
-			});
-		} catch (err) {
-			if (isAbortError(err) || controller.signal.aborted) {
-				return;
-			}
-
-			this.post({
-				type: 'connectionHealth',
-				ok: false,
-				modelCount: 0,
-				message: err instanceof Error ? err.message : String(err),
-				requestId,
-			});
-		} finally {
-			if (this.modelsAbort === controller) {
-				this.modelsAbort = undefined;
-			}
-		}
-	}
-
-	private async handleLoadModels(baseUrl: string, requestId: number): Promise<void> {
-		this.modelsAbort?.abort();
-		const controller = new AbortController();
-		this.modelsAbort = controller;
-
-		try {
-			const models = await this.client.listModelOptions({
-				baseUrl,
-				signal: controller.signal,
-			});
-			if (controller.signal.aborted) {
-				return;
-			}
-
-			if (models.length > 0) {
-				const current = getSettings().model;
-				if (!current || !models.some((item) => item.id === current)) {
-					setSessionModel(models[0].id);
-				}
-			}
-
-			this.post({
-				type: 'models',
-				models,
-				requestId,
-			});
-		} catch (err) {
-			if (isAbortError(err) || controller.signal.aborted) {
-				return;
-			}
-			
-			this.post({
-				type: 'modelsError',
-				message: err instanceof Error ? err.message : String(err),
-				requestId,
-			});
-		} finally {
-			if (this.modelsAbort === controller) {
-				this.modelsAbort = undefined;
-			}
 		}
 	}
 }

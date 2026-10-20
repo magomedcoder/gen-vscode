@@ -5,7 +5,6 @@ import * as vscode from 'vscode';
 import { AGENT_LIMITS, previewText } from '../agent/policy';
 import { getEffectiveHooksInline, getEffectiveHooksPath } from '../../core/config/layers';
 import { writeLog } from '../../core/log/logger';
-import { recordActivity } from '../../core/stores/activityStore';
 
 const execFileAsync = promisify(execFile);
 
@@ -161,13 +160,6 @@ async function readHooksFile(uri: vscode.Uri): Promise<ProjectHooks> {
 		lastHooksError = `${uri.fsPath}: ${err instanceof Error ? err.message : String(err)}`;
 		if (lastReportedHooksError !== lastHooksError) {
 			lastReportedHooksError = lastHooksError;
-			recordActivity({
-				kind: 'tool',
-				toolName: 'hooks',
-				label: vscode.l10n.t('activity.hooks.malformed', lastHooksError),
-				path: uri.fsPath,
-				status: 'error',
-			});
 			writeLog('agent', `[hooks] failed to load: ${lastHooksError}`);
 		}
 
@@ -399,7 +391,7 @@ export async function runBeforeShellHook(commandLine: string, signal?: AbortSign
 	}, signal);
 }
 
-// Уведомление после turn-diff: пути через GEN_HOOK_PATHS
+// Уведомление session.diff после хода: пути через GEN_HOOK_PATHS
 export async function runSessionDiffHook(paths: string[], turnId: string): Promise<HookRunResult> {
 	return runHookEvent('session.diff', {
 		GEN_HOOK_PATHS: paths.join('\n').slice(0, 8_000),

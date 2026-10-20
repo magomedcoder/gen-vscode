@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { getSettings } from '../../core/config/settings';
-import { buildAuthHeaders, getEmbeddingsApiKey } from '../../core/config/apiKey';
+import { buildAuthHeaders } from '../../core/config/apiKey';
 import { getResolvedSecret } from '../../core/config/secretVault';
 import { getIndexManagerInstance } from './IndexManager';
 import { contentHash } from './hash';
@@ -51,11 +51,9 @@ async function fetchEmbeddingsBatch(
 		throw new Error('embeddings: не задан baseUrl / embeddingsBaseUrl');
 	}
 
-	// Отдельный ключ embeddings; если не задан - тот же vault-ключ, что и для LLM (apiKey)
-	const embeddingsStored = await getEmbeddingsApiKey();
-	const apiKey = embeddingsStored
-		? await getResolvedSecret('embeddingsApiKey')
-		: await getResolvedSecret('apiKey');
+	// Отдельный ключ embeddings (vault/env); если пусто - тот же, что для LLM
+	const embeddingsKey = await getResolvedSecret('embeddingsApiKey');
+	const apiKey = embeddingsKey || await getResolvedSecret('apiKey');
 	const headers: Record<string, string> = {
 		'Content-Type': 'application/json',
 		...buildAuthHeaders(apiKey, settings.authHeader, settings.authScheme),

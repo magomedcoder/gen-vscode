@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { isIgnoredByGitIgnore, matchesWatcherIgnore } from '../agent/gitIgnore';
 import { getSettings } from '../../core/config/settings';
-import { emitIndexMerkleMetrics } from '../../core/llm/otel';
+import { mapLimit } from '../../core/util/asyncPool';
 import { chunkFileContent, chunkFileContentAst } from './chunk';
 import { canSkipDirRewalk, parentDir } from './dirDigests';
 import { contentHash } from './hash';
@@ -9,16 +9,21 @@ import { applyTreeSitterSettings, shouldUseTreeSitterChunk } from './indexEngine
 import { folderStorageKey, initIndexStorage, isIndexStorageAvailable } from './indexStorage';
 import { recordChunkEngineUse, recordMerkleSkipStats, recordOutlineBreakdown, resetIndexRunStats } from './indexStats';
 import { saveMerkleToSqlite, shouldUseSqliteStorage } from './indexSqlite';
+import { flushVectorsCache } from './vectorStore';
 import { listIndexableFiles, readIndexableText } from './scanner';
 import { IndexAbortFlag, isIndexAbortError, summarizePartialErrors } from './manifestParse';
 import { buildMerkleDocument, detectMerkleIssues, digestsFromChunks, dropPathFromMerkle, emptyMerkleMetrics, loadMerkle, mergeChunksPreservingDigests, patchMerkleDocument, repairMerkleFromManifest, saveMerkle, syncManifestDirDigests, unchangedSymbolLeaves } from './merkle';
 import type { MerkleDocument, MerkleMetrics } from './merkle';
-import { loadManifest, repairManifestFile, saveManifest } from './store';
+import { loadManifest, loadManifestCached, repairManifestFile, saveManifest } from './store';
 import { maybeRefreshSymbolIndex, rebuildSymbolIndex, removeSymbolIndexPath, updateSymbolIndexForFile } from './symbolIndex';
 import { initTreeSitter, listMissingDefaultWasmLangs, parseWithTreeSitter } from './treeSitter';
 import { loadOutlineIndex, maybeRefreshOutlineIndex, outlineSourceBreakdown, removeOutlineIndexPath, updateOutlineIndexForFile } from './tsOutline';
 import { patchManifestTrigrams, rebuildManifestTrigrams, searchTrigrams } from './trigram';
 import type { CodebaseSearchHit, IndexManifest, IndexProgress } from './types';
+
+// Параллелизм fullIndex: stat и indexOneFile (чтение + chunk/parse)
+const INDEX_STAT_CONCURRENCY = 16;
+const INDEX_FILE_CONCURRENCY = 6;
 
 const NO_STORAGE_ERROR = 'Хранилище индекса недоступно (нет storageUri)';
 
@@ -50,7 +55,7 @@ export class IndexManager implements vscode.Disposable {
 					!e.affectsConfiguration('gen.outlineEngine') &&
 					!e.affectsConfiguration('gen.chunkEngine')
 				) {
-	
+					return;
 				}
 				void this.maybePromptEngineReindex();
 			}),
@@ -97,6 +102,8 @@ export class IndexManager implements vscode.Disposable {
 			flag.abort();
 		}
 		this.abortByFolder.clear();
+		// Batched remote-vector cache: дописать pending перед выходом
+		void flushVectorsCache().catch(() => {});
 
 		for (const d of this.disposables) {
 			d.dispose();
@@ -313,7 +320,8 @@ export class IndexManager implements vscode.Disposable {
 			void this.scheduleFullIndex(folder);
 		}
 
-		const manifest = await loadManifest(key);
+		// Read-only кэш (stat-валидация + invalidate в saveManifest) вместо read+parse на каждый запрос
+		const manifest = await loadManifestCached(key);
 		const ranked = searchTrigrams(manifest, query, maxResults);
 		const hits: CodebaseSearchHit[] = [];
 
@@ -520,10 +528,13 @@ export class IndexManager implements vscode.Disposable {
 			size: number;
 			mtimeMs?: number;
 		};
-		const withMeta: FileMeta[] = [];
 		for (const file of files) {
-			abort?.throwIfAborted();
 			seen.add(file.relative);
+		}
+
+		// stat параллельно (bounded), порядок files сохраняется; abort - общий флаг
+		const statted = await mapLimit(files, INDEX_STAT_CONCURRENCY, async (file): Promise<FileMeta> => {
+			abort?.throwIfAborted();
 			let size = -1;
 			let mtimeMs: number | undefined;
 			try {
@@ -533,8 +544,14 @@ export class IndexManager implements vscode.Disposable {
 			} catch {
 				size = -1;
 			}
-			withMeta.push({ relative: file.relative, uri: file.uri, size, mtimeMs });
-		}
+
+			return { 
+				relative: file.relative, 
+				uri: file.uri, 
+				size, mtimeMs 
+			};
+		});
+		const withMeta: FileMeta[] = statted.filter((row): row is FileMeta => row !== undefined);
 
 		// Группы по родительскому каталогу
 		const byParent = new Map<string, FileMeta[]>();
@@ -596,31 +613,46 @@ export class IndexManager implements vscode.Disposable {
 		metrics.dirsSkipped = dirsSkipped;
 
 		const prevMerkle = await loadMerkle(folderFsPath);
-		let chunkDigests = { ...prevMerkle.chunkDigests };
+		const chunkDigests = { ...prevMerkle.chunkDigests };
 		let symbolDigestsAcc = { ...prevMerkle.symbolDigests };
 		let chunksSkipped = 0;
 		let chunksIndexed = 0;
 		const indexedChunkIds: string[] = [];
 
 		let cancelled = false;
-		for (const file of withMeta) {
+		const toIndex = withMeta.filter((file) => !skipFiles.has(file.relative));
+		// Пул воркеров: indexOneFile мутирует manifest только по ключам своего файла (после await - синхронно), shared abort: любой воркер/внешний cancelIndex останавливает выдачу новых файлов.
+		await mapLimit(toIndex, INDEX_FILE_CONCURRENCY, async (file) => {
 			if (abort?.aborted) {
 				cancelled = true;
-				break;
+				return;
 			}
 
-			if (skipFiles.has(file.relative)) {
-				continue;
+			// Digests только предыдущих чанков этого файла (не копируем весь map на каждый файл)
+			const prevIds = manifest.files[file.relative]?.chunkIds ?? [];
+			const scopedDigests: Record<string, string> = {};
+			for (const id of prevIds) {
+				const d = chunkDigests[id];
+				if (d) {
+					scopedDigests[id] = d;
+				}
 			}
 
 			try {
 				const one = await this.indexOneFile(manifest, folderFsPath, file.relative, file.uri, {
 					save: false,
 					mtimeMs: file.mtimeMs,
-					chunkDigests,
+					chunkDigests: scopedDigests,
 					prevSymbolDigests: prevMerkle.symbolDigests,
 				});
-				chunkDigests = one.chunkDigests;
+				if (one.result === 'content') {
+					for (const id of prevIds) {
+						delete chunkDigests[id];
+					}
+
+					Object.assign(chunkDigests, one.chunkDigests);
+				}
+
 				Object.assign(symbolDigestsAcc, one.symbolDigests);
 				chunksSkipped += one.chunksSkipped;
 				chunksIndexed += one.chunksIndexed;
@@ -631,12 +663,15 @@ export class IndexManager implements vscode.Disposable {
 			} catch (err) {
 				if (isIndexAbortError(err)) {
 					cancelled = true;
-					break;
+					return;
 				}
 				// Частичный сбой: не валим весь индекс - копим ошибку и идём дальше
 				const msg = err instanceof Error ? err.message : String(err);
 				partialErrors.push(`${file.relative}: ${msg}`);
 			}
+		}, () => cancelled || Boolean(abort?.aborted));
+		if (abort?.aborted) {
+			cancelled = true;
 		}
 
 		if (!cancelled) {
@@ -810,24 +845,6 @@ export class IndexManager implements vscode.Disposable {
 			` чанки +${metrics.chunksIndexed}/reuse ${metrics.chunksSkipped}` +
 			(missingWasm > 0 ? `, tree-sitter wasm отсутствует: ${missingWasm}` : '');
 		console.info(`[gen] ${line} @ ${folderFsPath}`);
-		try {
-			void import('../../core/stores/activityStore').then((mod) => {
-				mod.recordActivity({
-					kind: 'tool',
-					label: line,
-					toolName,
-					status: 'ok',
-					path: folderFsPath,
-				});
-			}).catch(() => {});
-		} catch {}
-		try {
-			emitIndexMerkleMetrics(getSettings(), {
-				...metrics,
-				folderKey: folderStorageKey(folderFsPath),
-				treesitterMissingWasm: missingWasm,
-			});
-		} catch {}
 	}
 
 	private async persistMerkle(

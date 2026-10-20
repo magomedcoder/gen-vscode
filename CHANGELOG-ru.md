@@ -1,10 +1,12 @@
 # Changelog
 
-[English version](CHANGELOG.md)
-
 ## dev
 
-- **Tree-sitter:** CI smoke на каждый default-язык (`tree-sitter langs smoke`); rename `TREE_SITTER_DEFAULT_LANGS`; golden spans; Indexing UI langs + missing wasm; spans≥1; worker parity; copy/hint; OTEL `treesitterMissingWasm`
+- **Chat modes:** единый реестр `CHAT_MODE_DEFS`; в composer - select всех режимов; Settings + slash из того же списка; убраны legacy Ask/Agent toggle, mode-badge
+- **IDE / DX:** `gen.generateCommitMessage` (+ Abort) в SCM title; opt-in gen Tab `InlineCompletionItemProvider` (`inlineCompletionEnabled`)
+- **Browser CU:** tool `browser_action` (launch/click/type/scroll/screenshot/close) + settings viewport/CDP/Chrome path (`browserComputerUseEnabled`); screenshot с console logs
+- **Web / mentions / meta:** `web_fetch` (URL->markdown); mention `@url`; tools `attempt_completion`, `report_bug`, `new_rule`
+- **Tree-sitter:** CI smoke на каждый default-язык (`tree-sitter langs smoke`); rename `TREE_SITTER_DEFAULT_LANGS`; golden spans; Indexing UI langs + missing wasm; spans≥1; worker parity; copy/hint
 - **Secrets:** vault + `embeddingsApiKey`; `{file:}` Browse; confirm clear; единый Secrets на Security
 - **Design:** `design_screenshot` (`wait_until`); команда `gen.design.pickFromClipboard`; Design session UI
 - **Agents / hooks / plugins:** `generateAgentFile`; dry-run hooks в Settings; prompt-macro UX
@@ -20,7 +22,7 @@
 - **Index / symbols:** метрики LSP symbol index (`ok`/`fail`/`partial`) в engineStatus; Repair пересобирает `symbols.json`
 - **Tools:** `repo_health` Tree-sitter + Python/Go, меньше FP на barrel re-export; `test_impact` import-граф / outline / `.gen/coverage-map.json`
 - **Index UI:** движки/языки/storage + статус wasm/AST%/merkle skip%/outline/vectors/symbols на **Settings -> Проект**; смена engine может предложить reindex; `codebase_search` `debug` может показать merkle skip%
-- **OTEL / tests:** spans `index.treesitter` / метрики full index; fixtures + `treeSitter.test.ts` / `merkle.test.ts` / `indexStorage.test.ts` / `vectorStore.test.ts`
+- **Index / tests:** метрики `index.treesitter` / full index; fixtures + `treeSitter.test.ts` / `merkle.test.ts` / `indexStorage.test.ts` / `vectorStore.test.ts`
 - **Shell / tests:** sandbox cwd (`shellCwd`); `run_tests` ranked failures + фильтры из `test_impact`; `repo_health` -> Activity + `.gen/reports/`
 - **Agents / personas / hooks / plugins:** `generate_agent` + reserved ids; builtin personas; hooks matchers + dry-run; plugin trust/bin audit; dynamic tools как prompt-macros; кэш skills URL
 - **Sessions / config / privacy:** archive/filter/search; exportArchive quarantine + redact; schema errors слоёв; admin locks; Privacy Mode; `compactReservedTokens` = headroom
@@ -97,7 +99,7 @@
 - Упоминания: `@git` `@branch_diff` `@rules` `@link` `@code` `@Docs` `@agent` `@terminals` `@past` `@alias`/`@ref`; paste path `@file`; `!command`; Ctrl+L
 - Chat UX: multi-session + fork, параллельные runs по табам, drafts, AskQuestion / Todo, thinking toggle, model picker, context ring, звук notify
 - Review: pending-changes с деревом файлов + Accept/Reject на файл; CodeLens Keep/Undo; git-sync auto-Keep; edit + revertFiles
-- Indexing: toggles + статус движка (CPU trigram / remote embeddings); opt-in OTEL spans для LLM
+- Indexing: toggles + статус движка (CPU trigram / remote embeddings)
 - Settings UI: отдельные экраны (Чат / Агент / Индекс / Права); нав Основное / Дополнительно; все разделы всегда видны; удобнее toggles полей
 - Usage: ledger токенов по моделям (totals/sort); placeholder Quota (OAuth)
 - Поиск по Settings; deep-links в VSCode; sidebar или bottom panel (`chatViewLocation`); light/HC polish

@@ -79,14 +79,14 @@ suite('config layers', () => {
 		assert.strictEqual('secretPatterns' in stripped, false);
 	});
 
-	test('parseFileConfig: project может задать команды/redact; deniedPaths игнорируется', () => {
+	test('parseFileConfig: project может задать команды/redact; неизвестные ключи не попадают в settings', () => {
 		const parsed = parseFileConfig({
-			deniedPaths: ['.env'],
+			notASettingsKey: ['.env'],
 			deniedCommands: ['rm'],
 			sensitivePathPatterns: ['.env.*'],
 			secretPatterns: ['token'],
 		});
-		assert.strictEqual((parsed.settings as { deniedPaths?: unknown }).deniedPaths, undefined);
+		assert.strictEqual((parsed.settings as { notASettingsKey?: unknown }).notASettingsKey, undefined);
 		assert.deepStrictEqual(parsed.settings.deniedCommands, ['rm']);
 		assert.deepStrictEqual(parsed.settings.sensitivePathPatterns, ['.env.*']);
 		assert.deepStrictEqual(parsed.settings.secretPatterns, ['token']);
@@ -149,13 +149,13 @@ suite('admin policy', () => {
 			$schema: './schemas/gen-policy.schema.json',
 			webSearchEnabled: false,
 			systemPrompt: 'ignored',
-			otelEnabled: false,
+			webFetchEnabled: false,
 		});
 		assert.strictEqual(parsed.settings.webSearchEnabled, false);
-		assert.strictEqual(parsed.settings.otelEnabled, false);
+		assert.strictEqual(parsed.settings.webFetchEnabled, false);
 		assert.strictEqual((parsed.settings as { systemPrompt?: unknown }).systemPrompt, undefined);
 		assert.ok(parsed.lockedKeys.includes('webSearchEnabled'));
-		assert.ok(parsed.lockedKeys.includes('otelEnabled'));
+		assert.ok(parsed.lockedKeys.includes('webFetchEnabled'));
 	});
 
 	test('matchAdminPattern: * wildcards', () => {

@@ -46,8 +46,8 @@
         "category": "%extension.category%"
       },
       {
-        "command": "gen.openChatSidebar",
-        "title": "%command.openChatSidebar.title%",
+        "command": "gen.openChatEditor",
+        "title": "%command.openChatEditor.title%",
         "category": "%extension.category%"
       },
       {
@@ -124,6 +124,17 @@
         "command": "gen.hunk.reject",
         "title": "%command.hunkReject.title%",
         "category": "%extension.category%"
+      },
+      {
+        "command": "gen.generateCommitMessage",
+        "title": "%command.generateCommitMessage.title%",
+        "category": "%extension.category%",
+        "icon": "$(sparkle)"
+      },
+      {
+        "command": "gen.abortCommitMessage",
+        "title": "%command.abortCommitMessage.title%",
+        "category": "%extension.category%"
       }
     ],
     "keybindings": [
@@ -145,34 +156,7 @@
         "when": "editorHasSelection && editorTextFocus"
       }
     ],
-    "configuration": {
-      "title": "%configuration.gen.title%",
-      "properties": {
-        "gen.chatViewLocation": {
-          "type": "string",
-          "enum": [
-            "panel",
-            "sidebar",
-            "both"
-          ],
-          "default": "both",
-          "description": "%config.gen.chatViewLocation.description%",
-          "enumDescriptions": [
-            "%config.gen.chatViewLocation.panel%",
-            "%config.gen.chatViewLocation.sidebar%",
-            "%config.gen.chatViewLocation.both%"
-          ]
-        }
-      }
-    },
     "viewsContainers": {
-      "activitybar": [
-        {
-          "id": "gen-sidebar",
-          "title": "%viewsContainers.activitybar.gen-sidebar.title%",
-          "icon": "media/logo.svg"
-        }
-      ],
       "panel": [
         {
           "id": "gen",
@@ -187,17 +171,7 @@
           "type": "webview",
           "id": "gen.chatView",
           "name": "%views.gen.chatView.name%",
-          "icon": "media/logo.svg",
-          "when": "config.gen.chatViewLocation != 'sidebar'"
-        }
-      ],
-      "gen-sidebar": [
-        {
-          "type": "webview",
-          "id": "gen.chatViewSidebar",
-          "name": "%views.gen.chatView.name%",
-          "icon": "media/logo.svg",
-          "when": "config.gen.chatViewLocation != 'panel'"
+          "icon": "media/logo.svg"
         }
       ]
     },
@@ -261,6 +235,13 @@
         {
           "command": "gen.notebook.generateCell",
           "group": "gen@4"
+        }
+      ],
+      "scm/title": [
+        {
+          "command": "gen.generateCommitMessage",
+          "group": "navigation",
+          "when": "scmProvider == git"
         }
       ]
     },

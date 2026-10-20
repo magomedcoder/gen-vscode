@@ -22,6 +22,45 @@ export interface ResearchJob {
 	reportSnippet?: string;
 }
 
+// Максимум jobs в памяти/UI одной вкладки (terminal oldest выкидываем)
+export const MAX_RESEARCH_JOBS = 50;
+
+function isTerminalStatus(status: ResearchJobStatus): boolean {
+	return status === 'done' || status === 'error' || status === 'aborted';
+}
+
+/**
+ * Cap по MAX_RESEARCH_JOBS: удаляем самые старые terminal (порядок массива = порядок создания).
+ * Active (queued/running) и keepId не трогаем - список может временно превысить cap.
+ */
+export function pruneResearchJobs(
+	jobs: readonly ResearchJob[],
+	max: number = MAX_RESEARCH_JOBS,
+	keepId?: string,
+): ResearchJob[] {
+	let excess = jobs.length - max;
+	if (excess <= 0) {
+		return jobs as ResearchJob[];
+	}
+
+	const drop = new Set<string>();
+	// Сначала terminal без worktree (record worktree нужен для cleanup UI), затем любые terminal
+	for (const requireNoWorktree of [true, false]) {
+		for (const job of jobs) {
+			if (excess <= 0) {
+				break;
+			}
+
+			if (isTerminalStatus(job.status) && job.id !== keepId && !drop.has(job.id) && (!requireNoWorktree || !job.worktreePath)) {
+				drop.add(job.id);
+				excess -= 1;
+			}
+		}
+	}
+
+	return drop.size > 0 ? jobs.filter((j) => !drop.has(j.id)) : (jobs as ResearchJob[]);
+}
+
 // Обновить или вставить job по id (сохраняем startedAt при переходе running->done)
 export function upsertResearchJob(
 	jobs: readonly ResearchJob[],
@@ -46,7 +85,7 @@ export function upsertResearchJob(
 			finishedAt: patch.finishedAt,
 			reportSnippet: patch.reportSnippet,
 		};
-		return [...jobs, created];
+		return pruneResearchJobs([...jobs, created], MAX_RESEARCH_JOBS, created.id);
 	}
 
 	const prev = jobs[idx]!;

@@ -9,7 +9,6 @@ import { formatCommandLine } from '../../commandPolicy';
 import { confirmAlwaysOrSkip } from '../confirm';
 import { pathIsInside } from '../../policy';
 import { getSettings } from '../../../../core/config/settings';
-import { recordActivity } from '../../../../core/stores/activityStore';
 
 // Список локальных `.gen/tools` / `.gen/plugins` и npm-каталога (без require)
 export const listPluginsTool: ToolDefinition = {
@@ -220,21 +219,6 @@ export const runPluginTool: ToolDefinition = {
 			cwd: workspaceRoot,
 			timeoutMs: timeoutMs ?? undefined,
 			signal: ctx.signal,
-		});
-		recordActivity({
-			kind: 'shell',
-			toolName: 'run_plugin',
-			label: result.ok
-				? vscode.l10n.t('activity.plugin.runSucceeded', hit.name)
-				: vscode.l10n.t('activity.plugin.runFailed', hit.name),
-			path: vscode.workspace.asRelativePath(workspaceRoot, false) || '.',
-			status: result.ok ? 'ok' : 'error',
-			cwd: workspaceRoot,
-			resolvedBin: exe.args[0] ?? exe.command,
-			args: sanitizeAuditArgs(cmdArgs),
-			exitCode: result.exitCode,
-			timeoutMs: effectiveTimeoutMs,
-			timedOut: result.timedOut,
 		});
 		return {
 			ok: result.ok,

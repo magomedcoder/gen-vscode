@@ -2,27 +2,16 @@ import { t } from '../../i18n';
 import type { SettingsPageProps } from './pages';
 import { parseNumberInput } from './parseNumber';
 import { FieldNumber, FieldSelect, FieldText, FieldToggle } from './SettingsFields';
-import { SecretFieldBlock } from './SecretFieldBlock';
 import { SettingsSection } from './SettingsSection';
 
 interface RequestPageProps extends SettingsPageProps {
 	cachedNCtx?: number;
-	webSearchApiKeySet?: boolean;
-	webSearchApiKeyDraft?: string;
-	clearWebSearchApiKey?: boolean;
-	onWebSearchApiKeyDraft?: (value: string) => void;
-	onClearWebSearchApiKey?: () => void;
 }
 
 export function RequestPage({
 	draft,
 	setField,
 	cachedNCtx,
-	webSearchApiKeySet = false,
-	webSearchApiKeyDraft = '',
-	clearWebSearchApiKey = false,
-	onWebSearchApiKeyDraft,
-	onClearWebSearchApiKey,
 }: RequestPageProps) {
 	const nCtxWarn = typeof cachedNCtx === 'number'
 		&& cachedNCtx > 0
@@ -157,22 +146,7 @@ export function RequestPage({
 				) : null}
 
 				{draft.webSearchBackend === 'exa' || draft.webSearchBackend === 'parallel' || draft.webSearchBackend === 'http' ? (
-					<SecretFieldBlock
-						labelKey="settings.webSearchApiKey.label"
-						hintKey="settings.webSearchApiKey.hint"
-						value={webSearchApiKeyDraft}
-						keySet={webSearchApiKeySet}
-						markedClear={clearWebSearchApiKey}
-						placeholder={
-							clearWebSearchApiKey
-								? t('settings.apiKey.placeholderClear')
-								: webSearchApiKeySet
-									? t('settings.apiKey.placeholderSet')
-									: ''
-						}
-						onChange={(v) => onWebSearchApiKeyDraft?.(v)}
-						onMarkClear={() => onClearWebSearchApiKey?.()}
-					/>
+					<span className="field__hint">{t('settings.webSearchApiKey.envHint')}</span>
 				) : null}
 			</SettingsSection>
 

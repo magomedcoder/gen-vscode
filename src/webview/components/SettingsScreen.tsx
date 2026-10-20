@@ -17,7 +17,6 @@ import { RequestPage } from './settings/RequestPage';
 import { RulesSkillsPage, type RulesSkillsPageData } from './settings/RulesSkillsPage';
 import { SecurityPage } from './settings/SecurityPage';
 import { UsagePage } from './settings/UsagePage';
-import { ActivityPage } from './settings/ActivityPage';
 import { AgentBehaviorPage } from './settings/AgentBehaviorPage';
 import { AgentsPage, type AgentsPageData } from './settings/AgentsPage';
 
@@ -27,9 +26,6 @@ interface SettingsScreenProps {
 	// Баннер admin policy: заблокированные ключи
 	adminPolicy?: AdminPolicyInfo;
 	status?: string;
-	apiKeySet: boolean;
-	webSearchApiKeySet?: boolean;
-	embeddingsApiKeySet?: boolean;
 	persistedAlwaysAllow?: string[];
 	models: LlmModelOption[];
 	modelsStatus?: string;
@@ -46,13 +42,7 @@ interface SettingsScreenProps {
 	agents?: AgentsPageData;
 	agentsStatus?: string;
 	rulesSkills?: RulesSkillsPageData;
-	onSave: (settings: GenSettings, api?: {
-		apiKey?: string;
-		clearApiKey?: boolean;
-		webSearchApiKey?: string;
-		clearWebSearchApiKey?: boolean;
-		embeddingsApiKey?: string;
-		clearEmbeddingsApiKey?: boolean;
+	onSave: (settings: GenSettings, extras?: {
 		persistedAlwaysAllow?: string[];
 	}) => void;
 	onLoadModels: (baseUrl: string) => void;
@@ -109,9 +99,6 @@ export function SettingsScreen({
 	settings,
 	personas = [],
 	adminPolicy,
-	apiKeySet,
-	webSearchApiKeySet = false,
-	embeddingsApiKeySet = false,
 	persistedAlwaysAllow: persistedAlwaysAllowProp = [],
 	status,
 	models,
@@ -148,12 +135,6 @@ export function SettingsScreen({
 }: SettingsScreenProps) {
 	const [page, setPage] = useState<SettingsPageId>('connection');
 	const [draft, setDraft] = useState<GenSettings>(settings);
-	const [apiKeyDraft, setApiKeyDraft] = useState('');
-	const [clearApiKey, setClearApiKey] = useState(false);
-	const [webSearchApiKeyDraft, setWebSearchApiKeyDraft] = useState('');
-	const [clearWebSearchApiKey, setClearWebSearchApiKey] = useState(false);
-	const [embeddingsApiKeyDraft, setEmbeddingsApiKeyDraft] = useState('');
-	const [clearEmbeddingsApiKey, setClearEmbeddingsApiKey] = useState(false);
 	const [persistedAlwaysAllowDraft, setPersistedAlwaysAllowDraft] = useState<string[]>(persistedAlwaysAllowProp);
 
 	const lockedKeySet = useMemo(
@@ -163,19 +144,13 @@ export function SettingsScreen({
 
 	useEffect(() => {
 		setDraft({ ...settings });
-		setApiKeyDraft('');
-		setClearApiKey(false);
-		setWebSearchApiKeyDraft('');
-		setClearWebSearchApiKey(false);
-		setEmbeddingsApiKeyDraft('');
-		setClearEmbeddingsApiKey(false);
 		setPersistedAlwaysAllowDraft(persistedAlwaysAllowProp);
 		if (settings.baseUrl.trim()) {
 			onLoadModels(settings.baseUrl);
 		} else {
 			onLoadModels('');
 		}
-	}, [settings, apiKeySet, webSearchApiKeySet, embeddingsApiKeySet, persistedAlwaysAllowProp, onLoadModels]);
+	}, [settings, persistedAlwaysAllowProp, onLoadModels]);
 
 	useEffect(() => {
 		if (models.length === 0) {
@@ -215,24 +190,12 @@ export function SettingsScreen({
 		next.secretPatterns = [...settings.secretPatterns];
 
 		setDraft(next);
-		setApiKeyDraft('');
-		setClearApiKey(false);
-		setWebSearchApiKeyDraft('');
-		setClearWebSearchApiKey(false);
-		setEmbeddingsApiKeyDraft('');
-		setClearEmbeddingsApiKey(false);
 		onSave(next);
 	};
 
 	const onSubmit = (event: SubmitEvent<HTMLFormElement>) => {
 		event.preventDefault();
 		onSave({ ...draft }, {
-			apiKey: clearApiKey ? undefined : apiKeyDraft,
-			clearApiKey: clearApiKey || undefined,
-			webSearchApiKey: clearWebSearchApiKey ? undefined : webSearchApiKeyDraft,
-			clearWebSearchApiKey: clearWebSearchApiKey || undefined,
-			embeddingsApiKey: clearEmbeddingsApiKey ? undefined : embeddingsApiKeyDraft,
-			clearEmbeddingsApiKey: clearEmbeddingsApiKey || undefined,
 			persistedAlwaysAllow: persistedAlwaysAllowDraft,
 		});
 	};
@@ -276,22 +239,11 @@ export function SettingsScreen({
 								<ConnectionPage
 									draft={draft}
 									setField={setField}
-									apiKeySet={apiKeySet}
-									apiKeyDraft={apiKeyDraft}
-									clearApiKey={clearApiKey}
 									models={models}
 									modelsStatus={modelsStatus}
 									modelsLoading={modelsLoading}
 									connectionHealth={connectionHealth}
 									connectionHealthLoading={connectionHealthLoading}
-									onApiKeyDraft={(v) => {
-										setClearApiKey(false);
-										setApiKeyDraft(v);
-									}}
-									onClearApiKey={() => {
-										setClearApiKey(true);
-										setApiKeyDraft('');
-									}}
 									onLoadModels={onLoadModels}
 									onCheckConnection={onCheckConnection}
 								/>
@@ -299,17 +251,6 @@ export function SettingsScreen({
 									draft={draft}
 									setField={setField}
 									cachedNCtx={cachedNCtx}
-									webSearchApiKeySet={webSearchApiKeySet}
-									webSearchApiKeyDraft={webSearchApiKeyDraft}
-									clearWebSearchApiKey={clearWebSearchApiKey}
-									onWebSearchApiKeyDraft={(v) => {
-										setClearWebSearchApiKey(false);
-										setWebSearchApiKeyDraft(v);
-									}}
-									onClearWebSearchApiKey={() => {
-										setClearWebSearchApiKey(true);
-										setWebSearchApiKeyDraft('');
-									}}
 								/>
 							</>
 						) : null}
@@ -329,39 +270,6 @@ export function SettingsScreen({
 								<SecurityPage
 									draft={draft}
 									setField={setField}
-									apiKeySet={apiKeySet}
-									apiKeyDraft={apiKeyDraft}
-									clearApiKey={clearApiKey}
-									onApiKeyDraft={(v) => {
-										setClearApiKey(false);
-										setApiKeyDraft(v);
-									}}
-									onClearApiKey={() => {
-										setClearApiKey(true);
-										setApiKeyDraft('');
-									}}
-									webSearchApiKeySet={webSearchApiKeySet}
-									webSearchApiKeyDraft={webSearchApiKeyDraft}
-									clearWebSearchApiKey={clearWebSearchApiKey}
-									onWebSearchApiKeyDraft={(v) => {
-										setClearWebSearchApiKey(false);
-										setWebSearchApiKeyDraft(v);
-									}}
-									onClearWebSearchApiKey={() => {
-										setClearWebSearchApiKey(true);
-										setWebSearchApiKeyDraft('');
-									}}
-									embeddingsApiKeySet={embeddingsApiKeySet}
-									embeddingsApiKeyDraft={embeddingsApiKeyDraft}
-									clearEmbeddingsApiKey={clearEmbeddingsApiKey}
-									onEmbeddingsApiKeyDraft={(v) => {
-										setClearEmbeddingsApiKey(false);
-										setEmbeddingsApiKeyDraft(v);
-									}}
-									onClearEmbeddingsApiKey={() => {
-										setClearEmbeddingsApiKey(true);
-										setEmbeddingsApiKeyDraft('');
-									}}
 									designSession={designSession}
 									onLoadDesignSession={onLoadDesignSession}
 								/>
@@ -415,7 +323,6 @@ export function SettingsScreen({
 						{page === 'journal' ? (
 							<>
 								<UsagePage draft={draft} setField={setField} />
-								<ActivityPage draft={draft} setField={setField} />
 								<LoggingPage
 									draft={draft}
 									setField={setField}

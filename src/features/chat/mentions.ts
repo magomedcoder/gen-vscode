@@ -5,6 +5,7 @@ import { semanticSearchWorkspace } from '../index/embeddings';
 import { getProjectMap } from '../index/projectMap';
 import { formatSymbolIndexSummary } from '../index/symbolIndex';
 import { getSettings } from '../../core/config/settings';
+import { htmlToMarkdown } from '../agent/tools/meta/htmlToMarkdown';
 import { loadProjectRulesAppendix } from '../project/projectRules';
 import { collectReferenceHits, ensureReferenceCached, formatReferenceSourceBlock } from '../project/references';
 import { ensureTerminalBufferListener, getTerminalBuffers } from './terminalBuffer';
@@ -12,7 +13,7 @@ import { getSessionPeek } from './sessionStore';
 import type { ChatUiMessage } from './protocol';
 import { combineRetrievalScore, MENTION_KIND_MAX_HITS, MENTION_KIND_TOKEN_QUOTAS, packMentionHitsToQuota, packPastMessagesToQuota, scoreQueryRelevance } from './mentionKindRetrieval';
 import type { MentionRetrievalHit } from './mentionKindRetrieval';
-export type MentionKind = 'file' | 'folder' | 'codebase' | 'code' | 'git' | 'branch_diff' | 'git_changes' | 'problems' | 'rules' | 'link' | 'docs' | 'agent' | 'terminals' | 'past' | 'alias' | 'ref' | 'map' | 'symbols';
+export type MentionKind = 'file' | 'folder' | 'codebase' | 'code' | 'git' | 'branch_diff' | 'git_changes' | 'problems' | 'rules' | 'link' | 'url' | 'docs' | 'agent' | 'terminals' | 'past' | 'alias' | 'ref' | 'map' | 'symbols';
 
 export interface ParsedMention {
 	kind: MentionKind;
@@ -39,7 +40,7 @@ export interface ResolvedMentions {
 // codebase раньше code - иначе @codebase сматчится как @code + arg "base"
 // git_changes раньше git ; problems - argless
 // Args: backticks / "double" / 'single' (через пробел или :); без кавычек = [^\s@]+ (без пробелов)
-const MENTION_RE = /@(file|folder|codebase|code|git-changes|git|branch_diff|problems|rules|link|docs|agent|terminals|past|alias|ref|map|symbols)(?:\s+`([^`]+)`|\s+"([^"]+)"|\s+'([^']+)'|:`([^`]+)`|:"([^"]+)"|:'([^']+)'|:([^\s`"']+)|(?:\s+)([^\s@]+))?/gi;
+const MENTION_RE = /@(file|folder|codebase|code|git-changes|git|branch_diff|problems|rules|link|url|docs|agent|terminals|past|alias|ref|map|symbols)(?:\s+`([^`]+)`|\s+"([^"]+)"|\s+'([^']+)'|:`([^`]+)`|:"([^"]+)"|:'([^']+)'|:([^\s`"']+)|(?:\s+)([^\s@]+))?/gi;
 
 // Kinds без аргумента: не глотать следующее слово как arg
 const ARGLESS_MENTION_KINDS = new Set<MentionKind>(['code', 'git', 'branch_diff', 'git_changes', 'problems', 'rules', 'terminals', 'map']);
@@ -57,23 +58,7 @@ function stripOuterQuotes(value: string): string {
 	return t;
 }
 
-// Обернуть путь в кавычки для insert @file / @folder, если есть пробелы
-export function formatMentionPathArg(path: string): string {
-	const p = path.trim();
-	if (!/[\s@]/.test(p)) {
-		return p;
-	}
-
-	if (!p.includes('"')) {
-		return `"${p}"`;
-	}
-
-	if (!p.includes("'")) {
-		return `'${p}'`;
-	}
-
-	return `\`${p.replace(/`/g, '')}\``;
-}
+export { formatMentionPathArg } from './composerAttachPaths';
 
 function git(args: string[]): Promise<string> {
 	const folders = vscode.workspace.workspaceFolders ?? [];
@@ -450,7 +435,7 @@ function resolvePastChat(arg?: string, query?: string): string {
 
 	if (needle) {
 		const lower = needle.toLowerCase();
-		const summaries = store.listSessions();
+		const summaries = store.listSessions({ startedOnly: true });
 		const byId = summaries.find((s) => s.id === needle);
 		const byExactTitle = summaries.find((s) => s.title.toLowerCase() === lower);
 		const bySub = summaries.find((s) => s.title.toLowerCase().includes(lower));
@@ -476,7 +461,7 @@ function resolvePastChat(arg?: string, query?: string): string {
 	}
 
 	// Без arg - ранжированный список недавних сессий (без текущей)
-	const recent = store.listSessions().filter((s) => s.id !== currentId);
+	const recent = store.listSessions({ startedOnly: true }).filter((s) => s.id !== currentId);
 	if (recent.length === 0) {
 		return '[past] нет других сохранённых чатов';
 	}
@@ -708,19 +693,30 @@ export async function resolveMentions(text: string): Promise<ResolvedMentions> {
 			continue;
 		}
 
-		if (mention.kind === 'link') {
+		if (mention.kind === 'link' || mention.kind === 'url') {
 			const url = mention.arg?.trim();
-			const label = url ? `@link ${url}` : '@link(?)';
+			const tag = mention.kind === 'url' ? '@url' : '@link';
+			const label = url ? `${tag} ${url}` : `${tag}(?)`;
 			labels.push(label);
 			if (url) {
+				if (mention.kind === 'url' && !getSettings().webFetchEnabled) {
+					pushBlock(label, `[url ${url}] blocked: webFetchEnabled is off`);
+					continue;
+				}
+
 				try {
-					const res = await fetch(url.startsWith('http') ? url : `https://${url}`, {
-						signal: AbortSignal.timeout(10_000),
+					const href = url.startsWith('http') ? url : `https://${url}`;
+					const res = await fetch(href, { 
+						signal: AbortSignal.timeout(10_000) 
 					});
-					const body = (await res.text()).slice(0, 8000);
-					pushBlock(label, `[link ${url}]\n${body}`);
+					const raw = await res.text();
+					if (mention.kind === 'url') {
+						pushBlock(label, `[url ${url}]\n${htmlToMarkdown(raw, 12_000)}`);
+					} else {
+						pushBlock(label, `[link ${url}]\n${raw.slice(0, 8000)}`);
+					}
 				} catch (err) {
-					pushBlock(label, `[link ${url}] error: ${err instanceof Error ? err.message : String(err)}`);
+					pushBlock(label, `[${tag.slice(1)} ${url}] error: ${err instanceof Error ? err.message : String(err)}`);
 				}
 			}
 

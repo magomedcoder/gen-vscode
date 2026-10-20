@@ -150,10 +150,6 @@ export function UsagePage(_props: SettingsPageProps) {
 				</button>
 			</div>
 			</SettingsSection>
-
-			<SettingsSection titleKey="settings.section.usage.quota" hintKey="settings.usage.quota.hint" defaultOpen={false}>
-				<span className="field__hint">{t('settings.usage.quota.notConnected')}</span>
-			</SettingsSection>
 		</>
 	);
 }

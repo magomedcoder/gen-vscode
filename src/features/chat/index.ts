@@ -1,9 +1,7 @@
 import * as vscode from 'vscode';
 import { ChatViewProvider } from './ChatViewProvider';
-import { focusChatView } from './focusChat';
-import { registerHunkCodeLens } from './hunkCodeLens';
-import { CHAT_VIEW_ID, CHAT_VIEW_SIDEBAR_ID } from './ids';
-import { getSettings } from '../../core/config/settings';
+import { focusChatEditor, focusChatView, setChatEditorHost } from './focusChat';
+import { CHAT_VIEW_ID } from './ids';
 import { setConfirmHost } from '../../host/ui/confirmDialog';
 import { ensureTerminalBufferListener } from './terminalBuffer';
 import { listAgentWorktrees, removeAgentWorktree } from '../agent/worktree';
@@ -12,8 +10,9 @@ import { dryRunHookEvent, type HookEvent } from '../project/hooks';
 import { runDesignPickFromClipboard } from '../design/designPickCommand';
 
 export function registerChat(context: vscode.ExtensionContext): vscode.Disposable {
-	// Одна сессия и один provider для панели и боковой панели
+	// Нижняя панель по умолчанию; editor tab - по команде (без иконки в activity bar)
 	const provider = new ChatViewProvider(context);
+	setChatEditorHost(provider);
 	setConfirmHost((options) => provider.requestConfirm(options));
 
 	const webviewOpts = { webviewOptions: { retainContextWhenHidden: true } };
@@ -21,19 +20,18 @@ export function registerChat(context: vscode.ExtensionContext): vscode.Disposabl
 	const disposable = vscode.Disposable.from(
 		ensureTerminalBufferListener(),
 		{
-			dispose: () => setConfirmHost(undefined),
+			dispose: () => {
+				void provider.getSession().flushPersist();
+				setConfirmHost(undefined);
+				setChatEditorHost(undefined);
+			},
 		},
 		vscode.window.registerWebviewViewProvider(CHAT_VIEW_ID, provider, webviewOpts),
-		vscode.window.registerWebviewViewProvider(CHAT_VIEW_SIDEBAR_ID, provider, webviewOpts),
-		registerHunkCodeLens(provider.getSession()),
-		vscode.commands.registerCommand('gen.openChat', async () => {
-			await focusChatView();
-		}),
-		vscode.commands.registerCommand('gen.openChatPanel', async () => {
-			await focusChatView('panel');
-		}),
-		vscode.commands.registerCommand('gen.openChatSidebar', async () => {
-			await focusChatView('sidebar');
+		// CodeLens Keep/Undo по hunk'ам отключён: разрешение только на вызов tool / review до write
+		vscode.commands.registerCommand('gen.openChat', () => focusChatView()),
+		vscode.commands.registerCommand('gen.openChatPanel', () => focusChatView()),
+		vscode.commands.registerCommand('gen.openChatEditor', () => {
+			focusChatEditor();
 		}),
 		vscode.commands.registerCommand('gen.initProject', async () => {
 			const folder = await enableProject();
@@ -163,14 +161,6 @@ export function registerChat(context: vscode.ExtensionContext): vscode.Disposabl
 			await vscode.window.showTextDocument(doc, { preview: true });
 		}),
 	);
-
-	// После регистрации: при одном месте показа - сразу сфокусировать
-	const location = getSettings().chatViewLocation;
-	if (location === 'sidebar') {
-		void vscode.commands.executeCommand(`${CHAT_VIEW_SIDEBAR_ID}.focus`);
-	} else if (location === 'panel') {
-		void vscode.commands.executeCommand(`${CHAT_VIEW_ID}.focus`);
-	}
 
 	return disposable;
 }

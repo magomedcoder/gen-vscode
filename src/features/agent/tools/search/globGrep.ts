@@ -1,9 +1,12 @@
 import * as vscode from 'vscode';
+import { mapLimit } from '../../../../core/util/asyncPool';
 import { AGENT_LIMITS } from '../../policy';
 import { asOptionalInt, asString, type ToolContext, type ToolDefinition, type ToolResult } from '../../types';
 import { resolveWorkspacePath, throwIfAborted } from '../../workspacePath';
 
 const FIND_EXCLUDE = '**/{.gen,node_modules,.git}/**';
+// Параллельные openTextDocument в grep
+const GREP_CONCURRENCY = 6;
 
 function toGlob(pattern: string): string {
 	const trimmed = pattern.trim() || '**/*';
@@ -94,44 +97,66 @@ export const grepTool: ToolDefinition = {
 		const glob = toGlob(asString(args, 'glob', '**/*'));
 		const cap = Math.min(Math.max(1, asOptionalInt(args, 'max_results') ?? AGENT_LIMITS.maxSearchMatches), AGENT_LIMITS.maxSearchMatches);
 		const uris = await vscode.workspace.findFiles(glob, FIND_EXCLUDE, AGENT_LIMITS.maxSearchFiles);
-		const matches: Array<{
+		type GrepMatch = {
 			path: string
 			line: number
 			text: string
-		}> = [];
-		for (const uri of uris) {
-			if (matches.length >= cap) {
-				break;
-			}
-
+		};
+		const needle = query.toLowerCase();
+		let found = 0;
+		// Bounded concurrency для openTextDocument; результаты склеиваем в порядке uris (воркеры берут индексы по возрастанию -> префикс до остановки всегда полный, как при sequential)
+		const perFile = await mapLimit(uris, GREP_CONCURRENCY, async (uri): Promise<GrepMatch[]> => {
 			throwIfAborted(ctx.signal);
+			const fileMatches: GrepMatch[] = [];
 			try {
 				const resolved = await resolveWorkspacePath(uri.fsPath);
 				const doc = await vscode.workspace.openTextDocument(uri);
 				const text = doc.getText();
 				if (text.length > AGENT_LIMITS.maxReadBytes) {
-					continue;
+					return fileMatches;
 				}
 
 				const lines = text.split(/\r?\n/);
 				for (let i = 0; i < lines.length; i += 1) {
-					if (matches.length >= cap) {
+					if (fileMatches.length >= cap) {
 						break;
 					}
 
-					if (lines[i]!.toLowerCase().includes(query.toLowerCase())) {
-						matches.push({ 
-							path: resolved.relative, 
-							line: i + 1, 
-							text: lines[i]!.slice(0, 240) 
+					if (lines[i]!.toLowerCase().includes(needle)) {
+						fileMatches.push({
+							path: resolved.relative,
+							line: i + 1,
+							text: lines[i]!.slice(0, 240)
 						});
 					}
 				}
 			} catch {
+				return [];
+			}
+
+			found += fileMatches.length;
+			return fileMatches;
+		}, () => found >= cap);
+
+		const matches: GrepMatch[] = [];
+		for (const chunk of perFile) {
+			if (!chunk) {
 				continue;
 			}
+
+			for (const m of chunk) {
+				if (matches.length >= cap) {
+					break;
+				}
+
+				matches.push(m);
+			}
+
+			if (matches.length >= cap) {
+				break;
+			}
 		}
-		
+
 		return {
 			ok: true,
 			content: JSON.stringify({ 

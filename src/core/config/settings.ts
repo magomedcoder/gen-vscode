@@ -8,8 +8,9 @@ import { applyAdminPolicy, stripAdminLockedForStorage } from './adminPolicy';
 import { deepMerge, getFileSettingsOverlay, initConfigLayers, onConfigLayersChanged, pickNonDefaultSettings, stripUiExcludedKeys } from './layers';
 import { clearCachedNCtx } from '../llm/contextBudget';
 import { DEFAULT_SETTINGS } from './types';
-import type { ChatMode, ChatTextSize, ChatViewLocation, GenSettings, RevealOnEdit, ShareMode, TabEvictionPolicy, ThinkingDisplay, WebSearchBackend } from './types';
-export type { ChatMode, ChatTextSize, ChatViewLocation, CommentStyle, GenSettings, RevealOnEdit, ShareMode, TabEvictionPolicy, ThinkingDisplay, WebSearchBackend } from './types';
+import { isChatMode } from '../../features/chat/chatModes';
+import type { ChatMode, GenSettings, RevealOnEdit, ShareMode, TabEvictionPolicy, ThinkingDisplay, WebSearchBackend } from './types';
+export type { ChatMode, CommentStyle, GenSettings, RevealOnEdit, ShareMode, TabEvictionPolicy, ThinkingDisplay, WebSearchBackend } from './types';
 export { DEFAULT_SETTINGS, EXAMPLE_DENIED_COMMANDS, DEFAULT_GENIGNORE_PATTERNS, EXAMPLE_SECRET_PATTERNS, DEFAULT_SENSITIVE_PATH_PATTERNS, isAgentLikeMode, resolveModeModel, resolveSmallModel } from './types';
 export { getApiKey, hasApiKey, initApiKeyStore, setApiKey, clearApiKey, getWebSearchApiKey, hasWebSearchApiKey, setWebSearchApiKey, clearWebSearchApiKey, getEmbeddingsApiKey, hasEmbeddingsApiKey, setEmbeddingsApiKey, clearEmbeddingsApiKey } from './apiKey';
 export { initSecretVault } from './secretVault';
@@ -55,21 +56,7 @@ function normalizeStringList(value: unknown): string[] {
 }
 
 function normalizeChatMode(raw: unknown): ChatMode {
-	const mode = String(raw ?? '');
-	if (mode === 'agent' || mode === 'debug' || mode === 'design' || mode === 'plan' || mode === 'multitask' || mode === 'project') {
-		return mode;
-	}
-
-	return 'ask';
-}
-
-function normalizeChatTextSize(raw: unknown): ChatTextSize {
-	const size = String(raw ?? '');
-	if (size === 'compact' || size === 'large') {
-		return size;
-	}
-
-	return 'default';
+	return isChatMode(raw) ? raw : 'ask';
 }
 
 function normalizeThinkingDisplay(raw: unknown): ThinkingDisplay {
@@ -97,15 +84,6 @@ function normalizeShareMode(raw: Partial<GenSettings>): ShareMode {
 	}
 
 	return DEFAULT_SETTINGS.shareMode;
-}
-
-function normalizeChatViewLocation(raw: unknown): ChatViewLocation {
-	const value = String(raw ?? '');
-	if (value === 'panel' || value === 'sidebar' || value === 'both') {
-		return value;
-	}
-
-	return 'both';
 }
 
 function normalizeTabEvictionPolicy(raw: unknown): TabEvictionPolicy {
@@ -181,7 +159,6 @@ function normalize(raw: Partial<GenSettings>): GenSettings {
 		shareMode,
 		primaryTools: normalizeStringList(raw.primaryTools),
 		modelRoutedPatch: raw.modelRoutedPatch !== false,
-		usernameDisplay: String(raw.usernameDisplay ?? '').trim(),
 		watcherIgnore: normalizeStringList(raw.watcherIgnore),
 		revealOnEdit: normalizeRevealOnEdit(raw.revealOnEdit),
 		backgroundEditMode: raw.backgroundEditMode !== false,
@@ -195,6 +172,12 @@ function normalize(raw: Partial<GenSettings>): GenSettings {
 		webSearchHttpHeader: String(raw.webSearchHttpHeader ?? DEFAULT_SETTINGS.webSearchHttpHeader).trim() || DEFAULT_SETTINGS.webSearchHttpHeader,
 		webFetchEnabled: raw.webFetchEnabled !== false,
 		designScreenshotEnabled: raw.designScreenshotEnabled === true,
+		browserComputerUseEnabled: raw.browserComputerUseEnabled === true,
+		browserViewportWidth: Math.max(320, Math.floor(asNumber(raw.browserViewportWidth, DEFAULT_SETTINGS.browserViewportWidth))),
+		browserViewportHeight: Math.max(240, Math.floor(asNumber(raw.browserViewportHeight, DEFAULT_SETTINGS.browserViewportHeight))),
+		browserCdpEndpoint: String(raw.browserCdpEndpoint ?? '').trim(),
+		browserChromePath: String(raw.browserChromePath ?? '').trim(),
+		inlineCompletionEnabled: raw.inlineCompletionEnabled === true,
 		privacyMode: raw.privacyMode === true,
 		blockNonLocalUrls: raw.blockNonLocalUrls === true,
 		systemPrompt: String(raw.systemPrompt ?? '').trim(),
@@ -225,8 +208,6 @@ function normalize(raw: Partial<GenSettings>): GenSettings {
 		planShellPolicy: raw.planShellPolicy === 'deny' ? 'deny' : 'ask',
 		snapshotEnabled: raw.snapshotEnabled !== false,
 		loggingEnabled: raw.loggingEnabled === true,
-		otelEnabled: raw.otelEnabled === true,
-		otelEndpoint: String(raw.otelEndpoint ?? '').trim(),
 		toolOutputMaxChars: Math.max(1000, Math.floor(asNumber(raw.toolOutputMaxChars, DEFAULT_SETTINGS.toolOutputMaxChars))),
 		toolOutputModelMaxChars: Math.max(400, Math.floor(asNumber(raw.toolOutputModelMaxChars, DEFAULT_SETTINGS.toolOutputModelMaxChars))),
 		subagentDepth: clamp(Math.floor(asNumber(raw.subagentDepth, DEFAULT_SETTINGS.subagentDepth)), 1, 4),
@@ -266,9 +247,8 @@ function normalize(raw: Partial<GenSettings>): GenSettings {
 			? raw.attachmentImageQuality
 			: 'medium',
 		pdfVisionMaxPages: clamp(Math.floor(asNumber(raw.pdfVisionMaxPages, DEFAULT_SETTINGS.pdfVisionMaxPages)), 1, 6),
-		chatTextSize: normalizeChatTextSize(raw.chatTextSize),
 		thinkingDisplay: normalizeThinkingDisplay(raw.thinkingDisplay),
-		chatViewLocation: normalizeChatViewLocation(raw.chatViewLocation),
+		toolDetailsExpanded: raw.toolDetailsExpanded !== false,
 		maxTabCount: clamp(Math.floor(asNumber(raw.maxTabCount, DEFAULT_SETTINGS.maxTabCount)), 1, 40),
 		maxConcurrentRuns: clamp(Math.floor(asNumber(raw.maxConcurrentRuns, DEFAULT_SETTINGS.maxConcurrentRuns)), 1, 10),
 		tabEvictionPolicy: normalizeTabEvictionPolicy(raw.tabEvictionPolicy),
@@ -287,22 +267,8 @@ export function initSettings(context: ExtensionContext): void {
 			for (const listener of listeners) {
 				listener();
 			}
-			void syncChatViewLocationToWorkspace(getSettings().chatViewLocation);
 		}),
 	);
-	// Условие when для представлений читает contributes.configuration - синхронизируем с GenSettings
-	void syncChatViewLocationToWorkspace(getSettings().chatViewLocation);
-}
-
-// Записать gen.chatViewLocation в конфигурацию VSCode (для условия `when` представления)
-async function syncChatViewLocationToWorkspace(location: ChatViewLocation): Promise<void> {
-	const config = vscode.workspace.getConfiguration('gen');
-	const current = config.get<string>('chatViewLocation');
-	if (current === location) {
-		return;
-	}
-
-	await config.update('chatViewLocation', location, vscode.ConfigurationTarget.Global);
 }
 
 export function setSessionModel(model: string): void {
@@ -348,7 +314,6 @@ export async function updateSettings(next: GenSettings): Promise<GenSettings> {
 		model: ''
 	})));
 	await store.update(STORAGE_KEY, normalized);
-	await syncChatViewLocationToWorkspace(getSettings().chatViewLocation);
 	const effective = getSettings();
 	if (prev.baseUrl !== effective.baseUrl || prev.model !== effective.model) {
 		clearCachedNCtx();

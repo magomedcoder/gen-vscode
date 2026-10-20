@@ -1,12 +1,14 @@
 import * as vscode from 'vscode';
 import { registerChat } from '../features/chat';
+import { getSessionPeek } from '../features/chat/sessionStore';
 import { initSettings } from '../core/config/settings';
 import { initIndexManager } from '../features/index/IndexManager';
+import { flushVectorsCache } from '../features/index/vectorStore';
 import { initLogger } from '../core/log/logger';
 import { initFileWatcherHooks } from '../features/project/fileWatcherHooks';
 import { initGenRulesManager } from '../features/project/genrules';
-import { initActivityStore } from '../core/stores/activityStore';
-import { initUsageStore } from '../core/stores/usageStore';
+import { flushUsageStore, initUsageStore } from '../core/stores/usageStore';
+import { preloadWebviewL10n } from '../l10n/loadBundle';
 import { registerHostCommands } from './commands';
 import { registerHostProviders } from './providers';
 import { initDesignSession } from '../features/design/designSession';
@@ -18,8 +20,9 @@ export function activate(context: vscode.ExtensionContext): void {
 	initGenRulesManager(context);
 	initFileWatcherHooks(context);
 	initUsageStore(context);
-	initActivityStore(context);
 	initDesignSession(context.workspaceState);
+	// Прогрев l10n webview async (без sync FS на первом открытии панели)
+	void preloadWebviewL10n(context.extensionUri);
 
 	const { diffProvider, disposables: providerDisposables } = registerHostProviders();
 
@@ -30,4 +33,7 @@ export function activate(context: vscode.ExtensionContext): void {
 	);
 }
 
-export function deactivate(): void {}
+export async function deactivate(): Promise<void> {
+	// Debounced stores: не терять последние записи при закрытии окна
+	await Promise.all([flushUsageStore(), getSessionPeek()?.flush(), flushVectorsCache().catch(() => {})]);
+}

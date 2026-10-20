@@ -1,10 +1,12 @@
 # Changelog
 
-[Русская версия](CHANGELOG-ru.md)
-
 ## dev
 
-- **Tree-sitter:** CI smoke per default language (`tree-sitter langs smoke` + xvfb in `vsix.yml`); rename `TREE_SITTER_DEFAULT_LANGS` (was MVP_*); golden spans for Kotlin/Swift/Dart; Indexing UI shows enabled langs + missing wasm; spans≥1 smoke; worker parity; missing-wasm copy/hint; OTEL `treesitterMissingWasm`
+- **Chat modes:** shared `CHAT_MODE_DEFS` registry; composer mode `<select>`; Settings + slash from the same list; removed legacy Ask/Agent toggle, mode-badge
+- **IDE / DX:** `gen.generateCommitMessage` (+ Abort) on SCM title; opt-in gen Tab `InlineCompletionItemProvider` (`inlineCompletionEnabled`)
+- **Browser CU:** tool `browser_action` (launch/click/type/scroll/screenshot/close) + settings viewport/CDP/Chrome path (`browserComputerUseEnabled`); screenshot includes console logs
+- **Web / mentions / meta:** `web_fetch` (URL->markdown); `@url` mention; tools `attempt_completion`, `report_bug`, `new_rule`
+- **Tree-sitter:** CI smoke per default language (`tree-sitter langs smoke` + xvfb in `vsix.yml`); rename `TREE_SITTER_DEFAULT_LANGS` (was MVP_*); golden spans for Kotlin/Swift/Dart; Indexing UI shows enabled langs + missing wasm; spans≥1 smoke; worker parity; missing-wasm copy/hint
 - **Secrets:** vault adds `embeddingsApiKey`; `getResolvedSecret` for `${env:}` / `{file:}`; Browse file -> `{file:...}`; confirm-on-clear; unified Secrets on Security
 - **Design:** tool `design_screenshot` (`wait_until`, selector ready); command `gen.design.pickFromClipboard`; Design session UI on Security
 - **Agents / hooks / plugins:** `generateAgentFile`; Hooks dry-run in Settings UI; prompt-macro UX copy
@@ -20,7 +22,7 @@
 - **Index / symbols:** LSP symbol index metrics (`ok`/`fail`/`partial`) on engineStatus; Repair rebuilds `symbols.json`
 - **Tools:** `repo_health` Tree-sitter + Python/Go relative imports, fewer barrel re-export FP; `test_impact` import-graph / outline / `.gen/coverage-map.json`
 - **Index UI:** engines/languages/storage knobs + wasm/AST%/merkle skip%/outline-source/vectors/symbols status on **Settings -> Project** (Indexing moved off Agent); engine change can prompt reindex; `codebase_search` `debug` can surface merkle skip%
-- **OTEL / tests:** spans `index.treesitter` / index full metrics; fixtures + `treeSitter.test.ts` / `merkle.test.ts` / `indexStorage.test.ts` / `vectorStore.test.ts`
+- **Index / tests:** `index.treesitter` metrics; fixtures + `treeSitter.test.ts` / `merkle.test.ts` / `indexStorage.test.ts` / `vectorStore.test.ts`
 - **Shell / tests:** workspace cwd sandbox (`shellCwd`); `run_tests` ranked failure parse + `paths`/`filter` from `test_impact`; `repo_health` -> Activity + `.gen/reports/`
 - **Agents / personas / hooks / plugins:** `generate_agent` inference + reserved-id reject; builtin personas; hooks matchers + dry-run; plugin trust/bin audit; prompt-macro dynamic tools; skills URL cache
 - **Sessions / config / privacy:** session archive/filter/search; exportArchive quarantine + secret redaction; layer schema errors; expanded admin locks; Privacy Mode; `compactReservedTokens` = headroom
@@ -97,7 +99,7 @@
 - Mentions: `@git` `@branch_diff` `@rules` `@link` `@code` `@Docs` `@agent` `@terminals` `@past` `@alias`/`@ref`; paste path `@file`; `!command`; Ctrl+L selection
 - Chat UX: multi-session + fork, concurrent tab runs, per-session drafts, AskQuestion / Todo panel, thinking toggle, in-chat model picker, context ring, notify sound
 - Review: pending-changes bar with file tree + per-file Accept/Reject; CodeLens Keep/Undo on hunks; git-sync auto-Keep; edit message + revertFiles
-- Indexing: toggles + engine status (CPU trigram / remote embeddings); optional OTEL spans for LLM calls
+- Indexing: toggles + engine status (CPU trigram / remote embeddings)
 - Settings UI: split screens (Chat / Agent / Indexing / Permissions); grouped nav (Main / More); all sections always visible; clearer field toggles
 - Usage page: token ledger by model (totals/sort); Quota (OAuth) placeholder
 - Settings search; deep-links to VSCode Settings/Keybindings; sidebar or bottom panel (`chatViewLocation`); light/HC polish

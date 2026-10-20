@@ -2,7 +2,7 @@ import { AgentCheckpoint } from '../agent/checkpoint';
 import { AgentWriteTracker } from '../agent/userEdits';
 import type { ConfirmChoice } from '../agent/types';
 import type { ImageAttachment } from './attachments';
-import type { AgentPausedState, ChatTodoItem, ChatUiMessage, PendingConfirm, PendingQuestion, ResearchJobUi, SessionDiffEvent } from './protocol';
+import type { AgentPausedState, ChatTodoItem, ChatUiMessage, PendingConfirm, PendingQuestion, ResearchJobUi } from './protocol';
 
 // Запись отмены и повтора одного хода пользователя
 export interface TurnHistoryEntry {
@@ -42,7 +42,6 @@ export interface SessionRuntime {
 	undoStack: TurnHistoryEntry[];
 	redoStack: TurnHistoryEntry[];
 	exportArchive?: ChatUiMessage[];
-	lastTurnDiff?: SessionDiffEvent;
 	writes: AgentWriteTracker;
 	// Инкремент при clear/delete - колбэки старого run игнорируются
 	clearSeq: number;
@@ -114,5 +113,4 @@ export function abortSessionRuntime(rt: SessionRuntime): void {
 	rt.undoStack.length = 0;
 	rt.redoStack.length = 0;
 	rt.exportArchive = undefined;
-	rt.lastTurnDiff = undefined;
 }

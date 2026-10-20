@@ -20,6 +20,38 @@ export function initUsageStore(context: ExtensionContext): void {
 	}
 }
 
+// Debounce записи в globalState: recordUsage вызывается на каждый LLM-ответ
+const PERSIST_DEBOUNCE_MS = 1500;
+let persistTimer: ReturnType<typeof setTimeout> | undefined;
+let persistDirty = false;
+
+function schedulePersist(): void {
+	persistDirty = true;
+	if (persistTimer) {
+		return;
+	}
+
+	persistTimer = setTimeout(() => {
+		persistTimer = undefined;
+		void flushUsageStore();
+	}, PERSIST_DEBOUNCE_MS);
+}
+
+// Немедленный сброс pending-записи (deactivate / тесты)
+export function flushUsageStore(): Thenable<void> {
+	if (persistTimer) {
+		clearTimeout(persistTimer);
+		persistTimer = undefined;
+	}
+
+	if (!persistDirty || !store) {
+		return Promise.resolve();
+	}
+
+	persistDirty = false;
+	return store.update(STORAGE_KEY, Object.fromEntries(memory.entries()));
+}
+
 export function recordUsage(model: string, promptTokens: number, completionTokens: number): void {
 	const id = model.trim() || 'unknown';
 	const prev = memory.get(id) ?? {
@@ -35,7 +67,7 @@ export function recordUsage(model: string, promptTokens: number, completionToken
 		lastUsed: Date.now(),
 	};
 	memory.set(id, next);
-	void store?.update(STORAGE_KEY, Object.fromEntries(memory.entries()));
+	schedulePersist();
 }
 
 export function getUsageMap(): Record<string, ModelUsage> {
@@ -49,5 +81,12 @@ export function readUsage(): Record<string, ModelUsage> {
 
 export function resetUsage(): void {
 	memory.clear();
+	// Явный reset пишем сразу и отменяем pending debounce
+	if (persistTimer) {
+		clearTimeout(persistTimer);
+		persistTimer = undefined;
+	}
+
+	persistDirty = false;
 	void store?.update(STORAGE_KEY, {});
 }

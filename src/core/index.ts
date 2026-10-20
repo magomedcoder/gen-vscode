@@ -7,4 +7,3 @@ export type { GenSettings } from './config/settings';
 export { HttpLlmClient } from './llm/client';
 export { initLogger } from './log/logger';
 export { initUsageStore } from './stores/usageStore';
-export { initActivityStore } from './stores/activityStore';

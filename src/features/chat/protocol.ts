@@ -1,18 +1,16 @@
-import type { ChatMode, ChatTextSize, GenSettings } from '../../core/config/types';
+import type { ChatMode, GenSettings } from '../../core/config/types';
 import type { TokenUsage } from '../../core/llm/usage';
 import type { ConfirmChoice } from '../agent/types';
 import type { DiffHunkPayload, HunkReviewStatus } from '../agent/diff';
-import type { ActivityEntry } from '../../core/stores/activityStore';
 import type { ModelUsage } from '../../core/stores/usageStore';
 import type { IndexEngineStatus } from '../index/engineStatus';
 import type { SessionSummary } from './sessionStore';
 import type { DesignClickResult } from '../design/designVisual';
 
-export type { ActivityEntry } from '../../core/stores/activityStore';
 export type { DesignClickResult };
 export type { IndexEngineStatus } from '../index/engineStatus';
 export type { ChatMode, ConfirmChoice, DiffHunkPayload, HunkReviewStatus };
-export type ChatRole = 'user' | 'assistant' | 'error' | 'tool';
+export type ChatRole = 'user' | 'assistant' | 'error' | 'system' | 'tool';
 export type PanelScreen = 'chat' | 'settings';
 export type ToolCallStatus = 'pending' | 'awaiting_confirm' | 'ok' | 'error' | 'denied';
 export type ConfirmVariant = 'agent' | 'binary';
@@ -133,14 +131,6 @@ export interface ResearchJobUi {
 	reportSnippet?: string;
 }
 
-// Файлы, изменённые успешными инструментами мутации за один запуск агента
-export interface SessionDiffEvent {
-	turnId: string;
-	paths: string[];
-	// Epoch ms - когда ход завершился
-	at: number;
-}
-
 export interface ChatProjectStatus {
 	hasWorkspace: boolean;
 	enabled: boolean;
@@ -205,14 +195,10 @@ export interface ChatViewState {
 	agentPaused?: AgentPausedState;
 	// Id выполняемого инструмента (для отдельной остановки)
 	activeToolCallId?: string;
-	// Размер текста чата из настроек (для CSS-класса .app)
-	chatTextSize?: ChatTextSize;
 	// План подтверждён в mode=plan - баннер «Run in Agent»
 	planHandoff?: { title?: string };
 	// Текущая модель сессии из getSettings().model
 	model?: string;
-	// Diff последнего agent-хода (уникальные пути)
-	lastTurnDiff?: SessionDiffEvent;
 	// Черновик Composer для текущей сессии (сохраняется по sessionId)
 	composerDraft?: string;
 	// Chips Composer (insert-строки mention) для текущей сессии
@@ -224,16 +210,18 @@ export interface ChatViewState {
 }
 
 export type ToWebviewMessage = | { type: 'state'; state: ChatViewState }
-	| { type: 'settings'; settings: GenSettings; apiKeySet: boolean; webSearchApiKeySet?: boolean; embeddingsApiKeySet?: boolean; persistedAlwaysAllow?: string[]; personas?: PersonaOption[]; adminPolicy?: AdminPolicyInfo }
-	| { type: 'settingsSaved'; settings: GenSettings; apiKeySet: boolean; webSearchApiKeySet?: boolean; embeddingsApiKeySet?: boolean; persistedAlwaysAllow?: string[]; personas?: PersonaOption[]; adminPolicy?: AdminPolicyInfo }
-	| { type: 'secretFilePicked'; requestId: number; value?: string }
+	// Лёгкий патч стримящегося assistant-сообщения (без полного ChatViewState)
+	| { type: 'streamPatch'; sessionId: string; messageId: string; content?: string; thinking?: string }
+	| { type: 'settings'; settings: GenSettings; persistedAlwaysAllow?: string[]; personas?: PersonaOption[]; adminPolicy?: AdminPolicyInfo }
+	| { type: 'settingsSaved'; settings: GenSettings; persistedAlwaysAllow?: string[]; personas?: PersonaOption[]; adminPolicy?: AdminPolicyInfo }
 	| { type: 'settingsError'; message: string }
 	| { type: 'models'; models: Array<{ id: string; label: string }>; requestId: number }
 	| { type: 'modelsError'; message: string; requestId: number }
 	| { type: 'connectionHealth'; ok: boolean; modelCount: number; message: string; requestId: number }
 	| { type: 'mentionSuggestions'; requestId: number; items: MentionSuggestion[] }
+	// Ответ на resolveComposerUris: относительные пути workspace для chips
+	| { type: 'composerUrisResolved'; requestId: number; items: Array<{ path: string; kind: 'file' | 'folder' }> }
 	| { type: 'usageLedger'; ledger: Record<string, ModelUsage> }
-	| { type: 'activityLedger'; entries: ActivityEntry[] }
 	| { type: 'indexStatus'; status: IndexEngineStatus }
 	| { type: 'hooksData'; beforeSubmit: string[]; beforeShell: string[]; sessionDiff: string[]; sessionCompacting: string[]; shellEnv: string[]; fileWatcher: string[]; path?: string; error?: string; }
 	| { type: 'hooksSaved'; ok: boolean; error?: string }
@@ -276,10 +264,12 @@ export interface PersonaOption {
 }
 
 export interface MentionSuggestion {
-	kind: 'file' | 'folder' | 'codebase' | 'code' | 'git' | 'git_changes' | 'branch_diff' | 'problems' | 'rules' | 'link' | 'docs' | 'agent' | 'terminals' | 'past' | 'alias' | 'ref' | 'map' | 'symbols';
+	kind: 'file' | 'folder' | 'codebase' | 'code' | 'git' | 'git_changes' | 'branch_diff' | 'problems' | 'rules' | 'link' | 'url' | 'docs' | 'agent' | 'terminals' | 'past' | 'alias' | 'ref' | 'map' | 'symbols';
 	label: string;
 	insert: string;
 	detail?: string;
+	// Шаблон (@file / @folder...): вставить в поле и продолжить выбор; иначе сразу chip
+	needsPick?: boolean;
 }
 
 export interface IncomingImagePayload {
@@ -297,33 +287,29 @@ export type FromWebviewMessage = | { type: 'ready' }
 	| { type: 'setModel'; model: string }
 	| { type: 'openExternal'; url: string }
 	| { type: 'openSettings' }
-	| { type: 'saveSettings'; settings: GenSettings; apiKey?: string; clearApiKey?: boolean; webSearchApiKey?: string; clearWebSearchApiKey?: boolean; embeddingsApiKey?: string; clearEmbeddingsApiKey?: boolean; persistedAlwaysAllow?: string[] }
-	| { type: 'pickSecretFile'; requestId: number }
+	| { type: 'saveSettings'; settings: GenSettings; persistedAlwaysAllow?: string[] }
 	| { type: 'loadModels'; baseUrl: string; requestId: number }
 	| { type: 'checkConnection'; baseUrl: string; requestId: number }
 	| { type: 'openLogsFolder' }
 	| { type: 'confirmChoice'; id: string; choice: ConfirmChoice }
 	| { type: 'answerQuestion'; id: string; answer: string }
 	| { type: 'mentionSuggest'; requestId: number; query: string }
+	// Paste/drop: URI или пути -> относительные @file/@folder
+	| { type: 'resolveComposerUris'; requestId: number; uris: string[] }
 	| { type: 'retryIndex' }
 	| { type: 'editMessage'; id: string; content: string; revertFiles?: boolean }
 	| { type: 'reviewHunk'; toolCallId: string; hunkId: string; action: 'accept' | 'reject' }
 	| { type: 'reviewDiff'; toolCallId: string; action: 'acceptAll' | 'rejectAll' }
-	// Принять или отклонить все ожидающие хунки одного файла (панель сессии)
-	| { type: 'reviewPendingPath'; path: string; action: 'accept' | 'reject' }
 	| { type: 'newSession' }
 	| { type: 'switchSession'; id: string }
 	| { type: 'renameSession'; id: string; title: string }
-	| { type: 'archiveSession'; id: string; archived?: boolean }
-	| { type: 'setSessionFilter'; query?: string; archived?: boolean }
+	| { type: 'setSessionFilter'; query?: string }
 	| { type: 'deleteSession'; id: string }
 	| { type: 'forkSession'; messageId: string }
 	// Черновик Composer (задержка в webview); chips - строки вставки
 	| { type: 'setComposerDraft'; text: string; chips?: string[]; sessionId?: string }
 	| { type: 'loadUsage' }
 	| { type: 'resetUsage' }
-	| { type: 'loadActivity' }
-	| { type: 'clearActivity' }
 	| { type: 'loadIndexStatus' }
 	| { type: 'loadDesignSession' }
 	| { type: 'cancelIndex' }
@@ -343,7 +329,6 @@ export type FromWebviewMessage = | { type: 'ready' }
 	| { type: 'stopAgentPause' }
 	| { type: 'cancelToolCall'; id: string }
 	| { type: 'dismissPlanHandoff' }
-	| { type: 'dismissTurnDiff' }
 	| { type: 'openPath'; path: string }
 	// Исследования / Teams
 	| { type: 'interruptResearchJob'; id?: string; jobId?: string }

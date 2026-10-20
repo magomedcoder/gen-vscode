@@ -26,8 +26,6 @@ export const ADMIN_POLICY_KEYS = [
 	'webSearchEnabled',
 	'webFetchEnabled',
 	'allowExternalDirectory',
-	'otelEnabled',
-	'otelEndpoint',
 	'indexingEnabled',
 	'embeddingsBaseUrl',
 	'baseUrl',

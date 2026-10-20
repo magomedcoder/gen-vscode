@@ -54,9 +54,6 @@ export function useGenBridge() {
 	const [settings, setSettings] = useState<GenSettings>(DEFAULT_SETTINGS);
 	const [personas, setPersonas] = useState<PersonaOption[]>([]);
 	const [adminPolicy, setAdminPolicy] = useState<AdminPolicyInfo | undefined>();
-	const [apiKeySet, setApiKeySet] = useState(false);
-	const [webSearchApiKeySet, setWebSearchApiKeySet] = useState(false);
-	const [embeddingsApiKeySet, setEmbeddingsApiKeySet] = useState(false);
 	const [persistedAlwaysAllow, setPersistedAlwaysAllow] = useState<string[]>([]);
 	const [settingsStatus, setSettingsStatus] = useState<string | undefined>();
 	const [models, setModels] = useState<LlmModelOption[]>([]);
@@ -88,11 +85,29 @@ export function useGenBridge() {
 				case 'state':
 					setChat(data.state);
 					return;
+				case 'streamPatch':
+					setChat((prev) => {
+						if (prev.sessionId && data.sessionId && prev.sessionId !== data.sessionId) {
+							return prev;
+						}
+						
+						let changed = false;
+						const messages = prev.messages.map((msg) => {
+							if (msg.id !== data.messageId) {
+								return msg;
+							}
+							changed = true;
+							return {
+								...msg,
+								...(data.content !== undefined ? { content: data.content } : {}),
+								...(data.thinking !== undefined ? { thinking: data.thinking } : {}),
+							};
+						});
+						return changed ? { ...prev, messages } : prev;
+					});
+					return;
 				case 'settings':
 					setSettings(data.settings);
-					setApiKeySet(data.apiKeySet);
-					setWebSearchApiKeySet(Boolean(data.webSearchApiKeySet));
-					setEmbeddingsApiKeySet(Boolean(data.embeddingsApiKeySet));
 					if (Array.isArray(data.persistedAlwaysAllow)) {
 						setPersistedAlwaysAllow(data.persistedAlwaysAllow);
 					}
@@ -105,9 +120,6 @@ export function useGenBridge() {
 					return;
 				case 'settingsSaved':
 					setSettings(data.settings);
-					setApiKeySet(data.apiKeySet);
-					setWebSearchApiKeySet(Boolean(data.webSearchApiKeySet));
-					setEmbeddingsApiKeySet(Boolean(data.embeddingsApiKeySet));
 					if (Array.isArray(data.persistedAlwaysAllow)) {
 						setPersistedAlwaysAllow(data.persistedAlwaysAllow);
 					}
@@ -245,26 +257,14 @@ export function useGenBridge() {
 		return () => window.removeEventListener('message', onMessage);
 	}, []);
 
-	const saveSettings = useCallback((next: GenSettings, api?: {
-		apiKey?: string;
-		clearApiKey?: boolean;
-		webSearchApiKey?: string;
-		clearWebSearchApiKey?: boolean;
-		embeddingsApiKey?: string;
-		clearEmbeddingsApiKey?: boolean;
+	const saveSettings = useCallback((next: GenSettings, extras?: {
 		persistedAlwaysAllow?: string[];
 	}) => {
 		setSettingsStatus(t('settings.status.saving'));
 		vscodeApi.postMessage({
 			type: 'saveSettings',
 			settings: next,
-			apiKey: api?.apiKey,
-			clearApiKey: api?.clearApiKey,
-			webSearchApiKey: api?.webSearchApiKey,
-			clearWebSearchApiKey: api?.clearWebSearchApiKey,
-			embeddingsApiKey: api?.embeddingsApiKey,
-			clearEmbeddingsApiKey: api?.clearEmbeddingsApiKey,
-			persistedAlwaysAllow: api?.persistedAlwaysAllow,
+			persistedAlwaysAllow: extras?.persistedAlwaysAllow,
 		});
 	}, []);
 
@@ -392,9 +392,6 @@ export function useGenBridge() {
 		settings,
 		personas,
 		adminPolicy,
-		apiKeySet,
-		webSearchApiKeySet,
-		embeddingsApiKeySet,
 		persistedAlwaysAllow,
 		settingsStatus,
 		models,

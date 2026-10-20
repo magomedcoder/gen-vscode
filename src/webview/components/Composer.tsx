@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent, type SubmitEvent } from 'react';
+import { CHAT_MODE_DEFS } from '../../features/chat/chatModes';
+import { buildFileChipInsert, chipLabelFromPath, extractPathsFromTransferData, looksLikeFilePath, needsHostPathResolve } from '../../features/chat/composerAttachPaths';
 import type { ChatMode, MentionSuggestion } from '../../features/chat/protocol';
 import { activeSlashQuery, filterSlashCommands } from '../../features/chat/slashCommands';
 import type { SlashCommand } from '../../features/chat/slashCommands';
@@ -8,7 +10,6 @@ import { vscodeApi } from '../vscodeApi';
 
 interface ComposerProps {
 	busy: boolean;
-	busyDetail?: string;
 	queuedCount: number;
 	mode: ChatMode;
 	customSlashCommands?: SlashCommand[];
@@ -43,7 +44,11 @@ function activeMentionQuery(text: string, cursor: number): { start: number; quer
 	}
 
 	const fragment = before.slice(at + 1);
-	if (/\s/.test(fragment) && !/^(file|folder|codebase|symbols|git|link|docs|agent|past|alias|ref)\s+\S*$/i.test(fragment)) {
+	// kinds с аргументом после пробела (путь / query)
+	if (
+		/\s/.test(fragment)
+		&& !/^(file|folder|codebase|symbols|git|link|url|docs|agent|past|alias|ref|map)\s+\S*$/i.test(fragment)
+	) {
 		return undefined;
 	}
 
@@ -138,15 +143,15 @@ function chipFromSuggestion(item: MentionSuggestion): ContextChip {
 	};
 }
 
-const MENTION_KINDS = new Set<MentionSuggestion['kind']>(['file', 'folder', 'codebase', 'map', 'symbols', 'code', 'git', 'branch_diff', 'rules', 'link', 'docs', 'agent', 'terminals', 'past', 'alias', 'ref']);
+const MENTION_KINDS = new Set<MentionSuggestion['kind']>(['file', 'folder', 'codebase', 'map', 'symbols', 'code', 'git', 'git_changes', 'branch_diff', 'problems', 'rules', 'link', 'url', 'docs', 'agent', 'terminals', 'past', 'alias', 'ref']);
 
 // Восстановить chip из сохранённой insert-строки (@file path ...)
 function chipFromInsert(insert: string): ContextChip {
 	const trimmed = insert.trim();
-	const m = /^@(\w+)/i.exec(trimmed);
+	const m = /^@([\w-]+)/i.exec(trimmed);
 	const rawKind = (m?.[1] ?? 'file').toLowerCase().replace(/-/g, '_') as MentionSuggestion['kind'];
 	const kind = MENTION_KINDS.has(rawKind) ? rawKind : 'file';
-	let arg = trimmed.replace(/^@\w+/i, '').replace(/^[:\s]+/, '').trim();
+	let arg = trimmed.replace(/^@[\w-]+/i, '').replace(/^[:\s]+/, '').trim();
 	if (arg.length >= 2) {
 		const a = arg[0];
 		const b = arg[arg.length - 1];
@@ -154,30 +159,13 @@ function chipFromInsert(insert: string): ContextChip {
 			arg = arg.slice(1, -1).trim();
 		}
 	}
-	const label = arg.split(/[/\\]/).filter(Boolean).pop() || trimmed;
+	const label = chipLabelFromPath(arg) || trimmed;
 	return {
 		id: trimmed,
 		kind,
 		label,
 		insert: trimmed,
 	};
-}
-
-function quoteMentionPathArg(path: string): string {
-	const p = path.trim();
-	if (!/[\s@]/.test(p)) {
-		return p;
-	}
-
-	if (!p.includes('"')) {
-		return `"${p}"`;
-	}
-
-	if (!p.includes("'")) {
-		return `'${p}'`;
-	}
-
-	return `\`${p.replace(/`/g, '')}\``;
 }
 
 function slashDetail(cmd: SlashCommand): string {
@@ -187,61 +175,8 @@ function slashDetail(cmd: SlashCommand): string {
 	return cmd.detailKey ? t(cmd.detailKey) : '';
 }
 
-// Нормализация вставленного пути: кавычки, file://, слеши
-function normalizePastedPath(raw: string): string {
-	let path = raw.trim();
-	if ((path.startsWith('"') && path.endsWith('"')) || (path.startsWith("'") && path.endsWith("'"))) {
-		path = path.slice(1, -1).trim();
-	}
-
-	if (/^file:\/\//i.test(path)) {
-		try {
-			path = decodeURIComponent(path.replace(/^file:\/\//i, ''));
-			// file:///C:/... на Windows
-			if (/^\/[A-Za-z]:\//.test(path)) {
-				path = path.slice(1);
-			}
-		} catch {
-			path = path.replace(/^file:\/\//i, '');
-		}
-	}
-
-	return path.replace(/\\/g, '/');
-}
-
-// Эвристика: одна строка без переносов, похожа на путь к файлу (расширение и/или разделители пути). Ctrl+Shift+V обходит это
-function looksLikeFilePath(text: string): string | undefined {
-	if (!text || /[\r\n]/.test(text)) {
-		return undefined;
-	}
-
-	const path = normalizePastedPath(text);
-	if (!path) {
-		return undefined;
-	}
-
-	// Не превращать URL / mailto в @file
-	if (/^(https?:|mailto:|data:)/i.test(path)) {
-		return undefined;
-	}
-
-	const hasSep = /[/\\]/.test(path) || /^[A-Za-z]:\//.test(path) || path.startsWith('~/') || path.startsWith('./') || path.startsWith('../');
-	const hasExt = /\.[A-Za-z0-9]{1,12}$/.test(path);
-	// Пути с пробелами ок - insert обернёт в кавычки (@file "a b.ts")
-	if (!/^[\w./:@~+\-\s]+$/.test(path) && !/^[A-Za-z]:\/[\w./@~+\-\s]*$/.test(path)) {
-		return undefined;
-	}
-
-	if (hasExt || hasSep) {
-		return path;
-	}
-
-	return undefined;
-}
-
 export function Composer({
 	busy,
-	busyDetail,
 	queuedCount,
 	mode,
 	customSlashCommands = [],
@@ -259,10 +194,16 @@ export function Composer({
 	const [slashSuggestions, setSlashSuggestions] = useState<SlashCommand[]>([]);
 	const [suggestKind, setSuggestKind] = useState<SuggestKind>('mention');
 	const [suggestIndex, setSuggestIndex] = useState(0);
+	const [dragOver, setDragOver] = useState(false);
 	const requestId = useRef(0);
+	const resolveId = useRef(0);
+	// Последний query mention-suggest - не сбрасывать highlight при повторном ответе
+	const lastMentionQuery = useRef<string | undefined>(undefined);
 	const textareaRef = useRef<HTMLTextAreaElement>(null);
 	// Ctrl/Meta+Shift+V - вставка без конвертации пути в pill
 	const plainPasteRef = useRef(false);
+	// Если host не смог резолвить URI - вернуть текст в draft
+	const attachFallbackRef = useRef<string | undefined>(undefined);
 	const draftTimerRef = useRef<number | undefined>(undefined);
 	const draftRef = useRef(draft);
 	const chipsRef = useRef(chips);
@@ -317,17 +258,55 @@ export function Composer({
 	useEffect(() => {
 		const onMessage = (event: MessageEvent) => {
 			const data = event.data;
-			if (!data || data.type !== 'mentionSuggestions') {
+			if (!data || typeof data !== 'object') {
 				return;
 			}
 
-			if (data.requestId !== requestId.current) {
+			if (data.type === 'mentionSuggestions') {
+				if (data.requestId !== requestId.current) {
+					return;
+				}
+				const items = data.items ?? [];
+				setSuggestions(items);
+				setSuggestKind('mention');
+				setSuggestIndex((prev) => (prev > 0 && prev < items.length ? prev : 0));
 				return;
 			}
 
-			setSuggestions(data.items ?? []);
-			setSuggestKind('mention');
-			setSuggestIndex(0);
+			if (data.type === 'composerUrisResolved') {
+				if (data.requestId !== resolveId.current) {
+					return;
+				}
+				const items = (data.items ?? []) as Array<{ path: string; kind: 'file' | 'folder' }>;
+				const fallback = attachFallbackRef.current;
+				attachFallbackRef.current = undefined;
+				if (!items.length) {
+					if (fallback) {
+						setDraft((prev) => {
+							const el = textareaRef.current;
+							const cur = el?.selectionStart ?? prev.length;
+							return `${prev.slice(0, cur)}${fallback}${prev.slice(cur)}`;
+						});
+					}
+					return;
+				}
+				setChips((prev) => {
+					const next = [...prev];
+					for (const item of items) {
+						const insert = buildFileChipInsert(item.path, item.kind);
+						if (next.some((c) => c.id === insert)) {
+							continue;
+						}
+						next.push({
+							id: insert,
+							kind: item.kind,
+							label: chipLabelFromPath(item.path),
+							insert,
+						});
+					}
+					return next;
+				});
+			}
 		};
 
 		window.addEventListener('message', onMessage);
@@ -337,16 +316,23 @@ export function Composer({
 	const clearSuggest = () => {
 		setSuggestions([]);
 		setSlashSuggestions([]);
+		lastMentionQuery.current = undefined;
+		setSuggestIndex(0);
 	};
 
 	const requestSuggestions = (text: string, cursor: number) => {
 		const slash = activeSlashQuery(text, cursor);
 		if (slash) {
 			const items = filterSlashCommands(slash.query, customSlashCommands);
+			const queryKey = `/${slash.query}`;
+			const queryChanged = lastMentionQuery.current !== queryKey;
+			lastMentionQuery.current = queryKey;
 			setSlashSuggestions(items);
 			setSuggestions([]);
 			setSuggestKind('slash');
-			setSuggestIndex(0);
+			if (queryChanged) {
+				setSuggestIndex(0);
+			}
 			return;
 		}
 
@@ -354,12 +340,21 @@ export function Composer({
 		const active = activeMentionQuery(text, cursor);
 		if (!active) {
 			setSuggestions([]);
+			lastMentionQuery.current = undefined;
 			return;
 		}
 
+		const queryKey = `@${active.query}`;
+		if (lastMentionQuery.current === queryKey) {
+			// Тот же query (ArrowUp/Down / повторный keyup) - не дёргать host
+			return;
+		}
+
+		lastMentionQuery.current = queryKey;
 		const id = requestId.current + 1;
 		requestId.current = id;
 		setSuggestKind('mention');
+		setSuggestIndex(0);
 		vscodeApi.postMessage({
 			type: 'mentionSuggest',
 			requestId: id,
@@ -375,6 +370,29 @@ export function Composer({
 			return;
 		}
 
+		// Шаг 1: @file / @folder / ... - вставить kind и открыть выбор файла/папки/...
+		if (item.needsPick) {
+			const insert = item.insert.endsWith(' ') || item.insert.endsWith(':')
+				? item.insert
+				: `${item.insert} `;
+			const next = `${draft.slice(0, active.start)}${insert}${draft.slice(cursor)}`;
+			setDraft(next);
+			const pos = active.start + insert.length;
+			// @link / @url - дальше пользователь вводит URL сам, меню не крутим
+			const typedUrl = /^@(link|url)\s*$/i.test(insert.trimEnd());
+			requestAnimationFrame(() => {
+				el?.focus();
+				el?.setSelectionRange(pos, pos);
+				if (typedUrl) {
+					clearSuggest();
+				} else {
+					requestSuggestions(next, pos);
+				}
+			});
+			return;
+		}
+
+		// Шаг 2: конкретный файл/папка/значение - chip
 		const chip = chipFromSuggestion(item);
 		setChips((prev) => (prev.some((c) => c.id === chip.id) ? prev : [...prev, chip]));
 
@@ -436,35 +454,72 @@ export function Composer({
 		})();
 	};
 
-	const addFilePathChip = (path: string) => {
-		const insert = `@file ${quoteMentionPathArg(path)}`;
+	const addPathChip = (path: string, kind: 'file' | 'folder' = 'file') => {
+		const insert = buildFileChipInsert(path, kind);
 		const chip: ContextChip = {
 			id: insert,
-			kind: 'file',
-			label: path.split(/[/\\]/).filter(Boolean).pop() || path,
+			kind,
+			label: chipLabelFromPath(path),
 			insert,
 		};
 		setChips((prev) => (prev.some((c) => c.id === chip.id) ? prev : [...prev, chip]));
 	};
 
-	const onPaste = (event: ClipboardEvent<HTMLTextAreaElement>) => {
-		const items = event.clipboardData?.items;
-		if (!items) {
+	const requestResolveUris = (uris: string[]) => {
+		const unique = [...new Set(uris.map((u) => u.trim()).filter(Boolean))];
+		if (!unique.length) {
 			return;
 		}
 
-		let handled = false;
-		for (const item of Array.from(items)) {
+		const local: string[] = [];
+		const remote: string[] = [];
+		for (const u of unique) {
+			const path = looksLikeFilePath(u) ?? u;
+			if (needsHostPathResolve(path) || /^(file:|vscode-file:)/i.test(u)) {
+				remote.push(u);
+			} else if (looksLikeFilePath(u) || looksLikeFilePath(path)) {
+				local.push(path);
+			} else {
+				remote.push(u);
+			}
+		}
+
+		for (const p of local) {
+			addPathChip(p, 'file');
+		}
+
+		if (!remote.length) {
+			return;
+		}
+
+		const id = resolveId.current + 1;
+		resolveId.current = id;
+		attachFallbackRef.current = remote.join('\n');
+		vscodeApi.postMessage({
+			type: 'resolveComposerUris',
+			requestId: id,
+			uris: remote,
+		});
+	};
+
+	const onPaste = (event: ClipboardEvent<HTMLTextAreaElement>) => {
+		const clip = event.clipboardData;
+		if (!clip) {
+			return;
+		}
+
+		let handledImage = false;
+		for (const item of Array.from(clip.items ?? [])) {
 			if (item.kind === 'file' && item.type.startsWith('image/')) {
 				const file = item.getAsFile();
 				if (file) {
 					addImageFile(file);
-					handled = true;
+					handledImage = true;
 				}
 			}
 		}
 
-		if (handled) {
+		if (handledImage) {
 			event.preventDefault();
 			return;
 		}
@@ -475,32 +530,81 @@ export function Composer({
 			return;
 		}
 
-		const text = event.clipboardData?.getData('text/plain') ?? '';
+		const transferPaths = extractPathsFromTransferData((type) => clip.getData(type) ?? '');
+		if (transferPaths.length > 0) {
+			event.preventDefault();
+			requestResolveUris(transferPaths);
+			return;
+		}
+
+		const text = clip.getData('text/plain') ?? '';
+		// Многострочный код / текст - обычная вставка в поле
+		if (!text || /[\r\n]/.test(text)) {
+			return;
+		}
+
 		const path = looksLikeFilePath(text);
 		if (!path) {
 			return;
 		}
 
 		event.preventDefault();
-		addFilePathChip(path);
+		requestResolveUris([path]);
 	};
 
-	const onDrop = (event: DragEvent<HTMLTextAreaElement>) => {
+	const onDrop = (event: DragEvent<HTMLElement>) => {
 		event.preventDefault();
-		const files = event.dataTransfer?.files;
-		if (!files?.length) {
+		event.stopPropagation();
+		setDragOver(false);
+
+		const dt = event.dataTransfer;
+		if (!dt) {
 			return;
 		}
-		
-		for (const file of Array.from(files)) {
-			addImageFile(file);
+
+		const transferPaths = extractPathsFromTransferData((type) => {
+			try {
+				return dt.getData(type) ?? '';
+			} catch {
+				return '';
+			}
+		});
+
+		const files = Array.from(dt.files ?? []);
+		for (const file of files) {
+			if (file.type.startsWith('image/')) {
+				addImageFile(file);
+				continue;
+			}
+			// Electron/Chromium: File.path для локального файла
+			const filePath = (file as File & { path?: string }).path;
+			if (filePath) {
+				transferPaths.push(filePath);
+			} else if (file.name && looksLikeFilePath(file.name)) {
+				transferPaths.push(file.name);
+			}
+		}
+
+		if (transferPaths.length > 0) {
+			requestResolveUris(transferPaths);
 		}
 	};
 
-	const onDragOver = (event: DragEvent<HTMLTextAreaElement>) => {
-		if (Array.from(event.dataTransfer?.types ?? []).includes('Files')) {
+	const onDragOver = (event: DragEvent<HTMLElement>) => {
+		const types = Array.from(event.dataTransfer?.types ?? []);
+		if (types.includes('Files') || types.includes('text/uri-list') || types.includes('resourceurls')) {
 			event.preventDefault();
+			event.dataTransfer!.dropEffect = 'copy';
+			setDragOver(true);
 		}
+	};
+
+	const onDragLeave = (event: DragEvent<HTMLElement>) => {
+		const related = event.relatedTarget as Node | null;
+		if (related && event.currentTarget.contains(related)) {
+			return;
+		}
+		setDragOver(false);
 	};
 
 	const submit = () => {
@@ -594,11 +698,15 @@ export function Composer({
 	};
 
 	const canSend = Boolean(draft.trim()) || chips.length > 0 || pendingImages.length > 0;
-	const specialMode = mode === 'debug' || mode === 'design' || mode === 'plan' || mode === 'multitask' || mode === 'project';
 
 	return (
 		<form className="composer" onSubmit={onSubmit}>
-			<div className="composer__box">
+			<div
+				className={`composer__box${dragOver ? ' composer__box--drag' : ''}`}
+				onDragOver={onDragOver}
+				onDragLeave={onDragLeave}
+				onDrop={onDrop}
+			>
 				{suggestKind === 'slash' && slashSuggestions.length > 0 ? (
 					<ul className="mention-menu" role="listbox" aria-label={t('chat.composer.slashAria')}>
 						{slashSuggestions.map((item, i) => (
@@ -644,14 +752,14 @@ export function Composer({
 						{chips.map((chip) => (
 							<li key={chip.id} className={`composer-chip composer-chip--${chip.kind}`}>
 								<span className="composer-chip__kind">@{chip.kind}</span>
-								<span className="composer-chip__label" title={chip.label}>{chip.label}</span>
+								<span className="composer-chip__label" title={chip.insert}>{chip.label}</span>
 								<button
 									type="button"
 									className="composer-chip__remove"
 									aria-label={t('chat.composer.removeChip', chip.label)}
 									onClick={() => removeChip(chip.id)}
 								>
-									*
+									x
 								</button>
 							</li>
 						))}
@@ -669,16 +777,11 @@ export function Composer({
 									aria-label={t('chat.composer.removeChip', img.name)}
 									onClick={() => removePendingImage(img.id)}
 								>
-									*
+									x
 								</button>
 							</li>
 						))}
 					</ul>
-				) : null}
-				{busyDetail ? (
-					<div className="composer-queue composer-queue--retry" role="status">
-						{busyDetail}
-					</div>
 				) : null}
 				{queuedCount > 0 ? (
 					<div className="composer-queue" role="status">
@@ -703,6 +806,16 @@ export function Composer({
 						requestSuggestions(next, e.target.selectionStart);
 					}}
 					onKeyUp={(e) => {
+						// Навигация по меню - не перезапрашивать suggest (иначе сброс на 1-й пункт)
+						if (
+							e.key === 'ArrowDown'
+							|| e.key === 'ArrowUp'
+							|| e.key === 'Enter'
+							|| e.key === 'Tab'
+							|| e.key === 'Escape'
+						) {
+							return;
+						}
 						const target = e.currentTarget;
 						requestSuggestions(target.value, target.selectionStart);
 					}}
@@ -712,40 +825,23 @@ export function Composer({
 					}}
 					onKeyDown={onKeyDown}
 					onPaste={onPaste}
-					onDrop={onDrop}
-					onDragOver={onDragOver}
 				/>
 				<div className="composer__footer">
 					<div className="composer__modes">
-						<div className="mode-toggle" role="group" aria-label={t('chat.composer.modeAria')}>
-							<button
-								type="button"
-								className={`mode-toggle__btn${mode === 'ask' ? ' mode-toggle__btn--active' : ''}`}
-								disabled={busy}
-								onClick={() => setMode('ask')}
-							>
-								{t('chat.composer.modeAsk')}
-							</button>
-							<button
-								type="button"
-								className={`mode-toggle__btn${mode === 'agent' ? ' mode-toggle__btn--active' : ''}`}
-								disabled={busy}
-								onClick={() => setMode('agent')}
-							>
-								{t('chat.composer.modeAgent')}
-							</button>
-						</div>
-						{specialMode ? (
-							<button
-								type="button"
-								className={`mode-badge${mode === 'project' ? ' mode-badge--project' : ''}`}
-								disabled={busy}
-								title={mode === 'project' ? t('chat.composer.modeBadge.projectHint') : t('chat.composer.slashExitHint')}
-								onClick={() => setMode('agent')}
-							>
-								{mode === 'project' ? t('chat.composer.modeBadge.project') : `/${mode}`}
-							</button>
-						) : null}
+						<select
+							className="mode-select"
+							value={mode}
+							disabled={busy}
+							aria-label={t('chat.composer.modeAria')}
+							title={t('chat.composer.modeHint')}
+							onChange={(e) => setMode(e.target.value as ChatMode)}
+						>
+							{CHAT_MODE_DEFS.map((def) => (
+								<option key={def.id} value={def.id}>
+									{t(def.shortKey)}
+								</option>
+							))}
+						</select>
 					</div>
 					<div className="composer__actions">
 						{busy ? (

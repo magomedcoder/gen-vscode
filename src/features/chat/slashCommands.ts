@@ -1,4 +1,5 @@
 import type { ChatMode } from '../../core/config/types';
+import { CHAT_MODE_DEFS } from './chatModes';
 
 export interface SlashCommand {
 	id: string;
@@ -18,49 +19,15 @@ export interface SlashCommand {
 	minPositionalArgs?: number;
 }
 
+const MODE_SLASH_COMMANDS: readonly SlashCommand[] = CHAT_MODE_DEFS.map((def) => ({
+	id: def.id,
+	name: def.id,
+	detailKey: def.slashDetailKey,
+	mode: def.id,
+}));
+
 export const SLASH_COMMANDS: readonly SlashCommand[] = [
-	{
-		id: 'debug',
-		name: 'debug',
-		detailKey: 'chat.slash.debug',
-		mode: 'debug',
-	},
-	{
-		id: 'design',
-		name: 'design',
-		detailKey: 'chat.slash.design',
-		mode: 'design',
-	},
-	{
-		id: 'plan',
-		name: 'plan',
-		detailKey: 'chat.slash.plan',
-		mode: 'plan',
-	},
-	{
-		id: 'multitask',
-		name: 'multitask',
-		detailKey: 'chat.slash.multitask',
-		mode: 'multitask',
-	},
-	{
-		id: 'project',
-		name: 'project',
-		detailKey: 'chat.slash.project',
-		mode: 'project',
-	},
-	{
-		id: 'ask',
-		name: 'ask',
-		detailKey: 'chat.slash.ask',
-		mode: 'ask',
-	},
-	{
-		id: 'agent',
-		name: 'agent',
-		detailKey: 'chat.slash.agent',
-		mode: 'agent',
-	},
+	...MODE_SLASH_COMMANDS,
 	{
 		id: 'export',
 		name: 'export',

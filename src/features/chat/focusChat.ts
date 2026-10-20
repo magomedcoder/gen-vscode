@@ -1,20 +1,19 @@
 import * as vscode from 'vscode';
-import { getSettings } from '../../core/config/settings';
-import { CHAT_VIEW_ID, CHAT_VIEW_SIDEBAR_ID } from './ids';
+import type { ChatViewProvider } from './ChatViewProvider';
+import { CHAT_VIEW_ID } from './ids';
 
-export type ChatFocusTarget = 'panel' | 'sidebar';
+let editorHost: ChatViewProvider | undefined;
 
-// Сфокусировать чат: panel / sidebar, либо по chatViewLocation (both -> panel с fallback)
-export async function focusChatView(preferred?: ChatFocusTarget): Promise<void> {
-	const loc = getSettings().chatViewLocation;
-	const target: ChatFocusTarget = preferred ?? (loc === 'sidebar' ? 'sidebar' : 'panel');
+export function setChatEditorHost(provider: ChatViewProvider | undefined): void {
+	editorHost = provider;
+}
 
-	const primary = target === 'sidebar' ? CHAT_VIEW_SIDEBAR_ID : CHAT_VIEW_ID;
-	const fallback = target === 'sidebar' ? CHAT_VIEW_ID : CHAT_VIEW_SIDEBAR_ID;
+// Нижняя панель (WebviewView)
+export async function focusChatView(): Promise<void> {
+	await vscode.commands.executeCommand(`${CHAT_VIEW_ID}.focus`).then(undefined, () => undefined);
+}
 
-	try {
-		await vscode.commands.executeCommand(`${primary}.focus`);
-	} catch {
-		await vscode.commands.executeCommand(`${fallback}.focus`).then(undefined, () => undefined);
-	}
+// Вкладка редактора (полноценный экран)
+export function focusChatEditor(): void {
+	editorHost?.showEditorChat();
 }

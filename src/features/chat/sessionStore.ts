@@ -1,8 +1,10 @@
 import * as vscode from 'vscode';
 import type { Memento } from 'vscode';
-import type { ChatUiMessage } from './protocol';
+import type { ChatUiMessage, ToolCallUi } from './protocol';
 
-const SESSIONS_KEY = 'gen.chat.sessions';
+// Индекс метаданных + отдельный ключ с сообщениями на сессию (dirty-only rewrite)
+const SESSION_INDEX_KEY = 'gen.chat.sessionIndex';
+const SESSION_MSGS_PREFIX = 'gen.chat.session.msgs.';
 const CURRENT_ID_KEY = 'gen.chat.currentSessionId';
 // Черновики Composer: sessionId * текст
 const DRAFTS_KEY = 'gen.chat.drafts';
@@ -11,6 +13,11 @@ const DRAFT_CHIPS_KEY = 'gen.chat.draftChips';
 
 const MAX_SESSIONS = 40;
 const MAX_STORED_MESSAGES = 80;
+// Cap tool.result в persist (полный текст остаётся в памяти / export archive)
+export const MAX_STORED_TOOL_RESULT_CHARS = 4000;
+const TOOL_RESULT_TRUNCATED_MARKER = '\n...[truncated for storage]';
+// Debounce batch-записи messages при частых saveMessages (стрим / tool append)
+const PERSIST_DEBOUNCE_MS = 800;
 
 export interface StoredChatSession {
 	id: string;
@@ -18,7 +25,6 @@ export interface StoredChatSession {
 	messages: ChatUiMessage[];
 	createdAt: number;
 	updatedAt: number;
-	archived?: boolean;
 	// Родитель <-> потомок: вкладка субагента / передача
 	parentSessionId?: string;
 	childSessionIds?: string[];
@@ -30,7 +36,6 @@ export interface SessionSummary {
 	createdAt: number;
 	updatedAt: number;
 	messageCount: number;
-	archived?: boolean;
 	// Сейчас в этой вкладке идёт ход agent/ask (индикатор UI)
 	busy?: boolean;
 	// Родительская сессия (если эта вкладка - дочерняя для субагента)
@@ -45,7 +50,80 @@ function newId(): string {
 	return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
-function slimMessages(messages: ChatUiMessage[]): ChatUiMessage[] {
+// Сравнение для сортировки списка: switch без правок не должен bump'ать updatedAt
+function messagesActivityEqual(a: ChatUiMessage[], b: ChatUiMessage[]): boolean {
+	if (a.length !== b.length) {
+		return false;
+	}
+
+	for (let i = 0; i < a.length; i += 1) {
+		const left = a[i]!;
+		const right = b[i]!;
+		if (left.id !== right.id || left.role !== right.role || left.content !== right.content || (left.thinking ?? '') !== (right.thinking ?? '')) {
+			return false;
+		}
+
+		const leftTools = left.toolCalls ?? [];
+		const rightTools = right.toolCalls ?? [];
+		if (leftTools.length !== rightTools.length) {
+			return false;
+		}
+
+		for (let j = 0; j < leftTools.length; j += 1) {
+			const lt = leftTools[j]!;
+			const rt = rightTools[j]!;
+			if (lt.id !== rt.id || lt.status !== rt.status || lt.name !== rt.name) {
+				return false;
+			}
+		}
+	}
+
+	return true;
+}
+
+export function capToolResult(result: string): string {
+	if (result.length <= MAX_STORED_TOOL_RESULT_CHARS || result.endsWith(TOOL_RESULT_TRUNCATED_MARKER)) {
+		return result;
+	}
+
+	return result.slice(0, MAX_STORED_TOOL_RESULT_CHARS) + TOOL_RESULT_TRUNCATED_MARKER;
+}
+
+function slimToolCall(call: ToolCallUi): ToolCallUi {
+	const resultTooBig = typeof call.result === 'string'
+		&& call.result.length > MAX_STORED_TOOL_RESULT_CHARS
+		&& !call.result.endsWith(TOOL_RESULT_TRUNCATED_MARKER);
+	if (!call.hunks?.length && !resultTooBig) {
+		return call;
+	}
+
+	return {
+		...call,
+		...(resultTooBig ? { result: capToolResult(call.result!) } : {}),
+		...(call.hunks?.length
+			? {
+				hunks: call.hunks.map((hunk) => {
+					const {
+						oldLines: _o,
+						newLines: _n,
+						beforeContext: _b,
+						afterContext: _a,
+						...rest
+					} = hunk;
+					return {
+						...rest,
+						// Миграция: старые pending -> accepted (post-apply review убран)
+						status: hunk.status === 'pending' ? 'accepted' : hunk.status,
+						oldLines: [],
+						newLines: [],
+					};
+				}),
+			}
+			: {}),
+	};
+}
+
+export function slimMessages(messages: ChatUiMessage[]): ChatUiMessage[] {
 	return messages.slice(-MAX_STORED_MESSAGES).map((msg) => {
 		if (!msg.toolCalls?.length) {
 			return msg;
@@ -53,33 +131,7 @@ function slimMessages(messages: ChatUiMessage[]): ChatUiMessage[] {
 
 		return {
 			...msg,
-			toolCalls: msg.toolCalls.map((call) => {
-				if (!call.hunks?.length) {
-					return call;
-				}
-
-				return {
-					...call,
-					hunks: call.hunks.map((hunk) => {
-						if (hunk.status === 'pending') {
-							return hunk;
-						}
-
-						const { 
-							oldLines: _o, 
-							newLines: _n, 
-							beforeContext: _b, 
-							afterContext: _a, 
-							...rest 
-						} = hunk;
-						return {
-							...rest,
-							oldLines: [],
-							newLines: [],
-						};
-					}),
-				};
-			}),
+			toolCalls: msg.toolCalls.map(slimToolCall),
 		};
 	});
 }
@@ -91,13 +143,17 @@ function toSummary(session: StoredChatSession): SessionSummary {
 		createdAt: session.createdAt,
 		updatedAt: session.updatedAt,
 		messageCount: session.messages.length,
-		archived: Boolean(session.archived),
 		parentSessionId: session.parentSessionId,
 		childSessionIds: session.childSessionIds?.length
 			? [...session.childSessionIds]
 			: undefined,
 		isChild: Boolean(session.parentSessionId),
 	};
+}
+
+// Сессия «начата» - пользователь уже что-то отправил в чат
+export function sessionHasUserMessage(session: StoredChatSession): boolean {
+	return session.messages.some((m) => m.role === 'user' && m.content.trim().length > 0);
 }
 
 export function defaultSessionTitle(): string {
@@ -131,6 +187,14 @@ export function getSessionPeek(): SessionStore | undefined {
 export class SessionStore {
 	private sessions: StoredChatSession[] = [];
 	private currentId = '';
+	// Dirty-tracking: пишем в memento только изменившиеся сессии
+	private readonly dirty = new Set<string>();
+	// Сессии, чьи msgs-ключи нужно удалить (delete / cap / orphan)
+	private readonly removed = new Set<string>();
+	private indexDirty = false;
+	private currentDirty = false;
+	private writtenCurrentId = '';
+	private persistTimer: ReturnType<typeof setTimeout> | undefined;
 	// Черновики Composer в памяти + workspaceState
 	private drafts: Record<string, string> = {};
 	private draftChips: Record<string, string[]> = {};
@@ -139,24 +203,47 @@ export class SessionStore {
 		this.load();
 	}
 
+	private static normalizeStored(s: Partial<StoredChatSession> & { id: string }, messages: unknown): StoredChatSession {
+		return {
+			id: s.id,
+			title: String(s.title || defaultTitle()).slice(0, 120),
+			// slim при загрузке: чистим старые memento от больших tool.result
+			messages: Array.isArray(messages) ? slimMessages(messages as ChatUiMessage[]) : [],
+			createdAt: typeof s.createdAt === 'number' ? s.createdAt : Date.now(),
+			updatedAt: typeof s.updatedAt === 'number' ? s.updatedAt : Date.now(),
+			parentSessionId: s.parentSessionId,
+			childSessionIds: Array.isArray(s.childSessionIds) ? s.childSessionIds : undefined,
+		};
+	}
+
 	private load(): void {
-		const raw = this.memento.get<StoredChatSession[]>(SESSIONS_KEY);
+		const index = this.memento.get<Array<Partial<StoredChatSession> & { id: string }>>(SESSION_INDEX_KEY);
 		const current = this.memento.get<string>(CURRENT_ID_KEY, '');
+		this.writtenCurrentId = current;
 		this.drafts = this.loadDraftsMap();
 		this.draftChips = this.loadDraftChipsMap();
 
-		if (Array.isArray(raw) && raw.length > 0) {
-			this.sessions = raw.filter((s) => s && typeof s === 'object' && typeof s.id === 'string').map((s) => ({
-				id: s.id,
-				title: String(s.title || defaultTitle()).slice(0, 120),
-				messages: Array.isArray(s.messages) ? s.messages : [],
-				createdAt: typeof s.createdAt === 'number' ? s.createdAt : Date.now(),
-				updatedAt: typeof s.updatedAt === 'number' ? s.updatedAt : Date.now(),
-				archived: Boolean(s.archived),
-				parentSessionId: s.parentSessionId,
-				childSessionIds: Array.isArray(s.childSessionIds) ? s.childSessionIds : undefined,
-			}));
+		if (Array.isArray(index) && index.length > 0) {
+			this.sessions = index
+				.filter((m) => m && typeof m === 'object' && typeof m.id === 'string')
+				.map((m) => SessionStore.normalizeStored(m, this.memento.get<ChatUiMessage[]>(SESSION_MSGS_PREFIX + m.id, [])));
+		}
+
+		if (this.sessions.length > 0) {
 			this.currentId = this.sessions.some((s) => s.id === current) ? current : this.sessions[0]!.id;
+			// Осиротевшие msgs-ключи (краш между записями / удалённые) - вычистить
+			const known = new Set(this.sessions.map((s) => s.id));
+			for (const key of this.memento.keys()) {
+				if (key.startsWith(SESSION_MSGS_PREFIX)) {
+					const id = key.slice(SESSION_MSGS_PREFIX.length);
+					if (!known.has(id)) {
+						this.removed.add(id);
+					}
+				}
+			}
+			if (this.removed.size > 0) {
+				this.schedulePersist(true);
+			}
 			return;
 		}
 
@@ -170,7 +257,7 @@ export class SessionStore {
 		};
 		this.sessions = [empty];
 		this.currentId = empty.id;
-		void this.persistAll();
+		this.persistAll();
 	}
 
 	private loadDraftsMap(): Record<string, string> {
@@ -215,30 +302,111 @@ export class SessionStore {
 		void this.memento.update(DRAFT_CHIPS_KEY, this.draftChips);
 	}
 
-	private persistAll(): Thenable<void> {
-		const trimmed = this.sessions.slice()
-			.sort((a, b) => b.updatedAt - a.updatedAt)
-			.slice(0, MAX_SESSIONS)
-			.map((s) => ({
-				...s,
-				messages: slimMessages(s.messages),
-			}));
-		this.sessions = trimmed;
+	private markDirty(id: string): void {
+		this.dirty.add(id);
+		this.indexDirty = true;
+	}
+
+	// Пометить все сессии dirty и записать сразу (create / delete / rename / seed)
+	private persistAll(): void {
+		for (const s of this.sessions) {
+			this.markDirty(s.id);
+		}
+
+		this.schedulePersist(true);
+	}
+
+	// Сортировка по updatedAt + cap MAX_SESSIONS + валидный currentId (без slim: slim только у dirty при save)
+	private normalizeSessions(): void {
+		this.sessions.sort((a, b) => b.updatedAt - a.updatedAt);
+		if (this.sessions.length > MAX_SESSIONS) {
+			for (const dropped of this.sessions.splice(MAX_SESSIONS)) {
+				this.dirty.delete(dropped.id);
+				this.removed.add(dropped.id);
+			}
+
+			this.indexDirty = true;
+		}
+
 		if (!this.sessions.some((s) => s.id === this.currentId) && this.sessions[0]) {
 			this.currentId = this.sessions[0].id;
 		}
-
-		return this.memento.update(SESSIONS_KEY, this.sessions).then(() =>
-			this.memento.update(CURRENT_ID_KEY, this.currentId),
-		);
 	}
 
-	listSessions(options?: { archived?: boolean; query?: string }): SessionSummary[] {
+	/**
+	 * immediate=true: структурные операции (create/delete/rename/...) пишем сразу.
+	 * immediate=false: saveMessages - trailing throttle PERSIST_DEBOUNCE_MS (batch всех dirty).
+	 */
+	private schedulePersist(immediate: boolean): void {
+		this.normalizeSessions();
+		if (immediate) {
+			void this.flush();
+			return;
+		}
+
+		if (this.persistTimer) {
+			return;
+		}
+
+		this.persistTimer = setTimeout(() => {
+			this.persistTimer = undefined;
+			void this.flush();
+		}, PERSIST_DEBOUNCE_MS);
+	}
+
+	// Сброс всех pending-записей в memento (idempotent; вызывать на dispose/deactivate)
+	flush(): Thenable<void> {
+		if (this.persistTimer) {
+			clearTimeout(this.persistTimer);
+			this.persistTimer = undefined;
+		}
+
+		this.normalizeSessions();
+		const writes: Array<Thenable<void>> = [];
+		const dirtyIds = [...this.dirty];
+		this.dirty.clear();
+		for (const id of dirtyIds) {
+			const session = this.sessions.find((s) => s.id === id);
+			if (session) {
+				writes.push(this.memento.update(SESSION_MSGS_PREFIX + id, session.messages));
+			}
+		}
+
+		for (const id of this.removed) {
+			writes.push(this.memento.update(SESSION_MSGS_PREFIX + id, undefined));
+		}
+
+		this.removed.clear();
+		const hadDirty = this.indexDirty;
+		this.indexDirty = false;
+		const index = hadDirty
+			? this.sessions.map(({ messages: _m, ...meta }) => meta)
+			: undefined;
+		const writeCurrent = this.currentId !== this.writtenCurrentId;
+		if (writeCurrent) {
+			this.writtenCurrentId = this.currentId;
+		}
+
+		// Порядок вызовов: сообщения раньше индекса (краш между ними оставит orphan-ключ, чистится на load)
+		if (index) {
+			writes.push(this.memento.update(SESSION_INDEX_KEY, index));
+		}
+
+		if (writeCurrent) {
+			writes.push(this.memento.update(CURRENT_ID_KEY, this.currentId));
+		}
+
+		return Promise.all(writes).then(() => undefined);
+	}
+
+	dispose(): void {
+		void this.flush();
+	}
+
+	listSessions(options?: { query?: string; startedOnly?: boolean }): SessionSummary[] {
 		const query = options?.query?.trim().toLocaleLowerCase();
 		return this.sessions
-			.filter((session) => options?.archived === undefined
-				? !session.archived
-				: Boolean(session.archived) === options.archived)
+			.filter((session) => !options?.startedOnly || sessionHasUserMessage(session))
 			.filter((session) => !query
 				|| session.title.toLocaleLowerCase().includes(query)
 				|| session.messages.some((message) => message.content.toLocaleLowerCase().includes(query)))
@@ -247,23 +415,52 @@ export class SessionStore {
 			.map(toSummary);
 	}
 
-	archiveSession(id: string, archived = true): boolean {
-		const idx = this.sessions.findIndex((session) => session.id === id);
-		if (idx < 0) {
-			return false;
+	/**
+	 * Удалить черновые сессии без user-сообщений (кроме keepIds / child / с детьми).
+	 * @returns сколько удалили
+	 */
+	pruneUnstartedSessions(keepIds: Iterable<string> = []): number {
+		const keep = new Set(keepIds);
+		keep.add(this.currentId);
+		const before = this.sessions.length;
+		const kept: StoredChatSession[] = [];
+		for (const session of this.sessions) {
+			const keepIt = keep.has(session.id)
+				|| Boolean(session.parentSessionId)
+				|| (session.childSessionIds?.length ?? 0) > 0
+				|| sessionHasUserMessage(session);
+			if (keepIt) {
+				kept.push(session);
+			} else {
+				this.dirty.delete(session.id);
+				this.removed.add(session.id);
+			}
 		}
 
-		this.sessions[idx] = { 
-			...this.sessions[idx]!, 
-			archived, 
-			updatedAt: Date.now()
-		};
-		if (archived && this.currentId === id) {
-			this.currentId = this.sessions.find((session) => !session.archived)?.id ?? id;
+		if (kept.length === before) {
+			return 0;
 		}
 
-		void this.persistAll();
-		return true;
+		this.sessions = kept;
+		this.indexDirty = true;
+		if (this.sessions.length === 0) {
+			const now = Date.now();
+			const empty: StoredChatSession = {
+				id: newId(),
+				title: defaultTitle(),
+				messages: [],
+				createdAt: now,
+				updatedAt: now,
+			};
+			this.sessions = [empty];
+			this.currentId = empty.id;
+			this.markDirty(empty.id);
+		} else if (!this.sessions.some((s) => s.id === this.currentId)) {
+			this.currentId = this.sessions[0]!.id;
+		}
+
+		this.schedulePersist(true);
+		return before - this.sessions.length;
 	}
 
 	getCurrentSessionId(): string {
@@ -364,7 +561,8 @@ export class SessionStore {
 		return created;
 	}
 
-	// Сохранить сообщения текущей (или указанной) сессии
+	// Сохранить сообщения текущей (или указанной) сессии.
+	// updatedAt двигаем только при реальном изменении истории (не при switch вкладки).
 	saveMessages(messages: ChatUiMessage[], sessionId?: string): void {
 		const id = sessionId ?? this.currentId;
 		const idx = this.sessions.findIndex((s) => s.id === id);
@@ -373,13 +571,20 @@ export class SessionStore {
 		}
 
 		const prev = this.sessions[idx]!;
+		const nextMessages = slimMessages(messages);
+		if (messagesActivityEqual(prev.messages, nextMessages)) {
+			return;
+		}
+
 		// Title «Новый чат» оставляем - LLM-title (systemAgents) или renameSession обновят после хода
 		this.sessions[idx] = {
 			...prev,
-			messages: slimMessages(messages),
+			messages: nextMessages,
 			updatedAt: Date.now(),
 		};
-		void this.persistAll();
+		// Только эта сессия dirty; запись debounced (batch)
+		this.markDirty(id);
+		this.schedulePersist(false);
 	}
 
 	createSession(title?: string, opts?: { parentSessionId?: string }): StoredChatSession {
@@ -394,20 +599,29 @@ export class SessionStore {
 			parentSessionId,
 		};
 		this.sessions.unshift(session);
-		if (parentSessionId) {
-			this.linkChildSession(parentSessionId, session.id);
-		}
+		this.markDirty(session.id);
 		this.currentId = session.id;
-		void this.persistAll();
+		if (parentSessionId) {
+			this.linkChild(parentSessionId, session.id);
+		}
+
+		this.schedulePersist(true);
 		return session;
 	}
 
 	// Связать parent <-> child без смены currentId
 	linkChildSession(parentId: string, childId: string): void {
+		if (this.linkChild(parentId, childId)) {
+			this.schedulePersist(true);
+		}
+	}
+
+	// Только мета (index): messages у parent/child не меняются -> не dirty
+	private linkChild(parentId: string, childId: string): boolean {
 		const pIdx = this.sessions.findIndex((s) => s.id === parentId);
 		const cIdx = this.sessions.findIndex((s) => s.id === childId);
 		if (pIdx < 0 || cIdx < 0) {
-			return;
+			return false;
 		}
 
 		const parent = this.sessions[pIdx]!;
@@ -424,7 +638,8 @@ export class SessionStore {
 			parentSessionId: parentId,
 			updatedAt: Date.now(),
 		};
-		void this.persistAll();
+		this.indexDirty = true;
+		return true;
 	}
 
 	switchSession(id: string): StoredChatSession | undefined {
@@ -434,7 +649,11 @@ export class SessionStore {
 		}
 
 		this.currentId = id;
-		void this.memento.update(CURRENT_ID_KEY, this.currentId);
+		if (this.writtenCurrentId !== id) {
+			this.writtenCurrentId = id;
+			void this.memento.update(CURRENT_ID_KEY, id);
+		}
+
 		return session;
 	}
 
@@ -454,7 +673,8 @@ export class SessionStore {
 			title: trimmed,
 			updatedAt: Date.now(),
 		};
-		void this.persistAll();
+		this.indexDirty = true;
+		this.schedulePersist(true);
 		return true;
 	}
 
@@ -474,7 +694,8 @@ export class SessionStore {
 			};
 			this.currentId = only.id;
 			this.clearDraft(id);
-			void this.persistAll();
+			this.markDirty(id);
+			this.schedulePersist(true);
 			return true;
 		}
 
@@ -484,11 +705,14 @@ export class SessionStore {
 		}
 
 		this.sessions = next;
+		this.dirty.delete(id);
+		this.removed.add(id);
+		this.indexDirty = true;
 		if (this.currentId === id) {
 			this.currentId = this.sessions[0]!.id;
 		}
 		this.clearDraft(id);
-		void this.persistAll();
+		this.schedulePersist(true);
 		return true;
 	}
 
@@ -515,7 +739,8 @@ export class SessionStore {
 		};
 		this.sessions.unshift(session);
 		this.currentId = session.id;
-		void this.persistAll();
+		this.markDirty(session.id);
+		this.schedulePersist(true);
 		return session;
 	}
 }

@@ -20,7 +20,7 @@ Save the settings. If URL/model are missing, chat shows a hint and a button to o
 1. **Ask** mode - normal chat; selected editor code is added to context.
 2. **Agent** mode - the model can call tools (read/edit files, and so on).
 
-Switch mode in the chat header; the default is in **Chat & Agent** settings.
+Switch mode with the select next to the input (or slash `/ask` / `/agent` / ...); default is Settings -> **Chat**.
 
 ## Optional project scaffold
 

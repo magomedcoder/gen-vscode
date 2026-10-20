@@ -2,9 +2,9 @@ import * as assert from 'node:assert';
 import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { cosineSimilarity, featureHashEmbed, LOCAL_VECTOR_MODEL, searchLocalVectors, syncLocalFeatureVectors, VECTOR_DIM } from '../features/index/vectorStore.js';
+import { cosineSimilarity, featureHashEmbed, flushVectorsCache, getCachedRemoteVector, loadVectorsDocument, LOCAL_VECTOR_MODEL, putCachedRemoteVector, searchLocalVectors, syncLocalFeatureVectors, VECTOR_DIM, vectorsPathForFolder } from '../features/index/vectorStore.js';
 import { setIndexStorageRootForTests } from '../features/index/indexStorage.js';
-import { saveManifest } from '../features/index/store.js';
+import { loadManifestCached, saveManifest } from '../features/index/store.js';
 import { emptyManifest } from '../features/index/types.js';
 import { contentChunkId } from '../features/index/chunk.js';
 import { aggregateRetrievalMetrics, assertRetrievalGate, DEFAULT_RETRIEVAL_GATE } from '../features/index/retrievalMetrics.js';
@@ -137,6 +137,52 @@ suite('vectorStore feature-hash', () => {
 			minSimpleScore: 0.55,
 		});
 		assert.strictEqual(LOCAL_VECTOR_MODEL.startsWith('local-'), true);
+
+		setIndexStorageRootForTests(undefined);
+		await fs.rm(root, { recursive: true, force: true });
+	});
+
+	test('remote vector cache: in-memory hit + batched flush', async () => {
+		const root = await fs.mkdtemp(path.join(os.tmpdir(), 'gen-vec-remote-'));
+		setIndexStorageRootForTests(root);
+		const folder = path.join(root, 'ws');
+		await fs.mkdir(folder, { recursive: true });
+
+		const vec = [0.1, 0.2, 0.3];
+		for (let i = 0; i < 5; i += 1) {
+			await putCachedRemoteVector(folder, `h${i}`, 'remote-model', vec);
+		}
+
+		// hit из памяти, vectors.json ещё не записан (debounced batch)
+		assert.deepStrictEqual(await getCachedRemoteVector(folder, 'h3', 'remote-model'), vec);
+		const file = vectorsPathForFolder(folder)!;
+		await assert.rejects(fs.stat(file));
+
+		await flushVectorsCache(folder);
+		const onDisk = await loadVectorsDocument(folder);
+		assert.strictEqual(Object.keys(onDisk!.vectors).length, 5);
+
+		setIndexStorageRootForTests(undefined);
+		await fs.rm(root, { recursive: true, force: true });
+	});
+
+	test('loadManifestCached: reuse + invalidate on save', async () => {
+		const root = await fs.mkdtemp(path.join(os.tmpdir(), 'gen-manifest-cache-'));
+		setIndexStorageRootForTests(root);
+		const folder = path.join(root, 'ws');
+		await fs.mkdir(folder, { recursive: true });
+
+		const manifest = emptyManifest();
+		manifest.files['a.ts'] = { hash: 'a', size: 1, chunkIds: [] };
+		await saveManifest(folder, manifest);
+		const first = await loadManifestCached(folder);
+		assert.strictEqual(await loadManifestCached(folder), first);
+
+		manifest.files['b.ts'] = { hash: 'b', size: 1, chunkIds: [] };
+		await saveManifest(folder, manifest);
+		const second = await loadManifestCached(folder);
+		assert.notStrictEqual(second, first);
+		assert.ok(second.files['b.ts']);
 
 		setIndexStorageRootForTests(undefined);
 		await fs.rm(root, { recursive: true, force: true });

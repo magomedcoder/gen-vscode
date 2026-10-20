@@ -1,6 +1,5 @@
 import * as vscode from 'vscode';
 import { getSettings } from '../../../../core/config/settings';
-import { recordActivity } from '../../../../core/stores/activityStore';
 import { previewText } from '../../policy';
 import { asOptionalInt, type ToolContext, type ToolDefinition, type ToolResult } from '../../types';
 
@@ -80,16 +79,6 @@ export const repoHealthTool: ToolDefinition = {
 		if (!noCache) {
 			const hit = reportCache.get(cacheKey);
 			if (hit && Date.now() - hit.at < CACHE_TTL_MS && args.write_report !== true) {
-				recordActivity({
-					kind: 'tool',
-					toolName: 'repo_health',
-					label: vscode.l10n.t(
-						'activity.repoHealth.summaryCached',
-						String(hit.report.cycleCount ?? 0),
-						String(hit.report.orphanCount ?? 0),
-					),
-					status: 'ok',
-				});
 				return {
 					ok: true,
 					content: previewText(
@@ -172,13 +161,6 @@ export const repoHealthTool: ToolDefinition = {
 			ctx.trackMutation?.(vscode.Uri.joinPath(folder.uri, reportPath));
 		}
 		
-		recordActivity({
-			kind: 'tool',
-			toolName: 'repo_health',
-			label: vscode.l10n.t('activity.repoHealth.summary', cycles.length, orphans.length),
-			path: reportPath,
-			status: 'ok',
-		});
 
 		return {
 			ok: true,

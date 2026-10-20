@@ -6,16 +6,17 @@ Chat lives in the bottom **Gen** panel.
 
 ## Modes
 
-| Mode          | How to enable     | Behavior                                                                                                                                                                              |
-|---------------|-------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| **Ask**       | button / `/ask`   | Text only, no tools. Not the same as Plan.                                                                                                                                            |
-| **Agent**     | button / `/agent` | Loop: LLM -> tool calls -> tool results -> LLM again (up to the iteration limit).                                                                                                     |
-| **Plan**      | `/plan`           | Read/search + `propose_plan`. Edits denied. Shell: `planShellPolicy` (`ask` default - always confirm; `deny` - hidden). Plan Agent banner after approve; reminder when entering Plan. |
-| **Debug**     | `/debug`          | Like Agent, focused on logs and diagnostics (`find_logs`, `read_log_tail`).                                                                                                           |
-| **Design**    | `/design`         | Like Agent, focused on UI preview (`open_browser`, `fetch_page`).                                                                                                                     |
-| **Multitask** | `/multitask`      | Coordinator: no direct edits; delegate via `task`.                                                                                                                                    |
+| Mode          | How to enable         | Behavior                                                                                                                                                                              |
+|---------------|-----------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| **Ask**       | select / `/ask`       | Text only, no tools. Not the same as Plan.                                                                                                                                            |
+| **Agent**     | select / `/agent`     | Loop: LLM -> tool calls -> tool results -> LLM again (up to the iteration limit).                                                                                                     |
+| **Plan**      | select / `/plan`      | Read/search + `propose_plan`. Edits denied. Shell: `planShellPolicy` (`ask` default - always confirm; `deny` - hidden). Plan Agent banner after approve; reminder when entering Plan. |
+| **Debug**     | select / `/debug`     | Like Agent, focused on logs and diagnostics (`find_logs`, `read_log_tail`).                                                                                                           |
+| **Design**    | select / `/design`    | Like Agent, focused on UI preview (`open_browser`, `fetch_page`).                                                                                                                     |
+| **Multitask** | select / `/multitask` | Coordinator: no direct edits; delegate via `task`.                                                                                                                                    |
+| **Project**   | select / `/project`   | Team lead: delegate via `task`, synthesize reports.                                                                                                                                   |
 
-Type `/` in the input for slash-command autocomplete. You can attach a question: `/debug why is auth failing?`. Active Debug/Design shows as a badge next to Ask/Agent (click to return to Agent).
+Modes come from the shared `CHAT_MODE_DEFS` registry; use the composer select next to the input (or slash `/...`). Default is Settings -> **Chat**. Type `/` for slash autocomplete; you can attach a question: `/debug why is auth failing?`.
 
 ## Permissions (Security)
 

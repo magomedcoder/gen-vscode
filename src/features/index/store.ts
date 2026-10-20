@@ -19,6 +19,59 @@ async function ensureIndexDir(folderFsPath: string): Promise<boolean> {
 	return true;
 }
 
+// Read-only in-memory кэш manifest (search / similar_code / vector search).
+// Валидируем по stat (mtime+size) и инвалидируем в saveManifest.
+type ManifestCacheEntry = { manifest: IndexManifest; mtimeMs: number; size: number };
+const manifestCache = new Map<string, ManifestCacheEntry>();
+
+export function invalidateManifestCache(folderFsPath?: string): void {
+	if (folderFsPath === undefined) {
+		manifestCache.clear();
+		return;
+	}
+
+	const file = manifestPathForFolder(folderFsPath);
+	if (file) {
+		manifestCache.delete(file);
+	}
+}
+
+/**
+ * Кэшированный manifest ТОЛЬКО для чтения: объект shared, не мутировать!
+ * Для fullIndex / reindex / remove использовать loadManifest (свежая копия с диска).
+ */
+export async function loadManifestCached(folderFsPath: string): Promise<IndexManifest> {
+	const file = manifestPathForFolder(folderFsPath);
+	if (!file) {
+		return emptyManifest();
+	}
+
+	try {
+		const st = await fs.stat(file);
+		const hit = manifestCache.get(file);
+		if (hit && hit.mtimeMs === st.mtimeMs && hit.size === st.size) {
+			return hit.manifest;
+		}
+
+		const raw = await fs.readFile(file, 'utf8');
+		const parsed = parseManifestJson(raw);
+		if (!parsed.ok) {
+			manifestCache.delete(file);
+			return emptyManifest();
+		}
+
+		manifestCache.set(file, { 
+			manifest: parsed.manifest, 
+			mtimeMs: st.mtimeMs, 
+			size: st.size 
+		});
+		return parsed.manifest;
+	} catch {
+		manifestCache.delete(file);
+		return emptyManifest();
+	}
+}
+
 export async function loadManifest(folderFsPath: string): Promise<IndexManifest> {
 	const file = manifestPathForFolder(folderFsPath);
 	if (!file) {
@@ -188,5 +241,9 @@ export async function saveManifest(folderFsPath: string, manifest: IndexManifest
 	}
 
 	manifest.updatedAt = new Date().toISOString();
-	await fs.writeFile(file, JSON.stringify(manifest, null, 2), 'utf8');
+	// Инвалидировать до и после записи: читатель не должен увидеть устаревший кэш
+	manifestCache.delete(file);
+	// Compact JSON: manifest большой (chunks + trigrams), pretty-print раздувает файл и время stringify
+	await fs.writeFile(file, JSON.stringify(manifest), 'utf8');
+	manifestCache.delete(file);
 }

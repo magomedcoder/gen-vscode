@@ -1,6 +1,5 @@
 import * as vscode from 'vscode';
 import { getSettings } from '../../../core/config/settings';
-import { beginGenOperationSpan } from '../../../core/llm/otel';
 import { shouldConfirmDeletes, shouldConfirmWrites } from '../auth';
 import { previewText } from '../policy';
 import { throwIfAborted } from '../workspacePath';
@@ -83,10 +82,7 @@ export async function confirmOrSkip(
 		};
 	}
 
-	const span = beginGenOperationSpan(getSettings(), 'tool.confirm', { title: title.slice(0, 120) });
-	let choice: ConfirmChoice;
-	try {
-		choice = await new Promise((resolve, reject) => {
+	const choice: ConfirmChoice = await new Promise((resolve, reject) => {
 		const onAbort = () => {
 			const err = new Error(vscode.l10n.t('agent.operationCancelled'));
 			err.name = 'AbortError';
@@ -116,12 +112,7 @@ export async function confirmOrSkip(
 			ctx.signal?.removeEventListener('abort', onAbort);
 			reject(err);
 		});
-		});
-		span?.end('ok', { choice });
-	} catch (err) {
-		span?.end('error');
-		throw err;
-	}
+	});
 
 	// apply|always|allow_remaining -> продолжить; skip -> denied; abort -> AbortError
 	const outcome = resolveConfirmChoiceOutcome(choice);

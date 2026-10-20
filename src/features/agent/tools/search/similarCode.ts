@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { getIndexManager } from '../../../index/IndexManager';
-import { loadManifest } from '../../../index/store';
+import { loadManifestCached } from '../../../index/store';
 import { tokenize } from '../../../index/trigram';
 import { AGENT_LIMITS } from '../../policy';
 import { asOptionalInt, asString, type ToolContext, type ToolDefinition, type ToolResult } from '../../types';
@@ -112,7 +112,7 @@ export const similarCodeTool: ToolDefinition = {
 		const folder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
 		const hits = await manager.search(seed, maxResults + 8);
 		const seedGrams = new Set(tokenize(seed));
-		const manifest = folder ? await loadManifest(folder) : undefined;
+		const manifest = folder ? await loadManifestCached(folder) : undefined;
 
 		const enriched = hits.filter((h) => h.path !== relPath || (startLine !== undefined && h.startLine !== startLine))
 			.map((h) => {

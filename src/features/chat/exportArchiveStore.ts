@@ -4,7 +4,6 @@ import * as vscode from 'vscode';
 import type { ExtensionContext } from 'vscode';
 import type { ChatUiMessage } from './protocol';
 import { redactSecrets } from '../agent/secrets';
-import { recordActivity } from '../../core/stores/activityStore';
 
 const DIR_NAME = 'export-archives';
 
@@ -98,12 +97,6 @@ export async function loadExportArchiveResult(
 			await fs.rename(file, quarantinedPath);
 		} catch {}
 		const error = err instanceof Error ? err.message : String(err);
-		recordActivity({
-			kind: 'review',
-			label: vscode.l10n.t('activity.exportArchive.quarantined', path.basename(file)),
-			path: quarantinedPath,
-			status: 'error',
-		});
 		return { 
 			status: 'corrupt', 
 			quarantinedPath, 

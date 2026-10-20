@@ -6,7 +6,7 @@
 	"command.commentFile.title": "Gen: Прокомментировать файл",
 	"command.openChat.title": "Открыть чат",
 	"command.openChatPanel.title": "Открыть чат (панель)",
-	"command.openChatSidebar.title": "Открыть чат (боковая панель)",
+	"command.openChatEditor.title": "Открыть чат (вкладка редактора)",
 	"command.initProject.title": "Инициализировать проект (.gen)",
 	"command.addSelectionToChat.title": "Gen: Добавить выделение в чат",
 	"command.addToChat.title": "Gen: Добавить в чат",
@@ -22,12 +22,8 @@
 	"command.designPickFromClipboard.title": "Gen: Design - URL из буфера",
 	"command.hunkAccept.title": "Принять хунк (Keep)",
 	"command.hunkReject.title": "Отклонить хунк (Undo)",
-	"configuration.gen.title": "Gen",
-	"config.gen.chatViewLocation.description": "Где показывать чат Gen",
-	"config.gen.chatViewLocation.panel": "Только нижняя панель",
-	"config.gen.chatViewLocation.sidebar": "Только боковая панель (activity bar)",
-	"config.gen.chatViewLocation.both": "И панель, и боковая",
+	"command.generateCommitMessage.title": "Gen: Сгенерировать Commit Message",
+	"command.abortCommitMessage.title": "Gen: Отменить Commit Message",
 	"viewsContainers.panel.gen.title": "Gen",
-	"viewsContainers.activitybar.gen-sidebar.title": "Gen",
 	"views.gen.chatView.name": "Чат"
 }

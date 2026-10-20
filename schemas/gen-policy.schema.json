@@ -29,8 +29,6 @@
 		"webSearchEnabled": { "type": "boolean" },
 		"webFetchEnabled": { "type": "boolean" },
 		"allowExternalDirectory": { "type": "boolean" },
-		"otelEnabled": { "type": "boolean" },
-		"otelEndpoint": { "type": "string" },
 		"indexingEnabled": { "type": "boolean" },
 		"embeddingsBaseUrl": { "type": "string" },
 		"baseUrl": { "type": "string" },

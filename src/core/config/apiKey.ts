@@ -1,6 +1,6 @@
 import type { ExtensionContext } from 'vscode';
 import { buildAuthHeaders } from './apiKeyHeaders';
-import { clearSecret, getSecret, hasSecret, initSecretVault, setSecret } from './secretVault';
+import { clearSecret, getResolvedSecret, hasSecret, initSecretVault, setSecret } from './secretVault';
 
 export { buildAuthHeaders } from './apiKeyHeaders';
 
@@ -9,7 +9,7 @@ export function initApiKeyStore(context: ExtensionContext): void {
 }
 
 export async function getApiKey(): Promise<string> {
-	return getSecret('apiKey');
+	return getResolvedSecret('apiKey');
 }
 
 export async function hasApiKey(): Promise<boolean> {
@@ -25,7 +25,7 @@ export async function clearApiKey(): Promise<void> {
 }
 
 export async function getWebSearchApiKey(): Promise<string> {
-	return getSecret('webSearchApiKey');
+	return getResolvedSecret('webSearchApiKey');
 }
 
 export async function hasWebSearchApiKey(): Promise<boolean> {
@@ -41,7 +41,7 @@ export async function clearWebSearchApiKey(): Promise<void> {
 }
 
 export async function getEmbeddingsApiKey(): Promise<string> {
-	return getSecret('embeddingsApiKey');
+	return getResolvedSecret('embeddingsApiKey');
 }
 
 export async function hasEmbeddingsApiKey(): Promise<boolean> {

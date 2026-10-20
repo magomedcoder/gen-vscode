@@ -87,7 +87,7 @@ export function registerHunkCodeLens(session: ChatSession): vscode.Disposable {
 		onDidChangeCodeLenses: changeEmitter.event,
 		provideCodeLenses(document: vscode.TextDocument): vscode.CodeLens[] {
 			const state = session.getState();
-			// Как PendingChangesBar: не мешаем, пока агент busy
+			// Не мешаем CodeLens, пока агент busy
 			if (state.busy) {
 				return [];
 			}
@@ -120,7 +120,26 @@ export function registerHunkCodeLens(session: ChatSession): vscode.Disposable {
 		},
 	};
 
-	const sessionSub = session.subscribe(() => {
+	let lastHunkFingerprint = '';
+	const sessionSub = session.subscribe((state) => {
+		// Не дёргать CodeLens на каждый stream tick - только при смене pending hunks / busy
+		const parts: string[] = [state.busy ? '1' : '0'];
+		for (const msg of state.messages) {
+			for (const call of msg.toolCalls ?? []) {
+				for (const hunk of call.hunks ?? []) {
+					if (hunk.status === 'pending') {
+						parts.push(`${call.id}:${hunk.id}:${hunk.path ?? ''}`);
+					}
+				}
+			}
+		}
+		
+		const fp = parts.join('|');
+		if (fp === lastHunkFingerprint) {
+			return;
+		}
+
+		lastHunkFingerprint = fp;
 		changeEmitter.fire();
 	});
 

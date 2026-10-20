@@ -5,7 +5,6 @@ import { getSettings, setSessionModel, type GenSettings } from '../config/settin
 import { httpErrorMessage, isAbortError, isRetryableError, LlmHttpError, parseErrorDetail, parseRetryAfterMs, retryDelayMs, toAbortError, toTimeoutError, isTimeoutError } from './errors';
 import type { LlmRetryInfo } from './types';
 import { logLlm } from './log';
-import { beginLlmCompleteSpan } from './otel';
 import { parseModelsListResponse, type LlmModelOption } from './modelLabel';
 import { parseUsage } from './usage';
 import { extractThinkingDelta, splitAssistantPayload } from './thinking';
@@ -275,167 +274,144 @@ export class HttpLlmClient implements LlmClient {
 
 	async complete(params: CompleteParams): Promise<CompleteResult> {
 		const settings = this.getConfig();
-		const span = beginLlmCompleteSpan(settings);
-		const started = Date.now();
-		let modelForSpan = '';
+		const model = params.model?.trim() || await this.resolveSessionModel(settings);
+		if (!model) {
+			throw new Error(vscode.l10n.t('llm.needModel'));
+		}
+
+		// Мягкий probe n_ctx до первого 400 (не блокирует complete)
+		await this.probeNCtxSoft(settings, model, params.signal);
+
+		const useTools = Boolean(params.tools?.length) && params.toolChoice !== 'none';
+
+		let streamedAny = false;
+		const onDelta = (chunk: string) => {
+			streamedAny = true;
+			params.onDelta?.(chunk);
+		};
+		const onThinkingDelta = (chunk: string) => {
+			params.onThinkingDelta?.(chunk);
+		};
+
+		const attempt = async (withTools: boolean, stream: boolean): Promise<CompleteResult> => {
+			const body: Record<string, unknown> = {
+				model,
+				messages: params.messages,
+				temperature: settings.temperature,
+				max_tokens: settings.maxTokens,
+				stream,
+			};
+
+			if (withTools && params.tools?.length) {
+				body.tools = params.tools;
+				body.tool_choice = params.toolChoice ?? 'auto';
+			}
+
+			if (stream) {
+				body.stream_options = {
+					include_usage: true,
+				};
+				try {
+					return await this.requestStream(body, params.signal, settings, onDelta, onThinkingDelta, params.onRetry);
+				} catch (err) {
+					if (!(err instanceof LlmHttpError) || err.status !== 400) {
+						throw err;
+					}
+
+					delete body.stream_options;
+					return this.requestStream(body, params.signal, settings, onDelta, onThinkingDelta, params.onRetry);
+				}
+			}
+
+			const data = await this.requestJson<ChatCompletionsResponse>('/v1/chat/completions', {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json',
+				},
+				body: JSON.stringify(body),
+				signal: params.signal,
+			}, settings, params.onRetry);
+
+			if (data.error?.message) {
+				throw new Error(data.error.message);
+			}
+
+			const choice = data.choices?.[0];
+			const toolCalls = parseToolCalls(data.choices);
+			const split = splitAssistantPayload(choice?.message, choice?.text);
+			const text = split.content;
+			const thinking = split.thinking || undefined;
+
+			if (!text.trim() && !toolCalls?.length && !thinking) {
+				throw new Error(vscode.l10n.t('llm.emptyResponse'));
+			}
+
+			if (thinking) {
+				onThinkingDelta(thinking);
+			}
+
+			if (text && !streamedAny) {
+				onDelta(text);
+			}
+
+			// Мягкое обновление (soft-update) n_ctx из тела ответа (если сервер отдал)
+			softCacheNCtxFromCompletePayload(settings.baseUrl, model, data);
+
+			return {
+				content: text,
+				thinking,
+				toolCalls,
+				finishReason: choice?.finish_reason,
+				usage: parseUsage(data.usage),
+			};
+		};
+
+		const run = async (withTools: boolean): Promise<CompleteResult> => {
+			try {
+				return await attempt(withTools, true);
+			} catch (err) {
+				if (isTimeoutError(err)) {
+					throw err;
+				}
+
+				if (isAbortError(err) || params.signal?.aborted) {
+					throw toAbortError(err);
+				}
+
+				const truncated = toTruncatedToolArgsError(err);
+				if (truncated) {
+					throw truncated;
+				}
+
+				return attempt(withTools, false);
+			}
+		};
+
+		if (!useTools) {
+			return run(false);
+		}
 
 		try {
-			const model = params.model?.trim() || await this.resolveSessionModel(settings);
-			modelForSpan = model;
-			if (!model) {
-				throw new Error(vscode.l10n.t('llm.needModel'));
-			}
-
-			// Мягкий probe n_ctx до первого 400 (не блокирует complete)
-			await this.probeNCtxSoft(settings, model, params.signal);
-
-			const useTools = Boolean(params.tools?.length) && params.toolChoice !== 'none';
-
-			let streamedAny = false;
-			const onDelta = (chunk: string) => {
-				streamedAny = true;
-				params.onDelta?.(chunk);
-			};
-			const onThinkingDelta = (chunk: string) => {
-				params.onThinkingDelta?.(chunk);
-			};
-
-			const attempt = async (withTools: boolean, stream: boolean): Promise<CompleteResult> => {
-				const body: Record<string, unknown> = {
-					model,
-					messages: params.messages,
-					temperature: settings.temperature,
-					max_tokens: settings.maxTokens,
-					stream,
-				};
-
-				if (withTools && params.tools?.length) {
-					body.tools = params.tools;
-					body.tool_choice = params.toolChoice ?? 'auto';
-				}
-
-				if (stream) {
-					body.stream_options = {
-						include_usage: true 
-					};
-					try {
-						return await this.requestStream(body, params.signal, settings, onDelta, onThinkingDelta, params.onRetry);
-					} catch (err) {
-						if (!(err instanceof LlmHttpError) || err.status !== 400) {
-							throw err;
-						}
-
-						delete body.stream_options;
-						return this.requestStream(body, params.signal, settings, onDelta, onThinkingDelta, params.onRetry);
-					}
-				}
-
-				const data = await this.requestJson<ChatCompletionsResponse>('/v1/chat/completions', {
-					method: 'POST',
-					headers: {
-						'Content-Type': 'application/json',
-					},
-					body: JSON.stringify(body),
-					signal: params.signal,
-				}, settings, params.onRetry);
-
-				if (data.error?.message) {
-					throw new Error(data.error.message);
-				}
-
-				const choice = data.choices?.[0];
-				const toolCalls = parseToolCalls(data.choices);
-				const split = splitAssistantPayload(choice?.message, choice?.text);
-				const text = split.content;
-				const thinking = split.thinking || undefined;
-
-				if (!text.trim() && !toolCalls?.length && !thinking) {
-					throw new Error(vscode.l10n.t('llm.emptyResponse'));
-				}
-
-				if (thinking) {
-					onThinkingDelta(thinking);
-				}
-
-				if (text && !streamedAny) {
-					onDelta(text);
-				}
-
-				// Мягкое обновление (soft-update) n_ctx из тела ответа (если сервер отдал)
-				softCacheNCtxFromCompletePayload(settings.baseUrl, model, data);
-
-				return {
-					content: text,
-					thinking,
-					toolCalls,
-					finishReason: choice?.finish_reason,
-					usage: parseUsage(data.usage),
-				};
-			};
-
-			const run = async (withTools: boolean): Promise<CompleteResult> => {
-				try {
-					return await attempt(withTools, true);
-				} catch (err) {
-					if (isTimeoutError(err)) {
-						throw err;
-					}
-
-					if (isAbortError(err) || params.signal?.aborted) {
-						throw toAbortError(err);
-					}
-
-					const truncated = toTruncatedToolArgsError(err);
-					if (truncated) {
-						throw truncated;
-					}
-
-					return attempt(withTools, false);
-				}
-			};
-
-			let result: CompleteResult;
-			if (!useTools) {
-				result = await run(false);
-			} else {
-				try {
-					result = await run(true);
-				} catch (err) {
-					if (isAbortError(err) || params.signal?.aborted) {
-						throw toAbortError(err);
-					}
-
-					const truncated = toTruncatedToolArgsError(err);
-					if (truncated) {
-						throw truncated;
-					}
-
-					if (!looksLikeToolsUnsupported(err)) {
-						throw err;
-					}
-
-					const fallback = await run(false);
-					result = {
-						...fallback,
-						toolsFallback: true,
-					};
-				}
-			}
-
-			span?.end({
-				model: modelForSpan,
-				status: 'ok',
-				durationMs: Date.now() - started,
-				usage: result.usage,
-			});
-			return result;
+			return await run(true);
 		} catch (err) {
-			span?.end({
-				model: modelForSpan,
-				status: 'error',
-				durationMs: Date.now() - started,
-			});
-			throw err;
+			if (isAbortError(err) || params.signal?.aborted) {
+				throw toAbortError(err);
+			}
+
+			const truncated = toTruncatedToolArgsError(err);
+			if (truncated) {
+				throw truncated;
+			}
+
+			if (!looksLikeToolsUnsupported(err)) {
+				throw err;
+			}
+
+			const fallback = await run(false);
+			return {
+				...fallback,
+				toolsFallback: true,
+			};
 		}
 	}
 

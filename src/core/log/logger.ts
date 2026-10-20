@@ -37,7 +37,7 @@ export function writeLog(stream: LogStream, line: string): void {
 }
 
 /**
- * Всегда пишет в Output-канал (для opt-in OTEL без loggingEnabled).
+ * Всегда пишет в Output-канал.
  * На диск - только если loggingEnabled.
  */
 export function appendLogLine(stream: LogStream, line: string): void {

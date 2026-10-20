@@ -3,11 +3,8 @@ import { DEFAULT_APPROVAL_POLICY } from './approvalTypes';
 
 export type ChatMode = 'ask' | 'agent' | 'debug' | 'design' | 'plan' | 'multitask' | 'project';
 export type CommentStyle = 'inline' | 'block';
-export type ChatTextSize = 'compact' | 'default' | 'large';
 // Как показывать reasoning/thinking в чате
 export type ThinkingDisplay = 'off' | 'collapsed' | 'expanded';
-// Где показывать чат: нижняя панель / activity bar / оба
-export type ChatViewLocation = 'panel' | 'sidebar' | 'both';
 // Политика при переполнении контекста (локальные движки / длинные чаты)
 export type ContextOverflowPolicy = 'auto_compact_retry' | 'ask' | 'fail_fast';
 // Режим share активного редактора
@@ -29,9 +26,9 @@ export type OutlineEngine = 'auto' | 'treesitter' | 'lsp' | 'typescript';
 // Нарезка чанков: AST через Tree-sitter / построчная эвристика / auto
 export type ChunkEngine = 'auto' | 'treesitter' | 'lines';
 
-// Режимы с tool-calling (не «просто чат»)
+// Режимы с tool-calling (не ask). Список режимов - CHAT_MODE_DEFS; ask единственный non-agent-like.
 export function isAgentLikeMode(mode: ChatMode): boolean {
-	return mode === 'agent' || mode === 'debug' || mode === 'design' || mode === 'plan' || mode === 'multitask' || mode === 'project';
+	return mode !== 'ask';
 }
 
 // Модель для заголовка, сжатия и сводки; пусто - undefined (основная модель как резервная в клиенте)
@@ -130,11 +127,6 @@ export interface GenSettings {
 	 */
 	modelRoutedPatch: boolean;
 	/**
-	 * Отображаемое имя пользователя в контексте агента (`User: ...`).
-	 * Пусто - не подмешивать.
-	 */
-	usernameDisplay: string;
-	/**
 	 * Glob/gitignore-паттерны: FS-watcher не переиндексирует совпавшие пути.
 	 * по умолчанию - []
 	 */
@@ -191,12 +183,36 @@ export interface GenSettings {
 	 * Разрешить design_screenshot (headless Chromium через optional playwright).
 	 */
 	designScreenshotEnabled: boolean;
+	/**
+	 * Разрешить browser_action (Playwright computer-use loop).
+	 */
+	browserComputerUseEnabled: boolean;
+	/** 
+	 * Ширина viewport для browser_action / launch. 
+	 */
+	browserViewportWidth: number;
+	/** 
+	 * Высота viewport для browser_action / launch. 
+	 */
+	browserViewportHeight: number;
+	/**
+	 * CDP endpoint (например http://127.0.0.1:9222); пусто = headless launch.
+	 */
+	browserCdpEndpoint: string;
+	/** 
+	 * Путь к custom Chrome/Chromium; пусто = Playwright по умолчанию.
+	 */
+	browserChromePath: string;
+	/**
+	 * Включить ghost text (InlineCompletionItemProvider) на локальном baseUrl.
+	 */
+	inlineCompletionEnabled: boolean;
 	/** 
 	 * Маскировать вероятные секреты в карточках инструментов и статусе UI.
 	 */
 	privacyMode: boolean;
 	/** 
-	 * Запрещать нелокальные URL для web_search/fetch_page/design_inspect/design_screenshot.
+	 * Запрещать нелокальные URL для web_search/fetch_page/design_inspect/design_screenshot/browser_action.
 	 */
 	blockNonLocalUrls: boolean;
 	/**
@@ -326,16 +342,6 @@ export interface GenSettings {
 	 * По умолчанию выключено.
 	 */
 	loggingEnabled: boolean;
-	/**
-	 * По желанию (opt-in): OpenTelemetry spans вокруг LLM complete().
-	 * По умолчанию выключено.
-	 */
-	otelEnabled: boolean;
-	/**
-	 * OTLP HTTP URL (JSON). Пусто - без экспорта: spans в Output «Gen LLM».
-	 * Не передавать API-ключи в URL.
-	 */
-	otelEndpoint: string;
 	/**
 	 * Максимум символов в ответе одного tool (обрезка хвоста) - UI/хранение.
 	 */
@@ -515,20 +521,15 @@ export interface GenSettings {
 	 */
 	pdfVisionMaxPages: number;
 	/**
-	 * Размер текста в чате (сообщения и composer).
-	 * по умолчанию - 'default'
-	 */
-	chatTextSize: ChatTextSize;
-	/**
 	 * Показ reasoning/thinking в чате: скрыть / свёрнуто / развёрнуто.
 	 * по умолчанию - 'collapsed'
 	 */
 	thinkingDisplay: ThinkingDisplay;
 	/**
-	 * Где показывать Gen chat: нижняя панель / боковая панель (activity bar) / оба.
-	 * по умолчанию - 'both'
+	 * Подробности tool-вызовов в чате (аргументы/результат).
+	 * true - подробно, false - кратко. по умолчанию - true
 	 */
-	chatViewLocation: ChatViewLocation;
+	toolDetailsExpanded: boolean;
 	/**
 	 * Максимум открытых чат-сессий (вкладок).
 	 * минимум - 1, максимум - 40, по умолчанию - 10
@@ -579,7 +580,6 @@ export const DEFAULT_SETTINGS: GenSettings = {
 	shareMode: 'manual',
 	primaryTools: [],
 	modelRoutedPatch: true,
-	usernameDisplay: '',
 	watcherIgnore: [],
 	revealOnEdit: 'never',
 	backgroundEditMode: true,
@@ -593,6 +593,12 @@ export const DEFAULT_SETTINGS: GenSettings = {
 	webSearchHttpHeader: 'Authorization',
 	webFetchEnabled: true,
 	designScreenshotEnabled: false,
+	browserComputerUseEnabled: false,
+	browserViewportWidth: 1280,
+	browserViewportHeight: 720,
+	browserCdpEndpoint: '',
+	browserChromePath: '',
+	inlineCompletionEnabled: false,
 	privacyMode: false,
 	blockNonLocalUrls: false,
 	systemPrompt: '',
@@ -617,8 +623,6 @@ export const DEFAULT_SETTINGS: GenSettings = {
 	planShellPolicy: 'ask',
 	snapshotEnabled: true,
 	loggingEnabled: false,
-	otelEnabled: false,
-	otelEndpoint: '',
 	toolOutputMaxChars: 12_000,
 	toolOutputModelMaxChars: 2_000,
 	subagentDepth: 2,
@@ -656,9 +660,8 @@ export const DEFAULT_SETTINGS: GenSettings = {
 	attachmentImageAutoResize: true,
 	attachmentImageQuality: 'medium',
 	pdfVisionMaxPages: 3,
-	chatTextSize: 'default',
 	thinkingDisplay: 'collapsed',
-	chatViewLocation: 'both',
+	toolDetailsExpanded: true,
 	maxTabCount: 10,
 	maxConcurrentRuns: 3,
 	tabEvictionPolicy: 'closeOldestIdle',

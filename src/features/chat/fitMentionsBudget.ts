@@ -34,7 +34,7 @@ export function weightForKind(kind: string): number {
 		return 80;
 	}
 
-	if (k.includes('link') || k === 'docs' || k.includes('docs')) {
+	if (k.includes('link') || k.includes('url') || k === 'docs' || k.includes('docs')) {
 		return 75;
 	}
 

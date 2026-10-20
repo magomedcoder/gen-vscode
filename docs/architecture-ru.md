@@ -51,7 +51,7 @@ Discovery доступен через каталог в system prompt и tools `
 
 Агент читает prompt-макросы и тела plugins через `plugin` или `read_file`; host JS из `.gen/tools` не выполняется.
 
-npm plugins попадают в каталог из `.gen/npm-plugins.json`, либо из `package.json` только при совпадении с `trustedPlugins`. Trust-запись фиксирует точный `package@version` и может содержать `#sha256=<digest declared bin>`. `run_plugin` запускает только объявленный пакетом `bin` внутри workspace - не произвольный `command`/PATH executable - с обычным shell confirm и timeout. В Activity записываются cwd, resolved bin, очищенные args, exit и timeout.
+npm plugins попадают в каталог из `.gen/npm-plugins.json`, либо из `package.json` только при совпадении с `trustedPlugins`. Trust-запись фиксирует точный `package@version` и может содержать `#sha256=<digest declared bin>`. `run_plugin` запускает только объявленный пакетом `bin` внутри workspace - не произвольный `command`/PATH executable - с обычным shell confirm и timeout.
 
 Удалённые skills и instruction URLs используют постоянный кэш, поддерживают опциональный `#sha256=<content digest>` и при offline используют подходящую stale-копию. Settings показывает повторяющиеся Markdown-заголовки при merge project, user и remote rules.
 

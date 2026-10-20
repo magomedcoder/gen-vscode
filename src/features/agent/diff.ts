@@ -276,7 +276,9 @@ export function toDiffHunkPayloads(
 			oldStart: hunk.oldStart + 1,
 			newStart: hunk.newStart + 1,
 			preview: formatHunkPreview(hunk, ctxBefore, ctxAfter),
-			status: 'pending' as const,
+			// После apply запись уже на диске; post-apply Accept/Reject в чате отключён.
+			// Permission спрашивается до вызова tool (ConfirmCard), не по hunk'ам.
+			status: 'accepted' as const,
 			oldLines: hunk.oldLines,
 			newLines: hunk.newLines,
 			beforeContext: hunk.beforeContext,

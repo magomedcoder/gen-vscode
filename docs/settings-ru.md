@@ -2,13 +2,13 @@
 
 [English version](settings.md)
 
-Кнопка **Сбросить по умолчанию** возвращает все поля к defaults; **API-ключ не сбрасывается**.
+Кнопка **Сбросить по умолчанию** возвращает все поля к defaults. Полей API-ключа в UI нет (local-first: пустой ключ; иначе env `GEN_API_KEY` / `OPENAI_API_KEY`).
 
 ## Экраны настроек
 
 В боковой панели один плоский список (**6 экранов**). Внутри экрана - сворачиваемые секции.
 
-**Подключение** (вкл. Запросы) **Чат** **Агент** **Безопасность** (вкл. Права) **Проект** (Индекс, Rules, Personas, Agents, Hooks) **Журнал** (Usage, Activity, Логи).
+**Подключение** (вкл. Запросы) **Чат** **Агент** **Безопасность** (вкл. Права) **Проект** (Индекс, Rules, Personas, Agents, Hooks) **Журнал** (Usage, Логи).
 
 Для любого OpenAI-compatible endpoint укажите Base URL и модель (например `http://127.0.0.1:8080/v1` для llama.cpp).
 
@@ -32,7 +32,7 @@ Effective `GenSettings` собирается из нескольких слоё�
 2. Linux / macOS: `/etc/gen/policy.json`
 3. Windows: `%ProgramData%/gen/policy.json`
 
-Ключи из файла **блокируются** и форсируют effective settings. Lock-ключи: `approvalPolicy`, `autoApprove`, `continueLoopOnDeny`, `enableTerminal`, `enableFileReading`, `enableWorkspaceContext`, `webSearchEnabled`, `webFetchEnabled`, `allowExternalDirectory`, `otelEnabled`, `otelEndpoint`.
+Ключи из файла **блокируются** и форсируют effective settings. Lock-ключи: `approvalPolicy`, `autoApprove`, `continueLoopOnDeny`, `enableTerminal`, `enableFileReading`, `enableWorkspaceContext`, `webSearchEnabled`, `webFetchEnabled`, `allowExternalDirectory`, плюс connection/index (`baseUrl`, `planModel`, `actModel`, `smallModel`, `indexingEnabled`, `embeddingsBaseUrl`, `localEmbeddingsMode`).
 
 Пример:
 
@@ -41,16 +41,15 @@ Effective `GenSettings` собирается из нескольких слоё�
   "$schema": "./schemas/gen-policy.schema.json",
   "webSearchEnabled": false,
   "webFetchEnabled": false,
-  "allowExternalDirectory": false,
-  "otelEnabled": false
+  "allowExternalDirectory": false
 }
 ```
 
 При активной политике в Gen Settings - баннер только для чтения со списком locked keys. Schema: `schemas/gen-policy.schema.json` (подключена в `contributes.jsonValidation` в `package.json`).
 
-UI настроек Gen не ломается: слои аддитивны. Project перекрывает user и изменённые UI-поля по ключам из JSON; admin побеждает для locked keys. Единственный ключ в VSCode Settings (`gen.chatViewLocation`) синхронизируется из effective config для `when`-clause views.
+UI настроек Gen не ломается: слои аддитивны. Project перекрывает user и изменённые UI-поля по ключам из JSON; admin побеждает для locked keys. Чат только в нижней панели (без activity bar / sidebar; отдельного ключа расположения чата в VSCode Settings нет).
 
-Поддерживаемые ключи JSON (subset `GenSettings`): `systemPrompt`, `commentSystemPrompt`, `primaryTools`, `watcherIgnore`, `webSearch*` (`webSearchBackend`: `duckduckgo` \| `exa` \| `parallel` \| `http`), `webFetchEnabled`, `skillsPaths` / `skillsUrls` / `instructionUrls`, `personaId`, `usernameDisplay`, `deniedCommands` / `sensitivePathPatterns` / `secretPatterns` (только JSON - не Settings UI), agent/indexing knobs (`outlineEngine`, `chunkEngine`, `treeSitterLanguages`, `indexStorageBackend`, ...), timeouts, `chatMode`, `planShellPolicy` (`ask` \| `deny`), `shareMode`, `revealOnEdit`, `thinkingDisplay`, `chatViewLocation`, и др. - полный список в `FILE_LAYER_KEYS` (`src/core/config/layers.ts`). Ignore путей/папок - **не** ключ settings, а файл `.genignore`.
+Поддерживаемые ключи JSON (subset `GenSettings`): `systemPrompt`, `commentSystemPrompt`, `primaryTools`, `watcherIgnore`, `webSearch*` (`webSearchBackend`: `duckduckgo` \| `exa` \| `parallel` \| `http`), `webFetchEnabled`, `skillsPaths` / `skillsUrls` / `instructionUrls`, `personaId`, `deniedCommands` / `sensitivePathPatterns` / `secretPatterns` (только JSON - не Settings UI), agent/indexing knobs (`outlineEngine`, `chunkEngine`, `treeSitterLanguages`, `indexStorageBackend`, ...), timeouts, `chatMode`, `planShellPolicy` (`ask` \| `deny`), `shareMode`, `revealOnEdit`, `thinkingDisplay`, `toolDetailsExpanded`, и др. - полный список в `FILE_LAYER_KEYS` (`src/core/config/layers.ts`). Неизвестные ключи - ошибка валидации. Ignore путей/папок - **не** ключ settings, а файл `.genignore`.
 
 Дополнительно в JSON:
 
@@ -97,7 +96,7 @@ Shell-команды по событиям. Всегда есть `GEN_HOOK_EVEN
 | Поле            | По умолчанию    | Описание                                                                                                      |
 |-----------------|-----------------|---------------------------------------------------------------------------------------------------------------|
 | Базовый URL     | пусто           | Корень API: в первую очередь **llama.cpp** (`http://127.0.0.1:8080`), также любой OpenAI-совместимый endpoint |
-| API-ключ        | -               | В `SecretStorage`; пусто - заголовок не отправлять                                                            |
+| API-ключ        | -               | Без UI; env / SecretStorage; пусто - заголовок не отправлять                                                  |
 | Заголовок ключа | `Authorization` | Имя HTTP-заголовка                                                                                            |
 | Схема ключа     | `Bearer`        | Префикс значения; пустая схема - сырой ключ                                                                   |
 | Модель          | пусто           | Идентификатор модели; список грузится по URL                                                                  |

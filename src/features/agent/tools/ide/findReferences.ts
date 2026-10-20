@@ -1,11 +1,14 @@
 import * as path from 'node:path';
 import * as vscode from 'vscode';
+import { mapLimit } from '../../../../core/util/asyncPool';
 import { AGENT_LIMITS } from '../../policy';
 import { asOptionalInt, asString, type ToolContext, type ToolDefinition, type ToolResult } from '../../types';
 import { relativeFromUri, resolveWorkspacePath, throwIfAborted } from '../../workspacePath';
 
 // Размер страницы references по умолчанию (ещё жёстко capped через AGENT_LIMITS.maxDiagnostics)
 export const FIND_REFERENCES_DEFAULT_LIMIT = 40;
+// Параллельные LSP reference/definition запросы по anchors
+const FIND_REFERENCES_CONCURRENCY = 3;
 
 export interface FindReferencesPaging {
 	limit: number;
@@ -540,16 +543,21 @@ export const findReferencesTool: ToolDefinition = {
 		let allRefs: Array<vscode.Location | vscode.LocationLink> = [];
 		let allDefs: Array<vscode.Location | vscode.LocationLink> = [];
 
-		for (const a of anchors) {
+		// Ограниченный параллелизм (LSP не любит fan-out), порядок anchors сохраняем при concat
+		const collected = await mapLimit(anchors, FIND_REFERENCES_CONCURRENCY, async (a) => {
 			throwIfAborted(ctx.signal);
-			const { refs, defs } = await collectRefsAndDefs(
+			return collectRefsAndDefs(
 				a.uri,
 				new vscode.Position(a.line, a.character),
 				includeDefinition,
 				ctx.signal,
 			);
-			allRefs = allRefs.concat(refs);
-			allDefs = allDefs.concat(defs);
+		});
+		for (const item of collected) {
+			if (item) {
+				allRefs = allRefs.concat(item.refs);
+				allDefs = allDefs.concat(item.defs);
+			}
 		}
 
 		allRefs = dedupeLocations(allRefs);

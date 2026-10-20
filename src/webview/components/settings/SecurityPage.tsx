@@ -2,26 +2,10 @@ import { useEffect } from 'react';
 import type { DesignSessionPayload } from '../../../features/chat/protocol';
 import { t } from '../../i18n';
 import type { SettingsPageProps } from './pages';
-import { FieldToggle } from './SettingsFields';
-import { SecretFieldBlock } from './SecretFieldBlock';
+import { FieldNumber, FieldText, FieldToggle } from './SettingsFields';
 import { SettingsSection } from './SettingsSection';
 
 export interface SecurityPageProps extends SettingsPageProps {
-	apiKeySet: boolean;
-	apiKeyDraft: string;
-	clearApiKey?: boolean;
-	onApiKeyDraft: (value: string) => void;
-	onClearApiKey?: () => void;
-	webSearchApiKeySet?: boolean;
-	webSearchApiKeyDraft?: string;
-	clearWebSearchApiKey?: boolean;
-	onWebSearchApiKeyDraft?: (value: string) => void;
-	onClearWebSearchApiKey?: () => void;
-	embeddingsApiKeySet?: boolean;
-	embeddingsApiKeyDraft?: string;
-	clearEmbeddingsApiKey?: boolean;
-	onEmbeddingsApiKeyDraft?: (value: string) => void;
-	onClearEmbeddingsApiKey?: () => void;
 	designSession?: DesignSessionPayload | null;
 	onLoadDesignSession?: () => void;
 }
@@ -56,21 +40,6 @@ function buildDesignSessionLine(session: DesignSessionPayload): string {
 export function SecurityPage({
 	draft,
 	setField,
-	apiKeySet,
-	apiKeyDraft,
-	clearApiKey = false,
-	onApiKeyDraft,
-	onClearApiKey,
-	webSearchApiKeySet = false,
-	webSearchApiKeyDraft = '',
-	clearWebSearchApiKey = false,
-	onWebSearchApiKeyDraft,
-	onClearWebSearchApiKey,
-	embeddingsApiKeySet = false,
-	embeddingsApiKeyDraft = '',
-	clearEmbeddingsApiKey = false,
-	onEmbeddingsApiKeyDraft,
-	onClearEmbeddingsApiKey,
 	designSession,
 	onLoadDesignSession,
 }: SecurityPageProps) {
@@ -78,48 +47,8 @@ export function SecurityPage({
 		onLoadDesignSession?.();
 	}, [onLoadDesignSession]);
 
-	const secretPlaceholder = (markedClear: boolean, keySet: boolean) =>
-		markedClear
-			? t('settings.apiKey.placeholderClear')
-			: keySet
-				? t('settings.apiKey.placeholderSet')
-				: '';
-
 	return (
 		<>
-			<SettingsSection titleKey="settings.section.security.secrets" hintKey="settings.section.security.secretsHint" defaultOpen>
-				<SecretFieldBlock
-					labelKey="settings.apiKey.label"
-					hintKey="settings.apiKey.hint"
-					value={apiKeyDraft}
-					keySet={apiKeySet}
-					markedClear={clearApiKey}
-					placeholder={secretPlaceholder(clearApiKey, apiKeySet)}
-					onChange={(v) => onApiKeyDraft(v)}
-					onMarkClear={() => onClearApiKey?.()}
-				/>
-				<SecretFieldBlock
-					labelKey="settings.embeddingsApiKey.label"
-					hintKey="settings.embeddingsApiKey.hint"
-					value={embeddingsApiKeyDraft}
-					keySet={embeddingsApiKeySet}
-					markedClear={clearEmbeddingsApiKey}
-					placeholder={secretPlaceholder(clearEmbeddingsApiKey, embeddingsApiKeySet)}
-					onChange={(v) => onEmbeddingsApiKeyDraft?.(v)}
-					onMarkClear={() => onClearEmbeddingsApiKey?.()}
-				/>
-				<SecretFieldBlock
-					labelKey="settings.webSearchApiKey.label"
-					hintKey="settings.webSearchApiKey.hint"
-					value={webSearchApiKeyDraft}
-					keySet={webSearchApiKeySet}
-					markedClear={clearWebSearchApiKey}
-					placeholder={secretPlaceholder(clearWebSearchApiKey, webSearchApiKeySet)}
-					onChange={(v) => onWebSearchApiKeyDraft?.(v)}
-					onMarkClear={() => onClearWebSearchApiKey?.()}
-				/>
-			</SettingsSection>
-
 			<SettingsSection titleKey="settings.section.security.basics" hintKey="settings.section.security.basicsHint">
 				<FieldToggle
 					labelKey="settings.autoApprove.label"
@@ -158,6 +87,50 @@ export function SecurityPage({
 					hintKey="settings.designScreenshotEnabled.hint"
 					checked={draft.designScreenshotEnabled}
 					onChange={(v) => setField('designScreenshotEnabled', v)}
+				/>
+				<FieldToggle
+					labelKey="settings.browserComputerUseEnabled.label"
+					hintKey="settings.browserComputerUseEnabled.hint"
+					checked={draft.browserComputerUseEnabled}
+					onChange={(v) => setField('browserComputerUseEnabled', v)}
+				/>
+				<FieldNumber
+					labelKey="settings.browserViewportWidth.label"
+					value={draft.browserViewportWidth}
+					min={320}
+					onChange={(v) => setField('browserViewportWidth', v)}
+					parse={(raw, fallback) => {
+						const n = Number(raw);
+						return Number.isFinite(n) ? Math.max(320, Math.floor(n)) : fallback;
+					}}
+				/>
+				<FieldNumber
+					labelKey="settings.browserViewportHeight.label"
+					value={draft.browserViewportHeight}
+					min={240}
+					onChange={(v) => setField('browserViewportHeight', v)}
+					parse={(raw, fallback) => {
+						const n = Number(raw);
+						return Number.isFinite(n) ? Math.max(240, Math.floor(n)) : fallback;
+					}}
+				/>
+				<FieldText
+					labelKey="settings.browserCdpEndpoint.label"
+					hintKey="settings.browserCdpEndpoint.hint"
+					value={draft.browserCdpEndpoint}
+					onChange={(v) => setField('browserCdpEndpoint', v)}
+				/>
+				<FieldText
+					labelKey="settings.browserChromePath.label"
+					hintKey="settings.browserChromePath.hint"
+					value={draft.browserChromePath}
+					onChange={(v) => setField('browserChromePath', v)}
+				/>
+				<FieldToggle
+					labelKey="settings.inlineCompletionEnabled.label"
+					hintKey="settings.inlineCompletionEnabled.hint"
+					checked={draft.inlineCompletionEnabled}
+					onChange={(v) => setField('inlineCompletionEnabled', v)}
 				/>
 				<FieldToggle
 					labelKey="settings.privacyMode.label"

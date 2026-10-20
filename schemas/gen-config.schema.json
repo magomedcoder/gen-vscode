@@ -51,6 +51,12 @@
 		"webSearchHttpHeader": { "type": "string" },
 		"webFetchEnabled": { "type": "boolean" },
 		"designScreenshotEnabled": { "type": "boolean", "description": "Allow design_screenshot (optional Playwright + Chromium, not bundled in VSIX)." },
+		"browserComputerUseEnabled": { "type": "boolean", "description": "Allow browser_action computer-use (Playwright launch/click/type/scroll/screenshot)." },
+		"browserViewportWidth": { "type": "integer", "minimum": 320, "description": "Browser CU viewport width." },
+		"browserViewportHeight": { "type": "integer", "minimum": 240, "description": "Browser CU viewport height." },
+		"browserCdpEndpoint": { "type": "string", "description": "Optional CDP endpoint (e.g. http://127.0.0.1:9222)." },
+		"browserChromePath": { "type": "string", "description": "Optional custom Chrome/Chromium executable path." },
+		"inlineCompletionEnabled": { "type": "boolean", "description": "Opt-in ghost text via InlineCompletionItemProvider (local baseUrl)." },
 		"privacyMode": { "type": "boolean", "description": "Mask likely secrets in tool cards and busy status." },
 		"blockNonLocalUrls": { "type": "boolean", "description": "Block non-local URLs for web tools." },
 		"skillsPaths": {
@@ -74,7 +80,6 @@
 			"description": "Allowlisted npm plugins as exact package@version, optionally followed by #sha256=<declared-bin digest>."
 		},
 		"personaId": { "type": "string" },
-		"usernameDisplay": { "type": "string" },
 		"deniedCommands": {
 			"type": "array",
 			"items": { "type": "string" }
@@ -274,8 +279,6 @@
 		"notifyOnComplete": { "type": "boolean" },
 		"notifySoundOnComplete": { "type": "boolean" },
 		"loggingEnabled": { "type": "boolean" },
-		"otelEnabled": { "type": "boolean" },
-		"otelEndpoint": { "type": "string" },
 		"visionEnabled": { "type": "boolean" },
 		"attachmentImageQuality": {
 			"type": "string",
@@ -286,17 +289,12 @@
 			"minimum": 1,
 			"maximum": 6
 		},
-		"chatTextSize": {
-			"type": "string",
-			"enum": ["compact", "default", "large"]
-		},
 		"thinkingDisplay": {
 			"type": "string",
 			"enum": ["off", "collapsed", "expanded"]
 		},
-		"chatViewLocation": {
-			"type": "string",
-			"enum": ["panel", "sidebar", "both"]
+		"toolDetailsExpanded": {
+			"type": "boolean"
 		}
 	},
 	"additionalProperties": true,

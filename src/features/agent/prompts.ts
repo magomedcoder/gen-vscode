@@ -1,6 +1,7 @@
 import type { ChatMode } from '../../core/config/types';
 import { isReadOnlyApprovalPolicy } from './auth';
 import { getSettings } from '../../core/config/settings';
+import { listTools } from './tools/registry';
 
 // Потолок user-edits appendix в system prompt (символы)
 const USER_EDITS_APPENDIX_MAX = 2_000;
@@ -20,6 +21,11 @@ export function buildAgentSystemPrompt(options?: {
 	planWriteToFile?: boolean;
 	// Shell в Plan: ask | deny
 	planShellPolicy?: 'ask' | 'deny';
+	/**
+	 * Имена tools для text-tool формата. Источник правды - реестр (listTools / getAgentLlmTools); без параметра берётся полный снимок реестра. 
+	 * Не хардкодить список имён в тексте промпта.
+	 */
+	availableToolNames?: readonly string[];
 	// Фокус режима: agent (по умолчанию), debug, design, plan, multitask, project
 	mode?: ChatMode;
 	/**
@@ -143,10 +149,14 @@ export function buildAgentSystemPrompt(options?: {
 		}
 		lines.push('Когда задача решена, дай итоговый текстовый ответ без лишних tool-вызовов.');
 		if (textToolFormat) {
+			// Реестр - источник правды: не хардкодим имена (иначе дрейф и галлюцинации)
+			const toolNames = [...new Set(
+				(options?.availableToolNames ?? listTools().map((tool) => tool.name)).filter(Boolean),
+			)];
 			lines.push(
 				'Сервер не принимает native tool_calls в API. Вызывай tools только в тексте, в точности так:',
 				'<tool_call>\n<function=list_dir>\n<parameter=path>\nsrc\n</parameter>\n</function>\n</tool_call>',
-				'Имена tools: list_dir, read_file, write_file, edit_file, apply_patch, apply_workspace_edit, delete_file, create_dir, run_command, run_tests, grep, glob, codebase_search, get_diagnostics, get_active_editor, open_file, propose_plan, write_plan, update_plan, task, ask_question - и другие из описания. Не используй list_directory / run_terminal_cmd / search_replace / search_files.',
+				`Имена tools (только эти): ${toolNames.join(', ')}. Не используй list_directory / run_terminal_cmd / search_replace / search_files.`,
 				'Не показывай пользователю сырой XML tool_call как ответ - только вызовы; краткий текст можно до или после блоков.',
 			);
 		}

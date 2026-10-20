@@ -26,9 +26,8 @@ import { injectImagePathMarkers, saveImageAttachments } from './attachments';
 import type { ImageAttachment, IncomingImage } from './attachments';
 import { getEditorChatContext } from './editorContext';
 import { focusChatView } from './focusChat';
-import type { AgentPausedState, ChatTodoItem, ChatUiMessage, ChatViewState, PendingConfirm, ResearchJobUi, SessionDiffEvent, ToWebviewMessage } from './protocol';
-import { recordActivity } from '../../core/stores/activityStore';
-import { SessionStore, fallbackTitleFromMessages, isDefaultSessionTitle, setSessionPeek } from './sessionStore';
+import type { AgentPausedState, ChatTodoItem, ChatUiMessage, ChatViewState, PendingConfirm, ResearchJobUi, ToWebviewMessage } from './protocol';
+import { SessionStore, fallbackTitleFromMessages, isDefaultSessionTitle, sessionHasUserMessage, setSessionPeek } from './sessionStore';
 import { pickTabsToEvict } from './tabEviction';
 import { abortSessionRuntime, createSessionRuntime } from './sessionRuntime';
 import type { PendingConfirmInternal, PendingQuestionInternal, SessionRuntime } from './sessionRuntime';
@@ -37,6 +36,9 @@ import { generateSessionTitle } from '../agent/systemAgents';
 import { maskForPrivacy, redactSecrets } from '../agent/secrets';
 import { loadProjectRulesAppendix } from '../project/projectRules';
 import { parseSlashMode, type SlashCommand } from './slashCommands';
+import { handleSlashCommand, type ChatSlashHost } from './chatSlash';
+import { messageId } from './ids';
+import { SessionUiBridge, type ChatSessionListener } from './sessionUiBridge';
 import { parseExportedMarkdown } from './sessionImport';
 import { getAlwaysOnWorkspaceContext } from './workspaceContext';
 import type { DiffHunkPayload } from '../agent/diff';
@@ -55,10 +57,6 @@ const MAX_STORED = 80;
 const MAX_TURN_QUEUE = 8;
 // Стек отмены и повтора последних ходов пользователя
 const MAX_TURN_HISTORY = 12;
-
-function messageId(): string {
-	return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-}
 
 function cloneMessages(messages: ChatUiMessage[]): ChatUiMessage[] {
 	return messages.map((m) => ({ 
@@ -119,16 +117,18 @@ async function revealAgentFile(uri: vscode.Uri): Promise<void> {
 	await vscode.window.showTextDocument(uri, { preview: true });
 }
 
-type ChatSessionListener = (state: ChatViewState) => void;
-
 export class ChatSession {
 	// Runtime текущей вкладки (messages / inflight / queue / ...)
 	private runtime!: SessionRuntime;
 	// Все активные runtime по sessionId - параллельные запуски между вкладками
 	private readonly runtimes = new Map<string, SessionRuntime>();
-	// postMessage в chat webview (playNotifySound и т.п.)
-	private postToWebview?: (message: ToWebviewMessage) => void;
-	private readonly listeners = new Set<ChatSessionListener>();
+	// Подписчики, coalesce emit/streamPatch, postMessage в webview
+	private readonly ui = new SessionUiBridge({
+		getState: (opts) => this.getState(opts),
+		hasInflight: () => Boolean(this.inflight),
+		getCurrentSessionId: () => this.sessions.getCurrentSessionId(),
+		afterEmit: () => this.ensureGitSyncAutoKeep(),
+	});
 	private readonly agent: AgentSession;
 	private readonly stickyPlan = new StickyPlan();
 	private readonly planStore: WorkspacePlanStore;
@@ -159,8 +159,14 @@ export class ChatSession {
 	private readonly archiveEpoch = new Map<string, number>();
 	private sessionFilter: { 
 		query?: string; 
-		archived?: boolean 
 	} = {};
+	// Кэш estimate токенов на stream tick (без полного пересчёта)
+	private tokenEstimateCache?: {
+		messageCount: number;
+		tailId: string;
+		tailLen: number;
+		value: number;
+	};
 
 	private get messages(): ChatUiMessage[] {
 		return this.runtime.messages;
@@ -275,14 +281,6 @@ export class ChatSession {
 		this.runtime.exportArchive = value; 
 	}
 	
-	private get lastTurnDiff(): SessionDiffEvent | undefined { 
-		return this.runtime.lastTurnDiff; 
-	}
-	
-	private set lastTurnDiff(value: SessionDiffEvent | undefined) { 
-		this.runtime.lastTurnDiff = value; 
-	}
-	
 	private get writes() { 
 		return this.runtime.writes; 
 	}
@@ -318,8 +316,14 @@ export class ChatSession {
 		void this.refreshCustomCommands();
 	}
 
+	// Сброс debounced-записей сессий в workspaceState (deactivate / dispose)
+	flushPersist(): Thenable<void> {
+		return this.sessions.flush();
+	}
+
 	dispose(): void {
 		this.stopGitSyncAutoKeep();
+		void this.sessions.flush();
 		setSessionPeek(undefined);
 		this.planStore.dispose();
 		for (const rt of this.runtimes.values()) {
@@ -327,6 +331,7 @@ export class ChatSession {
 		}
 
 		this.runtimes.clear();
+		this.ui.dispose();
 		for (const sub of this.subs) {
 			sub.dispose();
 		}
@@ -334,8 +339,9 @@ export class ChatSession {
 		this.subs.length = 0;
 	}
 
-	getState(): ChatViewState {
+	getState(opts?: { light?: boolean }): ChatViewState {
 		const settings = getSettings();
+		const light = Boolean(opts?.light && this.inflight);
 		const customSlashCommands: SlashCommand[] = this.customCommands.map(customToSlashCommand);
 		const planSnap = this.stickyPlan.snapshot();
 		const handoffKey = planSnap?.approved ? planSnap.title : undefined;
@@ -348,14 +354,43 @@ export class ChatSession {
 		const contextBudget = resolveContextBudget(settings);
 		// Бюджет UI: предпочитаем реальный prompt_tokens с сервера (последний CompleteResult), иначе char-estimate
 		const serverPromptTokens = lastServerPromptTokens(this.messages);
-		const estimatedPromptTokens = serverPromptTokens
-			?? estimateChatMessagesTokens(uiMessagesToRoughApi(this.messages));
+		let estimatedPromptTokens: number;
+		if (typeof serverPromptTokens === 'number') {
+			estimatedPromptTokens = serverPromptTokens;
+			this.tokenEstimateCache = undefined;
+		} else if (light && this.tokenEstimateCache) {
+			const tail = this.messages[this.messages.length - 1];
+			const sameShape = this.tokenEstimateCache.messageCount === this.messages.length
+				&& this.tokenEstimateCache.tailId === (tail?.id ?? '')
+				&& Math.abs(this.tokenEstimateCache.tailLen - (tail?.content?.length ?? 0)) < 400;
+			estimatedPromptTokens = sameShape
+				? this.tokenEstimateCache.value
+				: estimateChatMessagesTokens(uiMessagesToRoughApi(this.messages));
+			if (!sameShape) {
+				this.tokenEstimateCache = {
+					messageCount: this.messages.length,
+					tailId: tail?.id ?? '',
+					tailLen: tail?.content?.length ?? 0,
+					value: estimatedPromptTokens,
+				};
+			}
+		} else {
+			estimatedPromptTokens = estimateChatMessagesTokens(uiMessagesToRoughApi(this.messages));
+			const tail = this.messages[this.messages.length - 1];
+			this.tokenEstimateCache = {
+				messageCount: this.messages.length,
+				tailId: tail?.id ?? '',
+				tailLen: tail?.content?.length ?? 0,
+				value: estimatedPromptTokens,
+			};
+		}
 		const nearBudget = typeof estimatedPromptTokens === 'number'
 			&& isNearContextBudget(estimatedPromptTokens, contextBudget);
 		const nCtxWarn = typeof cachedNCtx === 'number'
 			&& cachedNCtx > 0
 			&& settings.maxContextTokens > cachedNCtx;
-		const displayMessages = settings.privacyMode
+		// Mid-stream: без deep privacy-map на каждый tick (маскируем только при полном emit)
+		const displayMessages = settings.privacyMode && !light
 			? this.messages.map((message) => ({
 				...message,
 				...(message.role === 'tool' ? { 
@@ -422,16 +457,8 @@ export class ChatSession {
 				: undefined,
 			agentPaused: this.agentPaused,
 			activeToolCallId: this.activeToolCallId,
-			chatTextSize: settings.chatTextSize,
 			planHandoff,
 			model: settings.model,
-			lastTurnDiff: this.lastTurnDiff
-				? {
-					turnId: this.lastTurnDiff.turnId,
-					paths: [...this.lastTurnDiff.paths],
-					at: this.lastTurnDiff.at,
-				}
-				: undefined,
 			composerDraft: this.sessions.getDraft() || undefined,
 			composerChips: (() => {
 				const chips = this.sessions.getDraftChips();
@@ -455,27 +482,24 @@ export class ChatSession {
 	}
 
 	subscribe(listener: ChatSessionListener): { dispose(): void } {
-		this.listeners.add(listener);
-		return {
-			dispose: () => {
-				this.listeners.delete(listener);
-			},
-		};
+		return this.ui.subscribe(listener);
 	}
 
 	// Привязать postMessage к chat webview (ChatViewProvider)
 	setWebviewPoster(post: (message: ToWebviewMessage) => void): void {
-		this.postToWebview = post;
+		this.ui.setPoster(post);
 	}
 
-	private emit(): void {
-		const state = this.getState();
-		for (const listener of this.listeners) {
-			listener(state);
-		}
+	private emit(opts?: { coalesce?: boolean }): void {
+		this.ui.emit(opts);
+	}
 
-		// После emit: при pending-хунках и gitSyncAutoKeep - поллинг auto-Keep
-		this.ensureGitSyncAutoKeep();
+	private scheduleStreamPatch(
+		sessionId: string,
+		messageId: string,
+		patch: { content?: string; thinking?: string },
+	): void {
+		this.ui.scheduleStreamPatch(sessionId, messageId, patch);
 	}
 
 	// Information Message + опциональный beep в webview
@@ -487,7 +511,7 @@ export class ChatSession {
 
 		void vscode.window.showInformationMessage(vscode.l10n.t('chat.notify.complete'));
 		if (settings.notifySoundOnComplete) {
-			this.postToWebview?.({ 
+			this.ui.post({ 
 				type: 'playNotifySound' 
 			});
 		}
@@ -580,9 +604,9 @@ export class ChatSession {
 		this.runtime = this.ensureRuntime(sessionId);
 	}
 
-	// Список сессий с флагом busy для UI вкладок
+	// Список сессий с флагом busy для UI: только после первого user-сообщения
 	private listSessionsWithBusy() {
-		return this.sessions.listSessions(this.sessionFilter).map((s) => ({
+		return this.sessions.listSessions({ ...this.sessionFilter, startedOnly: true }).map((s) => ({
 			...s,
 			busy: Boolean(this.runtimes.get(s.id)?.inflight),
 		}));
@@ -680,6 +704,16 @@ export class ChatSession {
 	}
 
 	createSession(): void {
+		const cur = this.sessions.getCurrent();
+		// Пустой чат ещё не в списке - не плодим вторую пустую сессию
+		if (!sessionHasUserMessage(cur) && !cur.parentSessionId) {
+			this.sessions.pruneUnstartedSessions([cur.id]);
+			this.activateRuntime(cur.id);
+			this.emit();
+			return;
+		}
+
+		this.sessions.pruneUnstartedSessions([cur.id]);
 		if (!this.ensureTabSlot()) {
 			this.notifyMaxTabs();
 			return;
@@ -715,17 +749,9 @@ export class ChatSession {
 		this.emit();
 	}
 
-	archiveSession(id: string, archived = true): void {
-		if (!this.sessions.archiveSession(id, archived)) {
-			return;
-		}
-		this.activateRuntime(this.sessions.getCurrentSessionId());
-		this.emit();
-	}
-
-	setSessionFilter(query?: string, archived?: boolean): void {
+	setSessionFilter(query?: string): void {
 		this.sessionFilter = { 
-			query: query?.trim() || undefined, archived 
+			query: query?.trim() || undefined, 
 		};
 		this.emit();
 	}
@@ -787,7 +813,7 @@ export class ChatSession {
 		if (this.inflight) {
 			this.append({
 				id: messageId(),
-				role: 'assistant',
+				role: 'system',
 				content: vscode.l10n.t('chat.compact.busy'),
 			});
 			return;
@@ -803,7 +829,7 @@ export class ChatSession {
 		if (!archive?.length) {
 			this.append({
 				id: messageId(),
-				role: 'assistant',
+				role: 'system',
 				content: vscode.l10n.t('chat.restoreArchive.empty'),
 			});
 			return;
@@ -823,7 +849,7 @@ export class ChatSession {
 		this.persist();
 		this.append({
 			id: messageId(),
-			role: 'assistant',
+			role: 'system',
 			content: vscode.l10n.t('chat.restoreArchive.done', archive.length),
 		});
 	}
@@ -911,6 +937,18 @@ export class ChatSession {
 		} : msg));
 		if (patch.toolCalls || patch.usage) {
 			this.sessions.saveMessages(rt.messages, sid);
+		}
+
+		const keys = Object.keys(patch);
+		const streamOnly = keys.length > 0
+			&& keys.every((k) => k === 'content' || k === 'thinking')
+			&& Boolean(rt.inflight);
+		if (streamOnly) {
+			this.scheduleStreamPatch(sid, id, {
+				content: patch.content,
+				thinking: patch.thinking,
+			});
+			return;
 		}
 
 		this.emit();
@@ -1084,7 +1122,6 @@ export class ChatSession {
 		this.redoStack.length = 0;
 		void this.dropExportArchive(this.sessions.getCurrentSessionId());
 		this.messages = [];
-		this.lastTurnDiff = undefined;
 		this.stopGitSyncAutoKeep();
 		this.persist();
 		this.emit();
@@ -1483,16 +1520,6 @@ export class ChatSession {
 		}
 
 		hunk.status = action === 'accept' ? 'accepted' : 'rejected';
-		recordActivity({
-			kind: 'review',
-			label: action === 'accept'
-				? vscode.l10n.t('activity.review.accepted', hunk.path ?? found.call.path ?? hunkId)
-				: vscode.l10n.t('activity.review.rejected', hunk.path ?? found.call.path ?? hunkId),
-			path: hunk.path ?? found.call.path,
-			sessionId: this.sessions.getCurrentSessionId(),
-			toolName: found.call.name,
-			status: action === 'accept' ? 'accepted' : 'rejected',
-		});
 		this.persist();
 		this.emit();
 	}
@@ -1530,18 +1557,6 @@ export class ChatSession {
 			}
 		}
 
-		const pathHint = found.call.path ?? pending[0]?.path;
-		recordActivity({
-			kind: 'review',
-			label: action === 'acceptAll'
-				? vscode.l10n.t('activity.review.acceptedAll', pending.length, pathHint ? ` (${pathHint})` : '')
-				: vscode.l10n.t('activity.review.rejectedAll', pending.length, pathHint ? ` (${pathHint})` : ''),
-			path: pathHint,
-			sessionId: this.sessions.getCurrentSessionId(),
-			toolName: found.call.name,
-			status: action === 'acceptAll' ? 'accepted' : 'rejected',
-		});
-
 		this.persist();
 		this.emit();
 	}
@@ -1565,74 +1580,9 @@ export class ChatSession {
 		return [...pathSet];
 	}
 
-	// Accept/Reject всех pending-хунков одного файла (сессионная панель / git-sync Keep)
-	async reviewPendingPath(relativePath: string, action: 'accept' | 'reject'): Promise<void> {
-		if (action === 'accept') {
-			this.acceptPendingPath(relativePath);
-			return;
-		}
-
-		await this.rejectPendingPath(relativePath);
-	}
-
-	// Reject всех pending-хунков по path (как reviewDiff rejectAll, только для файла)
-	private async rejectPendingPath(relativePath: string): Promise<void> {
-		if (this.inflight) {
-			return;
-		}
-
-		const target = relativePath.replace(/\\/g, '/').replace(/^\.\//, '').trim();
-		if (!target) {
-			return;
-		}
-
-		const pending: DiffHunkPayload[] = [];
-		for (const msg of this.messages) {
-			for (const call of msg.toolCalls ?? []) {
-				for (const hunk of call.hunks ?? []) {
-					if (hunk.status !== 'pending') {
-						continue;
-					}
-
-					const path = (hunk.path ?? call.path)?.replace(/\\/g, '/').replace(/^\.\//, '').trim();
-					if (path === target) {
-						pending.push(hunk);
-					}
-				}
-			}
-		}
-
-		if (pending.length === 0) {
-			return;
-		}
-
-		// С конца: при матче по содержимому раньше откатанные хунки не сдвигают поиск следующих
-		for (let i = pending.length - 1; i >= 0; i -= 1) {
-			const ok = await this.applyHunkReject(pending[i]);
-			if (!ok) {
-				void vscode.window.showWarningMessage(vscode.l10n.t('chat.hunk.rejectFailed'));
-				this.persist();
-				this.emit();
-				return;
-			}
-			pending[i].status = 'rejected';
-		}
-
-		recordActivity({
-			kind: 'review',
-			label: vscode.l10n.t('activity.review.rejectedFile', pending.length, target),
-			path: target,
-			sessionId: this.sessions.getCurrentSessionId(),
-			status: 'rejected',
-		});
-
-		this.persist();
-		this.emit();
-	}
-
 	/**
 	 * Accept всех pending-хунков по path (как reviewDiff acceptAll, только для файла).
-	 * Диск не трогаем - Keep = оставить текущее состояние.
+	 * Диск не трогаем - Keep = оставить текущее состояние. Используется git-sync auto-keep.
 	 */
 	private acceptPendingPath(relativePath: string): void {
 		if (this.inflight) {
@@ -1666,14 +1616,6 @@ export class ChatSession {
 		if (!changed) {
 			return;
 		}
-
-		recordActivity({
-			kind: 'review',
-			label: vscode.l10n.t('activity.review.autoKept', target),
-			path: target,
-			sessionId: this.sessions.getCurrentSessionId(),
-			status: 'accepted',
-		});
 
 		this.persist();
 		this.emit();
@@ -1866,15 +1808,6 @@ export class ChatSession {
 		this.emit();
 	}
 
-	// Скрыть баннер session diff последнего хода
-	dismissTurnDiff(): void {
-		if (!this.lastTurnDiff) {
-			return;
-		}
-		this.lastTurnDiff = undefined;
-		this.emit();
-	}
-
 	// Открыть файл из чата: если есть снимок до правок агента - vscode.diff, иначе обычный preview документа
 	async openEditedPath(pathHint: string): Promise<void> {
 		const trimmed = pathHint.trim();
@@ -1941,6 +1874,30 @@ export class ChatSession {
 		return undefined;
 	}
 
+	// Адаптер приватных методов для chatSlash (handleSlashCommand)
+	private slashHost(): ChatSlashHost {
+		return {
+			append: (message) => this.append(message),
+			send: (text) => this.send(text),
+			setMode: (mode) => this.setMode(mode),
+			exportSessionMarkdown: () => this.exportSessionMarkdown(),
+			importSessionMarkdown: () => this.importSessionMarkdown(),
+			runInitRules: (hint) => this.runInitRules(hint),
+			canCreateTab: () => this.canCreateTab(),
+			notifyMaxTabs: () => this.notifyMaxTabs(),
+			createSession: () => this.createSession(),
+			runCompact: () => this.runCompact(),
+			restoreExportArchive: () => this.restoreExportArchive(),
+			runUndo: (opts) => this.runUndo(opts),
+			runRedo: () => this.runRedo(),
+			runDeepPlanning: (goal) => this.runDeepPlanning(goal),
+			compareLastCheckpoint: () => this.compareLastCheckpoint(),
+			listStartedSessions: () => this.sessions.listSessions({ startedOnly: true }),
+			getCurrentSessionId: () => this.sessions.getCurrentSessionId(),
+			getCustomCommands: () => this.customCommands,
+		};
+	}
+
 	async send(text: string, images?: IncomingImage[]): Promise<void> {
 		const trimmed = text.trim();
 		const hasImages = Boolean(images?.length);
@@ -1978,147 +1935,7 @@ export class ChatSession {
 		const extra = this.customSlashExtra();
 		const slash = parseSlashMode(payload, extra);
 		if (slash) {
-			if (slash.command === 'export') {
-				await this.exportSessionMarkdown();
-				return;
-			}
-
-			if (slash.command === 'import') {
-				await this.importSessionMarkdown();
-				return;
-			}
-
-			if (slash.command === 'init') {
-				await this.runInitRules(slash.rest);
-				return;
-			}
-
-			if (slash.command === 'new') {
-				if (!this.canCreateTab()) {
-					this.notifyMaxTabs();
-					return;
-				}
-				this.createSession();
-				this.append({
-					id: messageId(),
-					role: 'assistant',
-					content: vscode.l10n.t('chat.slash.new.done'),
-				});
-				return;
-			}
-
-			if (slash.command === 'compact') {
-				await this.runCompact();
-				return;
-			}
-
-			if (slash.command === 'restore-archive') {
-				await this.restoreExportArchive();
-				return;
-			}
-
-			if (slash.command === 'undo') {
-				const scope = slash.rest.trim().toLowerCase();
-				if (scope === 'files' || scope === 'file') {
-					await this.runUndo({ files: true, task: false });
-				} else if (scope === 'task' || scope === 'messages') {
-					await this.runUndo({ files: false, task: true });
-				} else {
-					await this.runUndo({ files: true, task: true });
-				}
-				return;
-			}
-
-			if (slash.command === 'deep-planning' || slash.command === 'deep_planning') {
-				await this.runDeepPlanning(slash.rest);
-				return;
-			}
-
-			if (slash.command === 'compare' || slash.command === 'restore-compare') {
-				await this.compareLastCheckpoint();
-				return;
-			}
-
-			if (slash.command === 'redo') {
-				await this.runRedo();
-				return;
-			}
-
-			if (slash.command === 'sessions') {
-				const list = this.sessions.listSessions();
-				const lines = list.map((s, i) => {
-					const mark = s.id === this.sessions.getCurrentSessionId() ? ' ' : ' ';
-					return `${mark} ${i + 1}. ${s.title} (${s.messageCount})`;
-				});
-				this.append({
-					id: messageId(),
-					role: 'assistant',
-					content: vscode.l10n.t('chat.slash.sessions.info', list.length, lines.join('\n') || '-'),
-				});
-				return;
-			}
-
-			if (slash.command === 'models') {
-				const settings = getSettings();
-				const model = settings.model.trim() || '-';
-				const small = settings.smallModel.trim() || '-';
-				const plan = settings.planModel.trim() || model;
-				const act = settings.actModel.trim() || model;
-				this.append({
-					id: messageId(),
-					role: 'assistant',
-					content: vscode.l10n.t('chat.slash.models.info', model, small) + `\nplan: ${plan}\nact: ${act}`,
-				});
-				return;
-			}
-
-			if (slash.custom) {
-				const custom = this.customCommands.find((c) => c.name === slash.command);
-				if (!custom) {
-					return;
-				}
-
-				const argsCheck = validateCommandArgs(custom.body, slash.rest);
-				if (!argsCheck.ok) {
-					this.append({
-						id: messageId(),
-						role: 'assistant',
-						content: `/${custom.name}: ${argsCheck.message}${custom.argumentsHint ? ` (${custom.argumentsHint})` : ''}`,
-					});
-					return;
-				}
-
-				if (custom.mode && custom.mode !== getSettings().chatMode) {
-					await this.setMode(custom.mode);
-				}
-
-				if (custom.model?.trim()) {
-					setSessionModel(custom.model.trim());
-				}
-
-				const expanded = expandCommandTemplate(custom.body, slash.rest);
-				if (!expanded) {
-					this.append({
-						id: messageId(),
-						role: 'assistant',
-						content: vscode.l10n.t('chat.slash.custom.empty', custom.name),
-					});
-					return;
-				}
-
-				await this.send(expanded);
-				return;
-			}
-
-			if (slash.mode && slash.mode !== getSettings().chatMode) {
-				await this.setMode(slash.mode);
-			}
-
-			if (!slash.rest) {
-				return;
-			}
-
-			await this.send(slash.rest);
+			await handleSlashCommand(this.slashHost(), slash);
 			return;
 		}
 
@@ -2224,7 +2041,7 @@ export class ChatSession {
 			if (!result.compacted) {
 				this.append({
 					id: messageId(),
-					role: 'assistant',
+					role: 'system',
 					content: result.reason ?? vscode.l10n.t('chat.compact.llmFailed'),
 				});
 				return false;
@@ -2382,7 +2199,7 @@ export class ChatSession {
 			const dropApprox = Math.max(0, turns - keep);
 			this.append({
 				id: messageId(),
-				role: 'assistant',
+				role: 'system',
 				content: vscode.l10n.t('chat.compact.preview', dropApprox, keep),
 			});
 
@@ -2403,7 +2220,7 @@ export class ChatSession {
 			if (!result.compacted) {
 				this.append({
 					id: messageId(),
-					role: 'assistant',
+					role: 'system',
 					content: result.reason ?? vscode.l10n.t('chat.compact.nothingToDo', settings.compactTailTurns),
 				});
 				return;
@@ -2416,7 +2233,7 @@ export class ChatSession {
 			this.persist();
 			this.append({
 				id: messageId(),
-				role: 'assistant',
+				role: 'system',
 				content: vscode.l10n.t('chat.compact.done'),
 			});
 		} catch (err) {
@@ -2451,7 +2268,7 @@ export class ChatSession {
 				const trimmed = opts.task ? this.trimLastUserTurn() : false;
 				this.append({
 					id: messageId(),
-					role: 'assistant',
+					role: 'system',
 					content: restored.length > 0
 						? vscode.l10n.t('chat.slash.undo.restored', restored.length)
 						: trimmed
@@ -2465,7 +2282,7 @@ export class ChatSession {
 				const trimmed = this.trimLastUserTurn();
 				this.append({
 					id: messageId(),
-					role: 'assistant',
+					role: 'system',
 					content: trimmed
 						? vscode.l10n.t('chat.slash.undo.trimmed')
 						: vscode.l10n.t('chat.slash.undo.empty'),
@@ -2473,7 +2290,7 @@ export class ChatSession {
 			} else {
 				this.append({
 					id: messageId(),
-					role: 'assistant',
+					role: 'system',
 					content: vscode.l10n.t('chat.slash.undo.empty'),
 				});
 			}
@@ -2503,7 +2320,7 @@ export class ChatSession {
 		this.emit();
 		this.append({
 			id: messageId(),
-			role: 'assistant',
+			role: 'system',
 			content: restoredFiles > 0
 				? vscode.l10n.t('chat.slash.undo.restored', restoredFiles)
 				: opts.task
@@ -2521,7 +2338,7 @@ export class ChatSession {
 		if (!entry) {
 			this.append({
 				id: messageId(),
-				role: 'assistant',
+				role: 'system',
 				content: vscode.l10n.t('chat.slash.redo.empty'),
 			});
 			return;
@@ -2541,7 +2358,7 @@ export class ChatSession {
 		this.emit();
 		this.append({
 			id: messageId(),
-			role: 'assistant',
+			role: 'system',
 			content: vscode.l10n.t('chat.slash.redo.done'),
 		});
 	}
@@ -2716,7 +2533,7 @@ export class ChatSession {
 		if (fitted.truncated) {
 			this.append({
 				id: messageId(),
-				role: 'assistant',
+				role: 'system',
 				content: vscode.l10n.t(
 					'chat.context.mentionsTruncated',
 					fitted.kinds.join(', ') || 'attachments',
@@ -2865,21 +2682,10 @@ export class ChatSession {
 						this.emit();
 					},
 					onTurnDiff: ({ turnId, paths }) => {
-						if (!stillActive()) {
+						if (!stillActive() || paths.length === 0) {
 							return;
 						}
-
-						rt.lastTurnDiff = paths.length > 0
-							? { 
-								turnId, 
-								paths: [...paths], 
-								at: Date.now() 
-							}
-							: undefined;
-						this.emit();
-						if (paths.length > 0) {
-							void runSessionDiffHook(paths, turnId);
-						}
+						void runSessionDiffHook(paths, turnId);
 					},
 					onContextPrune: ({ chars, messages }) => {
 						if (!stillActive()) {
@@ -3213,25 +3019,13 @@ export class ChatSession {
 					this.emit();
 				},
 				onTurnDiff: ({ turnId, paths }) => {
-					if (!stillActive()) {
+					if (!stillActive() || paths.length === 0) {
 						return;
 					}
-
-					rt.lastTurnDiff = paths.length > 0
-						? { 
-							turnId, 
-							paths: [...paths], 
-							at: Date.now() 
-						}
-						: undefined;
-					this.emit();
-					if (paths.length > 0) {
-						void runSessionDiffHook(paths, turnId);
-					}
+					void runSessionDiffHook(paths, turnId);
 				},
 				onContextPrune: ({ chars, messages }) => {
-					if (!stillActive()) {
-						return;
+					if (!stillActive()) {						return;
 					}
 
 					this.lastContextPrune = { chars, messages };
@@ -3323,15 +3117,6 @@ export class ChatSession {
 		const generated = await generateSessionTitle(messages, this.client, { signal });
 		let title = generated.title;
 		if (!title?.trim()) {
-			recordActivity({
-				kind: 'review',
-				label: vscode.l10n.t(
-					'activity.chat.autoTitleFailed',
-					generated.error ?? vscode.l10n.t('chat.autoTitle.unknownReason'),
-				),
-				sessionId,
-				status: 'error',
-			});
 			title = fallbackTitleFromMessages(messages);
 		}
 
@@ -3363,6 +3148,10 @@ export class ChatSession {
 
 			if (m.role === 'error') {
 				return `## ${vscode.l10n.t('chat.export.errorHeading')}\n\n${m.content}`;
+			}
+
+			if (m.role === 'system') {
+				return `## ${vscode.l10n.t('chat.export.systemHeading')}\n\n${m.content}`;
 			}
 
 			return `## ${vscode.l10n.t('chat.export.toolHeading', m.toolName ?? '')}\n\n\`\`\`\n${m.content}\n\`\`\``;
@@ -3451,14 +3240,14 @@ export class ChatSession {
 			await vscode.workspace.fs.stat(uri);
 			this.append({
 				id: messageId(),
-				role: 'assistant',
+				role: 'system',
 				content: vscode.l10n.t('chat.init.existing'),
 			});
 		} catch {
 			await vscode.workspace.fs.writeFile(uri, new TextEncoder().encode(stub));
 			this.append({
 				id: messageId(),
-				role: 'assistant',
+				role: 'system',
 				content: vscode.l10n.t('chat.init.created'),
 			});
 			await vscode.window.showTextDocument(uri);
@@ -3474,14 +3263,16 @@ export class ChatSession {
 
 		const doc = editor.document;
 		const text = doc.getText(editor.selection);
-		const rel = vscode.workspace.asRelativePath(doc.uri);
+		const rel = vscode.workspace.asRelativePath(doc.uri, false).replace(/\\/g, '/');
+		const { formatMentionPathArg } = await import('./composerAttachPaths');
 		const start = editor.selection.start.line + 1;
 		const end = editor.selection.end.line + 1;
 		await this.addToChat({
 			text,
-			label: `@file ${rel}`,
+			label: `@file ${formatMentionPathArg(rel)}`,
 			meta: vscode.l10n.t('chat.addToChat.lines', start, end),
-			send: true,
+			// В поле Composer: chip файла + код, без автоотправки
+			send: false,
 		});
 	}
 
@@ -3497,18 +3288,30 @@ export class ChatSession {
 		if (!body) {
 			return;
 		}
-		
+
 		const mention = params.label?.trim() || '@code';
 		const meta = params.meta ? `\n(${params.meta})` : '';
 		const prefix = params.prefix?.trim() ? `${params.prefix.trim()}\n\n` : '';
-		const block = `${prefix}${mention}\n\`\`\`\n${body.slice(0, 8000)}\n\`\`\`${meta}`;
+		const fence = '```';
+		const code = `${fence}\n${body.slice(0, 8000)}\n${fence}`;
 		await focusChatView();
 		if (params.send !== false) {
-			await this.send(block);
-		} else {
-			this.sessions.setDraft(block);
-			this.emit();
+			await this.send(`${prefix}${mention}\n${code}${meta}`);
+			return;
 		}
+
+		// В Composer: mention -> chip, код -> текст черновика
+		const chips = this.sessions.getDraftChips();
+		const nextChips = [...chips];
+		if (mention.startsWith('@') && !nextChips.includes(mention)) {
+			nextChips.push(mention);
+		}
+		const prev = this.sessions.getDraft().trim();
+		const metaLine = params.meta ? `(${params.meta})` : '';
+		const chunk = [params.prefix?.trim(), metaLine, code].filter(Boolean).join('\n');
+		const next = prev ? `${prev}\n\n${chunk}` : chunk;
+		this.sessions.setDraft(next, nextChips);
+		this.emit();
 	}
 
 	async explainSelection(): Promise<void> {
@@ -3646,7 +3449,7 @@ export class ChatSession {
 		if (!cp || cp.size <= 0) {
 			this.append({
 				id: messageId(),
-				role: 'assistant',
+				role: 'system',
 				content: vscode.l10n.t('chat.slash.compare.empty'),
 			});
 			return;
@@ -3700,7 +3503,7 @@ export class ChatSession {
 
 		this.append({
 			id: messageId(),
-			role: 'assistant',
+			role: 'system',
 			content: vscode.l10n.t('chat.slash.compare.pickFile'),
 		});
 	}

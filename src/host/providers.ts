@@ -1,4 +1,5 @@
 import type * as vscode from 'vscode';
+import { registerInlineCompletionProvider } from '../features/tab/inlineComplete';
 import { DiffContentProvider, registerDiffContentProvider } from './preview/showDiff';
 
 export function registerHostProviders(): {
@@ -8,6 +9,9 @@ export function registerHostProviders(): {
 	const diffProvider = new DiffContentProvider();
 	return {
 		diffProvider,
-		disposables: [registerDiffContentProvider(diffProvider)],
+		disposables: [
+			registerDiffContentProvider(diffProvider),
+			registerInlineCompletionProvider(),
+		],
 	};
 }

@@ -82,8 +82,7 @@ function hunkStatusLabel(status: DiffHunkPayload['status']): string {
 	return '';
 }
 
-function HunkReview({ callId, hunk }: { callId: string; hunk: DiffHunkPayload }) {
-	const pending = hunk.status === 'pending';
+function HunkPreview({ hunk }: { hunk: DiffHunkPayload }) {
 	return (
 		<div className={`hunk hunk--${hunk.status}`}>
 			<div className="hunk__header">
@@ -104,34 +103,6 @@ function HunkReview({ callId, hunk }: { callId: string; hunk: DiffHunkPayload })
 					<span className="hunk__lines">@{hunk.newStart}</span>
 					{hunk.status !== 'pending' ? <span className="hunk__status">{hunkStatusLabel(hunk.status)}</span> : null}
 				</span>
-				{pending ? (
-					<span className="hunk__actions">
-						<button
-							type="button"
-							className="hunk__btn hunk__btn--accept"
-							onClick={() => vscodeApi.postMessage({
-								type: 'reviewHunk',
-								toolCallId: callId,
-								hunkId: hunk.id,
-								action: 'accept',
-							})}
-						>
-							{t('chat.hunk.accept')}
-						</button>
-						<button
-							type="button"
-							className="hunk__btn hunk__btn--reject"
-							onClick={() => vscodeApi.postMessage({
-								type: 'reviewHunk',
-								toolCallId: callId,
-								hunkId: hunk.id,
-								action: 'reject',
-							})}
-						>
-							{t('chat.hunk.reject')}
-						</button>
-					</span>
-				) : null}
 			</div>
 			<DiffLinePreview preview={hunk.preview} />
 		</div>
@@ -191,10 +162,9 @@ export function ToolCallCard({ call, detailsMode = 'full' }: ToolCallCardProps) 
 	const truncated = !expanded && collapsed.length > RESULT_PREVIEW;
 	const shown = truncated ? `${collapsed.slice(0, RESULT_PREVIEW)}\n...` : collapsed;
 	const hunks = call.hunks ?? [];
-	const pendingCount = hunks.filter((h) => h.status === 'pending').length;
 	const showHunks = hunks.length > 0;
 	const hasExit = call.exitCode !== undefined;
-	const modeDefaultOpen = detailsMode === 'full' && (call.status !== 'ok' || pendingCount > 0);
+	const modeDefaultOpen = detailsMode === 'full' && call.status !== 'ok';
 	const [userOpen, setUserOpen] = useState<boolean | undefined>(undefined);
 
 	useEffect(() => {
@@ -248,34 +218,8 @@ export function ToolCallCard({ call, detailsMode = 'full' }: ToolCallCardProps) 
 			{call.status === 'awaiting_confirm' ? (<p className="tool-card__confirm-hint">{t('chat.tool.confirmBelow')}</p>) : null}
 			{showHunks ? (
 				<div className="hunk-list">
-					{pendingCount > 0 ? (
-						<div className="hunk-list__toolbar">
-							<button
-								type="button"
-								className="hunk__btn hunk__btn--accept"
-								onClick={() => vscodeApi.postMessage({
-									type: 'reviewDiff',
-									toolCallId: call.id,
-									action: 'acceptAll',
-								})}
-							>
-								{t('chat.hunk.acceptAll')}
-							</button>
-							<button
-								type="button"
-								className="hunk__btn hunk__btn--reject"
-								onClick={() => vscodeApi.postMessage({
-									type: 'reviewDiff',
-									toolCallId: call.id,
-									action: 'rejectAll',
-								})}
-							>
-								{t('chat.hunk.rejectAll')}
-							</button>
-						</div>
-					) : null}
 					{hunks.map((hunk) => (
-						<HunkReview key={hunk.id} callId={call.id} hunk={hunk} />
+						<HunkPreview key={hunk.id} hunk={hunk} />
 					))}
 				</div>
 			) : call.diff ? (

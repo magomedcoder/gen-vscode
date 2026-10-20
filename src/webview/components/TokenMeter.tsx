@@ -9,9 +9,9 @@ interface TokenMeterProps {
 	estimatedPromptTokens?: number;
 	contextBudget?: number;
 	cachedNCtx?: number;
-	lastContextPrune?: { 
-		chars: number; 
-		messages: number 
+	lastContextPrune?: {
+		chars: number;
+		messages: number;
 	};
 	nearBudget?: boolean;
 	nCtxWarn?: boolean;
@@ -38,72 +38,93 @@ export function TokenMeter({
 	mentionsTruncated,
 }: TokenMeterProps) {
 	const hasUsage = Boolean(usage && usage.totalTokens > 0);
-	const hasBudgetHint = typeof estimatedPromptTokens === 'number'
-		|| typeof contextBudget === 'number'
-		|| typeof cachedNCtx === 'number';
-
-	if (!hasUsage && !hasBudgetHint) {
-		return null;
-	}
-
 	const limit = (typeof contextBudget === 'number' && contextBudget > 0)
 		? contextBudget
 		: (maxContextTokens && maxContextTokens > 0 ? maxContextTokens : undefined);
-	const used = usage?.totalTokens ?? estimatedPromptTokens ?? 0;
-	const pct = limit ? Math.min(100, Math.round((used / limit) * 100)) : undefined;
 
-	const budgetBits: string[] = [];
-	if (typeof estimatedPromptTokens === 'number' && estimatedPromptTokens > 0) {
-		budgetBits.push(`prompt ${formatTokenCount(estimatedPromptTokens)}`);
+	// Для шапки важнее размер текущего запроса, а не сумма usage за всю сессию
+	const occupied = (typeof estimatedPromptTokens === 'number' && estimatedPromptTokens > 0)
+		? estimatedPromptTokens
+		: (usage?.totalTokens ?? 0);
+
+	const hasMeter = Boolean(limit && occupied > 0)
+		|| Boolean(limit && hasUsage)
+		|| (typeof estimatedPromptTokens === 'number' && estimatedPromptTokens > 0)
+		|| Boolean(limit);
+
+	if (!hasUsage && !hasMeter) {
+		return null;
 	}
 
-	if (typeof contextBudget === 'number' && contextBudget > 0) {
-		budgetBits.push(`bud ${formatTokenCount(contextBudget)}`);
+	const pct = limit && occupied > 0
+		? Math.min(100, Math.round((occupied / limit) * 100))
+		: (limit ? 0 : undefined);
+
+	const tooltipLines: string[] = [];
+	if (occupied > 0) {
+		tooltipLines.push(t('chat.tokens.filledHint', formatTokenCount(occupied)));
+	}
+	
+	if (limit) {
+		tooltipLines.push(t('chat.tokens.limitHint', formatTokenCount(limit)));
 	}
 
 	if (typeof cachedNCtx === 'number' && cachedNCtx > 0) {
-		budgetBits.push(`n_ctx ${formatTokenCount(cachedNCtx)}`);
-	}
-
-	if (lastContextPrune && (lastContextPrune.chars > 0 || lastContextPrune.messages > 0)) {
-		budgetBits.push(`−${lastContextPrune.messages}msg`);
+		tooltipLines.push(t('chat.tokens.serverWindowHint', formatTokenCount(cachedNCtx)));
 	}
 
 	if (contextBreakdown) {
-		budgetBits.push(
-			`h${formatTokenCount(contextBreakdown.history)}/m${formatTokenCount(contextBreakdown.mentions)}/u${formatTokenCount(contextBreakdown.user)}`,
+		tooltipLines.push(
+			t(
+				'chat.tokens.breakdownHint',
+				formatTokenCount(contextBreakdown.history),
+				formatTokenCount(contextBreakdown.mentions),
+				formatTokenCount(contextBreakdown.user),
+			),
 		);
 	}
 
-	const budgetText = budgetBits.length > 0 ? budgetBits.toString() : undefined;
-	const titleParts = [
-		budgetText,
-		nCtxWarn ? t('chat.tokens.nCtxWarn') : '',
-		mentionsTruncated ? t('chat.tokens.mentionsTruncated') : '',
-		nearBudget ? t('chat.tokens.nearBudget') : '',
-	].filter(Boolean);
+	if (lastContextPrune && (lastContextPrune.chars > 0 || lastContextPrune.messages > 0)) {
+		tooltipLines.push(t('chat.tokens.prunedHint', lastContextPrune.messages));
+	}
+	if (nCtxWarn) {
+		tooltipLines.push(t('chat.tokens.nCtxWarn'));
+	}
+
+	if (mentionsTruncated) {
+		tooltipLines.push(t('chat.tokens.mentionsTruncated'));
+	}
+	
+	if (nearBudget) {
+		tooltipLines.push(t('chat.tokens.nearBudget'));
+	}
+
+	const tooltip = tooltipLines.join('\n');
 
 	if (compact) {
+		const label = limit
+			? t(
+				'chat.tokens.context',
+				formatTokenCount(occupied),
+				formatTokenCount(limit),
+				pct ?? 0,
+			)
+			: occupied > 0
+				? t('chat.tokens.compact', formatTokenCount(occupied))
+				: null;
+
+		if (!label) {
+			return null;
+		}
+
 		return (
 			<span className={`token-meter-wrap${nearBudget ? ' token-meter-wrap--near' : ''}${nCtxWarn ? ' token-meter-wrap--warn' : ''}`}>
-				{hasUsage && limit ? (
-					<span
-						className="token-meter token-meter--ring"
-						title={t('chat.tokens.contextTitle', formatTokenCount(used), formatTokenCount(limit))}
-					>
-						{t('chat.tokens.context', formatTokenCount(used), formatTokenCount(limit), pct ?? 0)}
-					</span>
-				) : hasUsage ? (
-					<span className="token-meter">{t('chat.tokens.compact', formatTokenCount(usage!.totalTokens))}</span>
-				) : null}
-				{budgetText ? (
-					<span
-						className="token-meter token-meter--budget"
-						title={titleParts.join('\n') || t('chat.tokens.budgetTitle', budgetText)}
-					>
-						{budgetText}
-					</span>
-				) : null}
+				<span
+					className="token-meter token-meter--budget"
+					title={tooltip || t('chat.tokens.contextTitle', formatTokenCount(occupied), formatTokenCount(limit ?? 0))}
+				>
+					{label}
+				</span>
 			</span>
 		);
 	}

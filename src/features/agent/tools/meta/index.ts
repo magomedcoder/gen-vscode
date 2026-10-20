@@ -1,6 +1,8 @@
 import { registerTool } from '../registry';
 import { webSearchTool } from '../search/fileSearchWeb';
 import { taskTool } from '../shell/taskShell';
+import { attemptCompletionTool } from './attemptCompletion';
+import { browserActionTool } from './browserCu';
 import { designInspectTool } from './designInspect';
 import { designScreenshotTool } from './designScreenshot';
 import { fetchPageTool } from './fetchPage';
@@ -12,9 +14,11 @@ import { openBrowserTool } from './openBrowser';
 import { listPluginsTool, pluginTool, runPluginTool } from './plugins';
 import { readLogTailTool } from './readLogTail';
 import { registerEphemeralToolTool } from './registerEphemeralTool';
+import { newRuleTool, reportBugTool } from './reportBugNewRule';
 import { repoHealthTool } from './repoHealth';
 import { testImpactTool } from './testImpact';
 import { askQuestionTool, skillTool, todoReadTool, todoWriteTool } from './todoQuestionSkill';
+import { webFetchTool } from './webFetch';
 
 export function registerMetaTools(): void {
 	registerTool(getWorkspaceInfoTool, { 
@@ -93,6 +97,14 @@ export function registerMetaTools(): void {
 		tags: ['meta'], 
 		risk: 'web' 
 	});
+	registerTool(webFetchTool, {
+		tags: ['meta'],
+		risk: 'web',
+	});
+	registerTool(browserActionTool, {
+		tags: ['meta'],
+		risk: 'web',
+	});
 	registerTool(designInspectTool, {
 		tags: ['meta'],
 		risk: 'web',
@@ -100,5 +112,17 @@ export function registerMetaTools(): void {
 	registerTool(designScreenshotTool, {
 		tags: ['meta'],
 		risk: 'web',
+	});
+	registerTool(attemptCompletionTool, {
+		tags: ['meta'],
+		risk: 'read',
+	});
+	registerTool(reportBugTool, {
+		tags: ['meta'],
+		risk: 'write',
+	});
+	registerTool(newRuleTool, {
+		tags: ['meta'],
+		risk: 'write',
 	});
 }

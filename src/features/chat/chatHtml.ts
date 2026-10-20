@@ -32,7 +32,7 @@ export function renderChatHtml(params: {
 	<title>${title}</title>
 	<link href="${styleUri}" rel="stylesheet">${codiconsLink}
 </head>
-<body data-screen="${screen}">
+<body data-screen="${screen}" style="padding:0;margin:0">
 	<div id="root"></div>
 	<script nonce="${nonce}">window.__GEN_L10N__=${escapeScriptJson(l10n)};</script>
 	<script nonce="${nonce}" src="${scriptUri}"></script>

@@ -1,7 +1,6 @@
 import * as vscode from 'vscode';
 import type { LlmToolDefinition } from '../../../core/llm/types';
 import { getSettings } from '../../../core/config/settings';
-import { beginGenOperationSpan } from '../../../core/llm/otel';
 import { logAgentTool } from '../audit';
 import { isMutatingTool } from '../auth';
 import { evaluateApproval, matchesSensitivePath, suggestPattern, toolActionType, type PermissionDecision } from '../permissionPolicy';
@@ -85,11 +84,15 @@ export function getAgentLlmTools(mode?: string, opts?: {
 			return false;
 		}
 
-		if (!settings.webFetchEnabled && tool.name === 'fetch_page') {
+		if (!settings.webFetchEnabled && (tool.name === 'fetch_page' || tool.name === 'web_fetch')) {
 			return false;
 		}
 
 		if (!settings.designScreenshotEnabled && tool.name === 'design_screenshot') {
+			return false;
+		}
+
+		if (!settings.browserComputerUseEnabled && tool.name === 'browser_action') {
 			return false;
 		}
 
@@ -308,7 +311,7 @@ export async function executeAgentTool(name: string, rawArguments: string, ctx: 
 
 	const reviewEdit = needsReviewDiffConfirm(decision ?? 'allow', action);
 
-	// Центральный ask/review: одна карточка в чате до execute (без второй в tool)
+	// Канон UX: ask/allow -> confirm на tool -> execute; review -> preview+Accept до записи; без post-apply Accept all
 	if (action && (!ext.skipConfirm || ext.forceConfirm)) {
 		let detail = formatToolConfirmDetail(subject, rawArguments, name);
 		let title = vscode.l10n.t('agent.confirm.toolAsk', name);
@@ -393,19 +396,7 @@ export async function executeAgentTool(name: string, rawArguments: string, ctx: 
 			}
 		}
 
-		const executeSpan = beginGenOperationSpan(settings, 'tool.execute', { tool: name });
-		let result: ToolResult;
-		try {
-			result = await tool.execute(args, ctx);
-			executeSpan?.end(result.ok ? 'ok' : 'error', {
-				code: result.code,
-				category: result.category,
-				retryable: result.retryable,
-			});
-		} catch (err) {
-			executeSpan?.end('error', { error: err instanceof Error ? err.name : 'unknown' });
-			throw err;
-		}
+		const result: ToolResult = await tool.execute(args, ctx);
 		if (result.ok && isMutatingTool(name) && ctx.plan?.isApproved) {
 			ctx.plan.markDoneByPaths(mutationPathsFromArgs(name, args));
 			ctx.onPlanChanged?.();

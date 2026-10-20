@@ -1,8 +1,9 @@
 import type { PersonaOption } from '../../../features/chat/protocol';
-import type { ChatMode, ChatTextSize, ChatViewLocation, CommentStyle, ThinkingDisplay } from '../../../core/config/types';
+import { CHAT_MODE_DEFS } from '../../../features/chat/chatModes';
+import type { ChatMode, CommentStyle, ThinkingDisplay } from '../../../core/config/types';
 import { t } from '../../i18n';
 import type { SettingsPageProps } from './pages';
-import { FieldSelect, FieldText, FieldTextarea, FieldToggle } from './SettingsFields';
+import { FieldSelect, FieldTextarea, FieldToggle } from './SettingsFields';
 import { SettingsSection } from './SettingsSection';
 
 interface ChatPageProps extends SettingsPageProps {
@@ -28,24 +29,9 @@ export function ChatPage({
 					value={draft.chatMode}
 					onChange={(v) => setField('chatMode', v as ChatMode)}
 				>
-					<option value="ask">{t('settings.chatMode.ask')}</option>
-					<option value="agent">{t('settings.chatMode.agent')}</option>
-					<option value="plan">{t('settings.chatMode.plan')}</option>
-					<option value="multitask">{t('settings.chatMode.multitask')}</option>
-					<option value="project">{t('settings.chatMode.project')}</option>
-					<option value="debug">{t('settings.chatMode.debug')}</option>
-					<option value="design">{t('settings.chatMode.design')}</option>
-				</FieldSelect>
-
-				<FieldSelect
-					labelKey="settings.chatTextSize.label"
-					hintKey="settings.chatTextSize.hint"
-					value={draft.chatTextSize}
-					onChange={(v) => setField('chatTextSize', v as ChatTextSize)}
-				>
-					<option value="compact">{t('settings.chatTextSize.compact')}</option>
-					<option value="default">{t('settings.chatTextSize.default')}</option>
-					<option value="large">{t('settings.chatTextSize.large')}</option>
+					{CHAT_MODE_DEFS.map((def) => (
+						<option key={def.id} value={def.id}>{t(def.labelKey)}</option>
+					))}
 				</FieldSelect>
 
 				<FieldSelect
@@ -59,16 +45,12 @@ export function ChatPage({
 					<option value="expanded">{t('settings.thinkingDisplay.expanded')}</option>
 				</FieldSelect>
 
-				<FieldSelect
-					labelKey="settings.chatViewLocation.label"
-					hintKey="settings.chatViewLocation.hint"
-					value={draft.chatViewLocation}
-					onChange={(v) => setField('chatViewLocation', v as ChatViewLocation)}
-				>
-					<option value="panel">{t('settings.chatViewLocation.panel')}</option>
-					<option value="sidebar">{t('settings.chatViewLocation.sidebar')}</option>
-					<option value="both">{t('settings.chatViewLocation.both')}</option>
-				</FieldSelect>
+				<FieldToggle
+					labelKey="settings.toolDetailsExpanded.label"
+					hintKey="settings.toolDetailsExpanded.hint"
+					checked={draft.toolDetailsExpanded}
+					onChange={(v) => setField('toolDetailsExpanded', v)}
+				/>
 
 				<FieldSelect
 					labelKey="settings.personaId.label"
@@ -93,14 +75,6 @@ export function ChatPage({
 						</button>
 					</div>
 				) : null}
-
-				<FieldText
-					labelKey="settings.usernameDisplay.label"
-					hintKey="settings.usernameDisplay.hint"
-					value={draft.usernameDisplay}
-					onChange={(v) => setField('usernameDisplay', v)}
-					spellCheck={false}
-				/>
 			</SettingsSection>
 
 			<SettingsSection titleKey="settings.section.chat.notify" defaultOpen={false}>

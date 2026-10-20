@@ -2,13 +2,13 @@
 
 [Русская версия](settings-ru.md)
 
-**Reset to defaults** restores all fields to defaults; the **API key is not cleared**.
+**Reset to defaults** restores all fields to defaults. There is no API-key field in the UI (local-first: empty key; otherwise env `GEN_API_KEY` / `OPENAI_API_KEY`).
 
 ## Settings screens
 
 Sidebar is a single flat list (**6 screens**). Sections inside a screen are collapsible.
 
-**Connection** (incl. Requests) **Chat** **Agent** **Security** (incl. Permissions) **Project** (Indexing, Rules, Personas, Agents, Hooks) **Journal** (Usage, Activity, Logs).
+**Connection** (incl. Requests) **Chat** **Agent** **Security** (incl. Permissions) **Project** (Indexing, Rules, Personas, Agents, Hooks) **Journal** (Usage, Logs).
 
 Use Base URL + model list for any OpenAI-compatible endpoint (e.g. `http://127.0.0.1:8080/v1` for llama.cpp).
 
@@ -32,7 +32,7 @@ Optional machine-wide policy file (first match):
 2. Linux / macOS: `/etc/gen/policy.json`
 3. Windows: `%ProgramData%/gen/policy.json`
 
-Keys present in the file are **locked** and force effective settings. Supported lock keys: `approvalPolicy`, `autoApprove`, `continueLoopOnDeny`, `enableTerminal`, `enableFileReading`, `enableWorkspaceContext`, `webSearchEnabled`, `webFetchEnabled`, `allowExternalDirectory`, `otelEnabled`, `otelEndpoint`, `indexingEnabled`, `embeddingsBaseUrl`, `baseUrl`, `planModel`, `actModel`, `smallModel`, and `localEmbeddingsMode`.
+Keys present in the file are **locked** and force effective settings. Supported lock keys: `approvalPolicy`, `autoApprove`, `continueLoopOnDeny`, `enableTerminal`, `enableFileReading`, `enableWorkspaceContext`, `webSearchEnabled`, `webFetchEnabled`, `allowExternalDirectory`, `indexingEnabled`, `embeddingsBaseUrl`, `baseUrl`, `planModel`, `actModel`, `smallModel`, and `localEmbeddingsMode`.
 
 Example:
 
@@ -41,16 +41,15 @@ Example:
   "$schema": "./schemas/gen-policy.schema.json",
   "webSearchEnabled": false,
   "webFetchEnabled": false,
-  "allowExternalDirectory": false,
-  "otelEnabled": false
+  "allowExternalDirectory": false
 }
 ```
 
 When active, Gen Settings shows a read-only banner listing locked keys. Invalid policy values are ignored instead of being locked. Schema: `schemas/gen-policy.schema.json`.
 
-The Gen Settings UI stays intact: layers are an additive overlay. Project overrides user and non-default UI values for keys set in JSON. Admin wins for locked keys. The only VSCode Settings key (`gen.chatViewLocation`) is synced from effective config for view `when` clauses.
+The Gen Settings UI stays intact: layers are an additive overlay. Project overrides user and non-default UI values for keys set in JSON. Admin wins for locked keys. Chat is panel-only (no activity-bar sidebar; no chat location key in VSCode Settings).
 
-Supported JSON keys (GenSettings subset): `systemPrompt`, `commentSystemPrompt`, `primaryTools`, `watcherIgnore`, `webSearch*` (`webSearchBackend`: `duckduckgo` \| `exa` \| `parallel` \| `http`), `webFetchEnabled`, `skillsPaths` / `skillsUrls` / `instructionUrls`, `personaId`, `usernameDisplay`, `deniedCommands` / `sensitivePathPatterns` / `secretPatterns` (JSON only - not Settings UI), agent/indexing knobs (`outlineEngine`, `chunkEngine`, `treeSitterLanguages`, `indexStorageBackend`, ...), timeouts, `chatMode`, `planShellPolicy` (`ask` \| `deny`), `shareMode`, `revealOnEdit`, `thinkingDisplay`, `chatViewLocation`, and more - see `FILE_LAYER_KEYS` in `src/core/config/layers.ts`. Path/folder ignore is **not** a settings key - use `.genignore`.
+Supported JSON keys (GenSettings subset): `systemPrompt`, `commentSystemPrompt`, `primaryTools`, `watcherIgnore`, `webSearch*` (`webSearchBackend`: `duckduckgo` \| `exa` \| `parallel` \| `http`), `webFetchEnabled`, `skillsPaths` / `skillsUrls` / `instructionUrls`, `personaId`, `deniedCommands` / `sensitivePathPatterns` / `secretPatterns` (JSON only - not Settings UI), agent/indexing knobs (`outlineEngine`, `chunkEngine`, `treeSitterLanguages`, `indexStorageBackend`, ...), timeouts, `chatMode`, `planShellPolicy` (`ask` \| `deny`), `shareMode`, `revealOnEdit`, `thinkingDisplay`, `toolDetailsExpanded`, and more - see `FILE_LAYER_KEYS` in `src/core/config/layers.ts`. Unknown keys fail validation. Path/folder ignore is **not** a settings key - use `.genignore`.
 
 Also in JSON:
 
@@ -100,7 +99,7 @@ Same pattern for hooks / references - swap the filename (`gen-hooks.schema.json`
 | Field      | Default         | Description                                                                                    |
 |------------|-----------------|------------------------------------------------------------------------------------------------|
 | Base URL   | empty           | API root: primarily **llama.cpp** (`http://127.0.0.1:8080`), or any OpenAI-compatible endpoint |
-| API key    | -               | In `SecretStorage`; empty - do not send a header                                               |
+| API key    | -               | No UI; env / SecretStorage; empty - do not send a header                                       |
 | Key header | `Authorization` | HTTP header name                                                                               |
 | Key scheme | `Bearer`        | Value prefix; empty scheme - raw key                                                           |
 | Model      | empty           | Model id; list is loaded from the URL                                                          |

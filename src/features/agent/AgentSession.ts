@@ -20,7 +20,6 @@ import { formatPersonaAppendix, resolvePersona } from '../project/personas';
 import { formatScratchCatalog } from '../project/scratchCatalog';
 import { getLiveEditorAppendix } from '../chat/editorContext';
 import { recordUsage } from '../../core/stores/usageStore';
-import { activityKindFromTool, recordActivity, summarizeToolActivity } from '../../core/stores/activityStore';
 import { redactSecrets } from './secrets';
 import { executeAgentTool, getAgentLlmTools } from './tools';
 import type { ExtendedToolContext } from './tools';
@@ -268,7 +267,7 @@ export class AgentSession {
 		// Cwd для ShellSession и относительных путей (git worktree)
 		cwd?: string;
 		maxIterationsOverride?: number;
-		// Id чат-сессии для Activity ledger
+		// Id чат-сессии
 		sessionId?: string;
 		// Мягкая пауза при исчерпании лимита итераций (не жёсткий сбой)
 		onPaused?: (info: { reason: 'max_steps'; iterations: number }) => void;
@@ -367,11 +366,23 @@ export class AgentSession {
 		].filter(Boolean).join('\n\n');
 
 		let liveEditorAppendix = getLiveEditorAppendix() ?? '';
+		// Опции фильтра tools для текущего режима (API tools и список имён в text-tool промпте)
+		const resolveToolOpts = (mode: ChatMode) => ({
+			readonly: params.readonlySubagent === true || isReadonlyMode(mode),
+			disableTask: depth > 0,
+			// субагенты не режем primaryTools
+			primary: depth === 0,
+			modelId: modeModel,
+		});
 		const buildSystem = (toolsAvailable: boolean, mode: ChatMode, textToolFormat = false) => [
 			customSystem,
 			buildAgentSystemPrompt({
 				toolsAvailable,
 				textToolFormat,
+				// Источник правды - реестр: те же tools, что уйдут в API (getAgentLlmTools)
+				availableToolNames: textToolFormat
+					? getAgentLlmTools(mode, resolveToolOpts(mode)).map((t) => t.function.name)
+					: undefined,
 				userEditsAppendix,
 				planAppendix,
 				planEditsAppendix,
@@ -540,13 +551,7 @@ export class AgentSession {
 				content: buildSystem(toolsEnabled || textToolFallback, agentMode, textToolFallback),
 			};
 
-			const toolOpts = {
-				readonly: params.readonlySubagent === true || isReadonlyMode(agentMode),
-				disableTask: depth > 0,
-				// субагенты не режем primaryTools
-				primary: depth === 0,
-				modelId: modeModel,
-			};
+			const toolOpts = resolveToolOpts(agentMode);
 
 			const assistantId = messageId();
 			let streamed = '';
@@ -785,23 +790,6 @@ export class AgentSession {
 				params.onToolStart?.(call.id, toolAbort);
 
 				const toolPathHint = pathFromToolArguments(call.function.arguments);
-				const toolKind = activityKindFromTool(call.function.name);
-				const toolSummary = summarizeToolActivity(
-					call.function.name,
-					call.function.arguments,
-					toolPathHint,
-				);
-				// Старт только для заметных действий (shell / edit) - без шума от read/grep
-				if (toolKind !== 'tool') {
-					recordActivity({
-						kind: toolKind,
-						label: vscode.l10n.t('activity.tool.started', toolSummary),
-						path: toolPathHint,
-						sessionId: params.sessionId,
-						toolName: call.function.name,
-						status: 'start',
-					});
-				}
 
 				const finishToolUi = (
 					status: ToolCallStatus,
@@ -940,18 +928,6 @@ export class AgentSession {
 						...parseShellMetaFromResult(call.function.name, resultText),
 					}, toolAttachments);
 
-					recordActivity({
-						kind: activityKindFromTool(call.function.name),
-						label: status === 'ok'
-							? vscode.l10n.t('activity.tool.ok', summarizeToolActivity(call.function.name, call.function.arguments, resultPath))
-							: status === 'denied'
-								? vscode.l10n.t('activity.tool.denied', summarizeToolActivity(call.function.name, call.function.arguments, resultPath))
-								: vscode.l10n.t('activity.tool.error', summarizeToolActivity(call.function.name, call.function.arguments, resultPath)),
-						path: resultPath,
-						sessionId: params.sessionId,
-						toolName: call.function.name,
-						status,
-					});
 
 					// Session diff: только успешные mutating-tools
 					if (toolResult.ok && isMutatingTool(call.function.name)) {
@@ -973,14 +949,6 @@ export class AgentSession {
 					if (isAbortError(err) && !params.signal.aborted) {
 						const resultText = truncate(vscode.l10n.t('agent.operationCancelled'));
 						finishToolUi('denied', resultText);
-						recordActivity({
-							kind: activityKindFromTool(call.function.name),
-							label: vscode.l10n.t('activity.tool.cancelled', toolSummary),
-							path: toolPathHint,
-							sessionId: params.sessionId,
-							toolName: call.function.name,
-							status: 'denied',
-						});
 						return {
 							role: 'tool' as const,
 							tool_call_id: call.id,

@@ -8,6 +8,8 @@ const WRITE_TOOLS = new Set([
 	'edit_file',
 	'create_dir',
 	'edit_notebook',
+	'new_rule',
+	'report_bug',
 ]);
 
 const DELETE_TOOLS = new Set(['delete_file']);
