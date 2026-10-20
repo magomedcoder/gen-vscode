@@ -168,7 +168,7 @@ async function guessSourceFiles(tokens: string[], hints: ReturnType<typeof extra
 // Упрощённая эвристика click-to-code: загрузить страницу, извлечь outerHTML селектора и найти class/id в workspace.
 export const designInspectTool: ToolDefinition = {
 	name: 'design_inspect',
-	description: 'Design Mode visual MVP: по URL + CSS selector скачать HTML (как fetch_page), вернуть outerHTML совпадения и угаданный исходник через grep className/id. Не полный click-to-code в браузере.',
+	description: 'Design Mode (shipped): по URL + CSS selector скачать HTML (как fetch_page), вернуть outerHTML совпадения и угаданный исходник через grep className/id. Не полный click-to-code в браузере.',
 	parameters: {
 		type: 'object',
 		properties: {

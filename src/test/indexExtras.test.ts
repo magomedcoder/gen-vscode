@@ -2,6 +2,8 @@ import * as assert from 'node:assert';
 import { registerBuiltins } from '../features/agent/tools/builtins.js';
 import { getToolByName, getToolMeta } from '../features/agent/tools/registry.js';
 import { FIND_REFERENCES_DEFAULT_LIMIT, matchWorkspaceFolders, normalizeFindReferencesPaging, pageItems } from '../features/agent/tools/ide/findReferences.js';
+import { parseDesignScreenshotWaitUntil } from '../features/agent/tools/meta/designScreenshot.js';
+import { extractHttpUrlFromText } from '../features/design/designPickCommand.js';
 import { annotateHtmlWithSourceHints, extractSelectorOuterHtml, selectorSearchTokens } from '../features/design/designVisual.js';
 
 suite('find_references / design_inspect smoke', () => {
@@ -29,6 +31,39 @@ suite('find_references / design_inspect smoke', () => {
 		assert.ok(tool);
 		const meta = getToolMeta('design_inspect');
 		assert.ok(meta?.tags.includes('meta'));
+	});
+
+	test('design_screenshot registered', () => {
+		const tool = getToolByName('design_screenshot');
+		assert.ok(tool);
+		const meta = getToolMeta('design_screenshot');
+		assert.ok(meta?.tags.includes('meta'));
+		assert.strictEqual(meta?.risk, 'web');
+		const props = (tool.parameters as { properties?: Record<string, unknown> }).properties ?? {};
+		assert.ok('wait_until' in props);
+		assert.ok('selector' in props);
+	});
+
+	test('design_screenshot wait_until parsing (no Chromium)', () => {
+		assert.strictEqual(parseDesignScreenshotWaitUntil(undefined), 'networkidle');
+		assert.strictEqual(parseDesignScreenshotWaitUntil('domcontentloaded'), 'domcontentloaded');
+		assert.strictEqual(parseDesignScreenshotWaitUntil('not-a-event'), 'networkidle');
+	});
+
+	test('extractHttpUrlFromText for Simple Browser clipboard', () => {
+		assert.strictEqual(
+			extractHttpUrlFromText('Preview http://localhost:5173/app?q=1 extra'),
+			'http://localhost:5173/app?q=1',
+		);
+		const local = extractHttpUrlFromText('localhost:3000');
+		assert.ok(local?.startsWith('http://localhost:3000'));
+	});
+
+	test('design_screenshot disabled by default returns error', async () => {
+		const tool = getToolByName('design_screenshot')!;
+		const result = await tool.execute({ url: 'http://localhost:5173/' }, {});
+		assert.strictEqual(result.ok, false);
+		assert.ok(/designScreenshotEnabled|отключён/i.test(result.content), result.content);
 	});
 
 	test('find_references missing position fails gracefully', async () => {

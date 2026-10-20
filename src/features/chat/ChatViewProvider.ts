@@ -5,14 +5,15 @@ import type { ChatProjectStatus, FromWebviewMessage, ToWebviewMessage } from './
 import { ChatSession } from './ChatSession';
 import { HttpLlmClient } from '../../core/llm/client';
 import { isAbortError } from '../../core/llm/errors';
-import { getSettings, hasApiKey, hasWebSearchApiKey, getAdminPolicySnapshot, isAdminPolicyActive, onSettingsChanged, setSessionModel } from '../../core/config/settings';
+import { getSettings, hasApiKey, hasEmbeddingsApiKey, hasWebSearchApiKey, getAdminPolicySnapshot, isAdminPolicyActive, onSettingsChanged, setSessionModel } from '../../core/config/settings';
 import { getPersistedAlwaysAllow } from '../../core/stores/alwaysAllowStore';
 import { loadWebviewL10n } from '../../l10n/loadBundle';
 import { SettingsPanel } from './SettingsPanel';
 import type { ConfirmDialogOptions } from '../../host/ui/confirmDialog';
 import { isProjectEnabled } from '../project/config';
 import { getIndexManager } from '../index/IndexManager';
-import { handleDesignClick } from '../design/designVisual';
+import { buildDesignSessionMessage } from '../design/designSessionBridge';
+import { handleDesignClick, type DesignClickResult } from '../design/designVisual';
 
 export class ChatViewProvider implements vscode.WebviewViewProvider {
 	// Все активные chat webview (panel + sidebar могут быть одновременно)
@@ -40,6 +41,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
 					settings: getSettings(),
 					apiKeySet: await hasApiKey(),
 					webSearchApiKeySet: await hasWebSearchApiKey(),
+					embeddingsApiKeySet: await hasEmbeddingsApiKey(),
 					persistedAlwaysAllow: getPersistedAlwaysAllow(),
 					adminPolicy: {
 						active: isAdminPolicyActive(),
@@ -56,6 +58,16 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
 
 	getSession(): ChatSession {
 		return this.session;
+	}
+
+	// Проброс host->webview (команды Design без CDP)
+	postToWebview(message: ToWebviewMessage): void {
+		this.post(message);
+	}
+
+	private notifyDesignClickResult(result: DesignClickResult): void {
+		this.post({ type: 'designClickResult', result });
+		this.post(buildDesignSessionMessage());
 	}
 
 	requestConfirm(options: ConfirmDialogOptions) {
@@ -150,12 +162,16 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
 		switch (msg.type) {
 			case 'gen.design.click': {
 				const result = await handleDesignClick(msg);
+				this.notifyDesignClickResult(result);
 				if (!result.ok) {
 					void vscode.window.showInformationMessage(result.message);
 				}
 
 				return;
 			}
+			case 'loadDesignSession':
+				this.post(buildDesignSessionMessage());
+				return;
 			
 			case 'ready':
 				await this.postState();
@@ -167,6 +183,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
 						settings: getSettings(),
 						apiKeySet: await hasApiKey(),
 						webSearchApiKeySet: await hasWebSearchApiKey(),
+					embeddingsApiKeySet: await hasEmbeddingsApiKey(),
 						persistedAlwaysAllow: getPersistedAlwaysAllow(),
 						adminPolicy: {
 							active: isAdminPolicyActive(),

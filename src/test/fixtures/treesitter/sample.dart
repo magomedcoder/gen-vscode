@@ -1,14 +1,20 @@
-class Greeter {
-  final String name;
+abstract class Widget {
+  const Widget();
+  Widget build();
+}
 
-  Greeter(this.name);
+class HelloText extends Widget {
+  const HelloText(this.message);
 
-  String hello() {
-    return 'Hello, $name';
+  final String message;
+
+  @override
+  Widget build() {
+    return this;
   }
 }
 
 void main() {
-  final g = Greeter('World');
-  print(g.hello());
+  const w = HelloText('World');
+  w.build();
 }

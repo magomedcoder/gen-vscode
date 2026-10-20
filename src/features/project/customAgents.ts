@@ -282,7 +282,7 @@ export async function discoverCustomAgents(): Promise<SubagentDef[]> {
 }
 
 // Создать `.gen/agents/{name}.md` из описания или builtin preset
-export async function generateAgentStub(params: {
+export async function generateAgentFile(params: {
 	name: string;
 	description: string;
 	mode?: string;
@@ -361,7 +361,7 @@ export async function cloneBuiltinPreset(id: string): Promise<{
 		throw new Error(vscode.l10n.t('settings.agents.error.unknownPreset', id));
 	}
 
-	return generateAgentStub({
+	return generateAgentFile({
 		name: preset.name,
 		description: preset.description,
 		mode: preset.mode,

@@ -70,6 +70,7 @@ export function App() {
 		adminPolicy,
 		apiKeySet,
 		webSearchApiKeySet,
+		embeddingsApiKeySet,
 		persistedAlwaysAllow,
 		settingsStatus,
 		models,
@@ -78,6 +79,7 @@ export function App() {
 		connectionHealth,
 		connectionHealthLoading,
 		indexStatus,
+		designSession,
 		hooks,
 		hooksStatus,
 		agents,
@@ -88,11 +90,13 @@ export function App() {
 		checkConnection,
 		openLogsFolder,
 		loadIndexStatus,
+		loadDesignSession,
 		cancelIndex,
 		repairIndex,
 		loadHooks,
 		saveHooks,
 		openHooksFile,
+		dryRunHook,
 		loadAgents,
 		cloneAgentPreset,
 		loadRulesSkills,
@@ -129,6 +133,7 @@ export function App() {
 				adminPolicy={adminPolicy}
 				apiKeySet={apiKeySet}
 				webSearchApiKeySet={webSearchApiKeySet}
+				embeddingsApiKeySet={embeddingsApiKeySet}
 				persistedAlwaysAllow={persistedAlwaysAllow}
 				status={settingsStatus}
 				models={models}
@@ -137,6 +142,7 @@ export function App() {
 				connectionHealth={connectionHealth}
 				connectionHealthLoading={connectionHealthLoading}
 				indexStatus={indexStatus}
+				designSession={designSession}
 				hooks={hooks}
 				hooksStatus={hooksStatus}
 				agents={agents}
@@ -147,11 +153,13 @@ export function App() {
 				onCheckConnection={checkConnection}
 				onOpenLogsFolder={openLogsFolder}
 				onLoadIndexStatus={loadIndexStatus}
+				onLoadDesignSession={loadDesignSession}
 				onCancelIndex={cancelIndex}
 				onRepairIndex={repairIndex}
 				onLoadHooks={loadHooks}
 				onSaveHooks={saveHooks}
 				onOpenHooksFile={openHooksFile}
+				onDryRunHook={dryRunHook}
 				onLoadAgents={loadAgents}
 				onCloneAgentPreset={cloneAgentPreset}
 				onLoadRulesSkills={loadRulesSkills}

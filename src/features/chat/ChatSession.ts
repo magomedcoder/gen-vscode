@@ -1955,8 +1955,12 @@ export class ChatSession {
 		let payload = trimmed;
 		if (hasImages) {
 			try {
-				attachments = await saveImageAttachments(images!);
+				const savedImages = await saveImageAttachments(images!);
+				attachments = savedImages.attachments;
 				payload = injectImagePathMarkers(trimmed, attachments);
+				if (savedImages.notes.length > 0) {
+					payload += `\n\n${savedImages.notes.map((note) => `[${note}]`).join('\n')}`;
+				}
 			} catch (err) {
 				this.append({
 					id: messageId(),

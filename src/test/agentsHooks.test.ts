@@ -2,7 +2,7 @@ import * as assert from 'assert';
 import { inferGeneratedAgentSpec, isReservedAgentId } from '../features/project/customAgents.js';
 import { hookCommandMatches, matchesHookPattern } from '../features/project/hooks.js';
 
-suite('agents and hooks MVP', () => {
+suite('agents and hooks', () => {
 	test('infers readonly documentation agent with useful tools and body', () => {
 		const spec = inferGeneratedAgentSpec(
 			'Research external API documentation and cite sources',

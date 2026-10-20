@@ -79,19 +79,19 @@ export const SPAN_RULES: readonly SpanRule[] = [
 	{ type: 'function_signature', kind: 'function', nameFields: ['name'], requireName: true },
 	// Kotlin / Swift
 	{ type: 'object_declaration', kind: 'class', nameFields: ['name'], requireName: true },
+	{ type: 'companion_object', kind: 'class', nameFields: ['name'], requireName: false },
 	{ type: 'fun_declaration', kind: 'function', nameFields: ['name'], requireName: true },
 	{ type: 'protocol_declaration', kind: 'interface', nameFields: ['name'], requireName: true },
+	{ type: 'protocol_function_declaration', kind: 'function', nameFields: ['name'], requireName: true },
+	// Swift struct -> span kind `class` (outline KIND_MAP); грамматика может давать class_declaration
 	{ type: 'struct_declaration', kind: 'class', nameFields: ['name'], requireName: true },
 	// Dart / Flutter (tree-sitter-dart)
 	{ type: 'class_definition', kind: 'class', nameFields: ['name'], requireName: true },
 	{ type: 'mixin_declaration', kind: 'class', nameFields: ['name'], requireName: true },
 	{ type: 'extension_declaration', kind: 'class', nameFields: ['name'], requireName: true },
 	{ type: 'mixin_application_class', kind: 'class', nameFields: ['name'], requireName: true },
-	{ type: 'method_signature', kind: 'method', nameFields: ['name'], requireName: true },
 	{ type: 'getter_signature', kind: 'method', nameFields: ['name'], requireName: true },
 	{ type: 'setter_signature', kind: 'method', nameFields: ['name'], requireName: true },
-	{ type: 'constructor_signature', kind: 'method', nameFields: ['name'], requireName: true },
-	{ type: 'factory_constructor_signature', kind: 'method', nameFields: ['name'], requireName: true },
 	{ type: 'typedef_declaration', kind: 'type', nameFields: ['name'], requireName: true },
 ];
 
@@ -99,6 +99,7 @@ const RULE_BY_TYPE = new Map(SPAN_RULES.map((r) => [r.type, r]));
 
 const NAME_NODE_TYPES = new Set([
 	'identifier',
+	'simple_identifier',
 	'type_identifier',
 	'property_identifier',
 	'name',
@@ -108,6 +109,51 @@ const NAME_NODE_TYPES = new Set([
 	'tag_name',
 	'word', // имя функции в bash
 ]);
+
+const TYPE_BODY_ANCESTOR_TYPES = new Set([
+	'class_body',
+	'class_declaration',
+	'class_definition',
+	'struct_declaration',
+	'object_declaration',
+	'impl_item',
+]);
+
+function ancestorOfType(node: any, type: string): any | undefined {
+	let p = node.parent;
+	while (p) {
+		if (p.type === type) {
+			return p;
+		}
+		p = p.parent;
+	}
+
+	return undefined;
+}
+
+function isInsideTypeBody(node: any): boolean {
+	let p = node.parent;
+	while (p) {
+		if (TYPE_BODY_ANCESTOR_TYPES.has(p.type)) {
+			return true;
+		}
+		p = p.parent;
+	}
+
+	return false;
+}
+
+function effectiveSpanKind(node: any, rule: SpanRule): TreeSitterSpanKind {
+	if (
+		(node.type === 'function_declaration' || node.type === 'function_signature') &&
+		rule.kind === 'function' &&
+		(isInsideTypeBody(node) || ancestorOfType(node, 'method_signature'))
+	) {
+		return 'method';
+	}
+
+	return rule.kind;
+}
 
 export function ruleForNodeType(type: string): SpanRule | undefined {
 	return RULE_BY_TYPE.get(type);
@@ -152,6 +198,18 @@ export function extractNodeName(node: any, source: string, rule: SpanRule): stri
 		return 'constructor';
 	}
 
+	if (node.type === 'companion_object') {
+		const fieldName = node.childForFieldName?.('name');
+		if (fieldName) {
+			const n = sliceName(fieldName, source) ?? walkFirstIdentifier(fieldName, source);
+			if (n) {
+				return n;
+			}
+		}
+		
+		return 'Companion';
+	}
+
 	const fields = rule.nameFields ?? ['name'];
 	for (const field of fields) {
 		const child = node.childForFieldName?.(field);
@@ -177,6 +235,10 @@ export function extractNodeName(node: any, source: string, rule: SpanRule): stri
 
 	if (node.type === 'lexical_declaration') {
 		return undefined; // обрабатывается отдельно (fn vs variable)
+	}
+
+	if (node.type === 'function_signature' || node.type === 'protocol_function_declaration') {
+		return undefined;
 	}
 
 	return walkFirstIdentifier(node, source);
@@ -259,7 +321,7 @@ export function collectSpansFromTree(root: any, source: string): CollectedSpan[]
 				const name = extractNodeName(node, source, rule);
 				const anonymous = !name || name === node.type || name === rule.kind;
 				if (!(rule.skipAnonymous && anonymous) && !(rule.requireName && anonymous) && name) {
-					pushSpan(raw, node, name, rule.kind);
+					pushSpan(raw, node, name, effectiveSpanKind(node, rule));
 				}
 			}
 		}

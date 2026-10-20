@@ -2,6 +2,14 @@
 
 [Русская версия](CHANGELOG-ru.md)
 
+## dev
+
+- **Tree-sitter:** CI smoke per default language (`tree-sitter langs smoke` + xvfb in `vsix.yml`); rename `TREE_SITTER_DEFAULT_LANGS` (was MVP_*); golden spans for Kotlin/Swift/Dart; Indexing UI shows enabled langs + missing wasm; spans≥1 smoke; worker parity; missing-wasm copy/hint; OTEL `treesitterMissingWasm`
+- **Secrets:** vault adds `embeddingsApiKey`; `getResolvedSecret` for `${env:}` / `{file:}`; Browse file -> `{file:...}`; confirm-on-clear; unified Secrets on Security
+- **Design:** tool `design_screenshot` (`wait_until`, selector ready); command `gen.design.pickFromClipboard`; Design session UI on Security
+- **Agents / hooks / plugins:** `generateAgentFile`; Hooks dry-run in Settings UI; prompt-macro UX copy
+- **Polish:** webSearch empty title->url; image/PDF resize fail-soft notes; `IMAGE_TOKEN_ESTIMATE`
+
 ## 0.6.0 (17 October 2026)
 
 - **Security:** drop Settings UI deny-lists (`deniedPaths`) and `providerUsePolicy` / `providerUsePatterns` (runtime + schema + admin lock); path/folder ignore via workspace-root `.genignore` (seeded on `/init` / `gen.initProject`); `deniedCommands` / `sensitivePathPatterns` / `secretPatterns` only in user/project JSON (`UI_LAYER_EXCLUDED_KEYS` - not Settings `globalState`)

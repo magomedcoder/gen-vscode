@@ -19,6 +19,7 @@
 	"command.notebook.generateCell.title": "Gen: Generate cell",
 	"command.manageWorktrees.title": "Gen: Manage worktrees",
 	"command.dryRunHook.title": "Gen: Dry-run hook event",
+	"command.designPickFromClipboard.title": "Gen: Design pick from clipboard URL",
 	"command.hunkAccept.title": "Accept hunk (Keep)",
 	"command.hunkReject.title": "Reject hunk (Undo)",
 	"configuration.gen.title": "Gen",

@@ -65,6 +65,7 @@ Builtin tools регистрируются через **registry** и лежат
 | `open_browser`            | Открыть URL в Simple Browser VSCode                                                                                        | Спросить                                                                    |
 | `fetch_page`              | HTTP GET текста/HTML (Design Mode); пометки sourceMappingURL                                                               | Спросить; remote (не localhost) - всегда confirm                            |
 | `design_inspect`          | URL + selector -> outerHTML + исходник (`data-component`/source map, затем grep class/id)                                  | Спросить (как fetch_page)                                                   |
+| `design_screenshot`       | PNG через optional Playwright (`designScreenshotEnabled`); `wait_until` (`load`/`domcontentloaded`/`networkidle`/`commit`, по умолчанию `networkidle`, при таймауте fallback `domcontentloaded`); опциональный `selector` - ожидание visible перед capture; кэш `.gen/cache/design-screenshots/` | Спросить (как fetch_page); скрыт, если setting выключен                     |
 | `web_search`              | Веб-поиск (`duckduckgo` \                                                                                                  | `exa` \                                                                     | `parallel` \| `http`)                                                                  | Спросить (confirmAlwaysOrSkip)                                              |
 | `run_command`             | Команда в cwd workspace (allow + denylist)                                                                                 | Спросить                                                                    |
 | `run_scratch`             | Запуск файла только из `.gen/scratch/**` (node/python/bash по ext)                                                         | Спросить                                                                    |
@@ -78,8 +79,8 @@ Builtin tools регистрируются через **registry** и лежат
 
 ## Замечания
 
-- Локальные plugins/tools: см. [architecture-ru.md](architecture-ru.md#локальные-plugins--tools-mvp). Каталог подмешивается в system prompt; JS не исполняется.
-- Режимы чата **Debug** / **Design** включаются slash-командами `/debug` / `/design`. Best-effort click bridge использует путь `design_inspect` (source hints, затем grep) и открывает исходник без полного Simple Browser CDP.
+- Локальные plugins/tools: см. [architecture-ru.md](architecture-ru.md#локальные-plugins--tools-shipped). Каталог подмешивается в system prompt; JS не исполняется.
+- Режимы чата **Debug** / **Design** включаются slash-командами `/debug` / `/design`. Best-effort click bridge использует путь `design_inspect` (source hints, затем grep) и открывает исходник без полного Simple Browser CDP. Для Simple Browser: скопируйте URL из адресной строки и выполните **Gen: Design pick from clipboard URL** (`gen.design.pickFromClipboard`) с CSS-селектором.
 - Mid-turn: при `shareMode=auto` на каждой итерации tool-loop обновляется короткий live-editor appendix (файл + сниппет выделения) в system prompt.
 - Scratch: скрипты в `.gen/scratch/` (scaffold) и запуск только через `run_scratch` - **без** произвольного JS eval из `.gen/tools` / ephemeral.
 - Качество: `repo_health` (циклы + orphans), `test_impact` (связанные тесты). Eval suite: `src/test/eval/` + `vectorStore.test.ts` - gate retrieval (trigram + local-vector) + smoke permissions/confirm; `npm test -- --grep eval` или `npm run test:eval` (без live LLM / remote embeddings).

@@ -46,7 +46,7 @@ Effective `GenSettings` собирается из нескольких слоё�
 }
 ```
 
-При активной политике в Gen Settings - баннер только для чтения со списком locked keys. Schema: `schemas/gen-policy.schema.json` (опционально; в `jsonValidation` не подключена).
+При активной политике в Gen Settings - баннер только для чтения со списком locked keys. Schema: `schemas/gen-policy.schema.json` (подключена в `contributes.jsonValidation` в `package.json`).
 
 UI настроек Gen не ломается: слои аддитивны. Project перекрывает user и изменённые UI-поля по ключам из JSON; admin побеждает для locked keys. Единственный ключ в VSCode Settings (`gen.chatViewLocation`) синхронизируется из effective config для `when`-clause views.
 

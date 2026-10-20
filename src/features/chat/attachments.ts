@@ -41,11 +41,16 @@ function extForMime(mime: string): string {
 	return 'png';
 }
 
+export interface SaveImageAttachmentsResult {
+	attachments: ImageAttachment[];
+	notes: string[];
+}
+
 // Сохранить картинки в `.gen/attachments/` и вернуть метаданные
-export async function saveImageAttachments(images: readonly IncomingImage[]): Promise<ImageAttachment[]> {
+export async function saveImageAttachments(images: readonly IncomingImage[]): Promise<SaveImageAttachmentsResult> {
 	const folder = vscode.workspace.workspaceFolders?.[0];
 	if (!folder || images.length === 0) {
-		return [];
+		return { attachments: [], notes: [] };
 	}
 
 	const dir = vscode.Uri.joinPath(folder.uri, '.gen', 'attachments');
@@ -56,6 +61,7 @@ export async function saveImageAttachments(images: readonly IncomingImage[]): Pr
 	}
 
 	const out: ImageAttachment[] = [];
+	const notes: string[] = [];
 	const stamp = Date.now();
 
 	for (let i = 0; i < images.length; i += 1) {
@@ -73,8 +79,12 @@ export async function saveImageAttachments(images: readonly IncomingImage[]): Pr
 			: { 
 				bytes: raw, 
 				mimeType: mime, 
-				resized: false 
+				resized: false,
+				warning: undefined as string | undefined,
 			};
+		if (processed.warning) {
+			notes.push(`${img.name || safe}: ${processed.warning}`);
+		}
 		const ext = extForMime(processed.mimeType);
 		const fileName = `${stamp}-${i}-${safe}.${ext}`;
 		const uri = vscode.Uri.joinPath(dir, fileName);
@@ -85,7 +95,7 @@ export async function saveImageAttachments(images: readonly IncomingImage[]): Pr
 		});
 	}
 
-	return out;
+	return { attachments: out, notes };
 }
 
 // Вставить маркеры `[image path]` в текст пользователя

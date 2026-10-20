@@ -11,7 +11,7 @@ import { DEFAULT_SETTINGS } from './types';
 import type { ChatMode, ChatTextSize, ChatViewLocation, GenSettings, RevealOnEdit, ShareMode, TabEvictionPolicy, ThinkingDisplay, WebSearchBackend } from './types';
 export type { ChatMode, ChatTextSize, ChatViewLocation, CommentStyle, GenSettings, RevealOnEdit, ShareMode, TabEvictionPolicy, ThinkingDisplay, WebSearchBackend } from './types';
 export { DEFAULT_SETTINGS, EXAMPLE_DENIED_COMMANDS, DEFAULT_GENIGNORE_PATTERNS, EXAMPLE_SECRET_PATTERNS, DEFAULT_SENSITIVE_PATH_PATTERNS, isAgentLikeMode, resolveModeModel, resolveSmallModel } from './types';
-export { getApiKey, hasApiKey, initApiKeyStore, setApiKey, clearApiKey, getWebSearchApiKey, hasWebSearchApiKey, setWebSearchApiKey, clearWebSearchApiKey } from './apiKey';
+export { getApiKey, hasApiKey, initApiKeyStore, setApiKey, clearApiKey, getWebSearchApiKey, hasWebSearchApiKey, setWebSearchApiKey, clearWebSearchApiKey, getEmbeddingsApiKey, hasEmbeddingsApiKey, setEmbeddingsApiKey, clearEmbeddingsApiKey } from './apiKey';
 export { initSecretVault } from './secretVault';
 export type { GenSecretId } from './secretVault';
 export { FILE_LAYER_KEYS, getConfigLayersSnapshot, getEffectiveHooksInline, getEffectiveHooksPath, reloadConfigLayers } from './layers';
@@ -194,6 +194,7 @@ function normalize(raw: Partial<GenSettings>): GenSettings {
 		webSearchHttpUrl: String(raw.webSearchHttpUrl ?? DEFAULT_SETTINGS.webSearchHttpUrl).trim(),
 		webSearchHttpHeader: String(raw.webSearchHttpHeader ?? DEFAULT_SETTINGS.webSearchHttpHeader).trim() || DEFAULT_SETTINGS.webSearchHttpHeader,
 		webFetchEnabled: raw.webFetchEnabled !== false,
+		designScreenshotEnabled: raw.designScreenshotEnabled === true,
 		privacyMode: raw.privacyMode === true,
 		blockNonLocalUrls: raw.blockNonLocalUrls === true,
 		systemPrompt: String(raw.systemPrompt ?? '').trim(),

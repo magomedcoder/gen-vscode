@@ -7,7 +7,7 @@ import { DEFAULT_SETTINGS, type GenSettings } from './types';
 import { getGenUserConfigPath } from './userPaths';
 
 /**
- * Слои JSON-конфигурации (MVP, без удалённого `.well-known`).
+ * Слои JSON-конфигурации: локальные слои, без `.well-known`.
  *
  * Приоритет (низкий * высокий):
  * 1. `DEFAULT_SETTINGS` (встроенные значения по умолчанию)
@@ -53,6 +53,7 @@ export const FILE_LAYER_KEYS = [
 	'webSearchHttpUrl',
 	'webSearchHttpHeader',
 	'webFetchEnabled',
+	'designScreenshotEnabled',
 	'privacyMode',
 	'blockNonLocalUrls',
 	'skillsPaths',

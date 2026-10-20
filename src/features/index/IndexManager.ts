@@ -15,7 +15,7 @@ import { buildMerkleDocument, detectMerkleIssues, digestsFromChunks, dropPathFro
 import type { MerkleDocument, MerkleMetrics } from './merkle';
 import { loadManifest, repairManifestFile, saveManifest } from './store';
 import { maybeRefreshSymbolIndex, rebuildSymbolIndex, removeSymbolIndexPath, updateSymbolIndexForFile } from './symbolIndex';
-import { initTreeSitter, parseWithTreeSitter } from './treeSitter';
+import { initTreeSitter, listMissingDefaultWasmLangs, parseWithTreeSitter } from './treeSitter';
 import { loadOutlineIndex, maybeRefreshOutlineIndex, outlineSourceBreakdown, removeOutlineIndexPath, updateOutlineIndexForFile } from './tsOutline';
 import { patchManifestTrigrams, rebuildManifestTrigrams, searchTrigrams } from './trigram';
 import type { CodebaseSearchHit, IndexManifest, IndexProgress } from './types';
@@ -804,9 +804,11 @@ export class IndexManager implements vscode.Disposable {
 		metrics: MerkleMetrics,
 		toolName: 'index_full' | 'index_reindex' = 'index_full',
 	): void {
+		const missingWasm = listMissingDefaultWasmLangs().length;
 		const line = `индекс merkle: файлы ${metrics.filesIndexed}/${metrics.filesTotal}` +
 			` (пропуск ${metrics.filesSkipped}), каталоги пропуск ${metrics.dirsSkipped}/${metrics.dirsTotal},` +
-			` чанки +${metrics.chunksIndexed}/reuse ${metrics.chunksSkipped}`;
+			` чанки +${metrics.chunksIndexed}/reuse ${metrics.chunksSkipped}` +
+			(missingWasm > 0 ? `, tree-sitter wasm отсутствует: ${missingWasm}` : '');
 		console.info(`[gen] ${line} @ ${folderFsPath}`);
 		try {
 			void import('../../core/stores/activityStore').then((mod) => {
@@ -823,6 +825,7 @@ export class IndexManager implements vscode.Disposable {
 			emitIndexMerkleMetrics(getSettings(), {
 				...metrics,
 				folderKey: folderStorageKey(folderFsPath),
+				treesitterMissingWasm: missingWasm,
 			});
 		} catch {}
 	}

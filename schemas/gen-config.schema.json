@@ -50,6 +50,7 @@
 		"webSearchHttpUrl": { "type": "string" },
 		"webSearchHttpHeader": { "type": "string" },
 		"webFetchEnabled": { "type": "boolean" },
+		"designScreenshotEnabled": { "type": "boolean", "description": "Allow design_screenshot (optional Playwright + Chromium, not bundled in VSIX)." },
 		"privacyMode": { "type": "boolean", "description": "Mask likely secrets in tool cards and busy status." },
 		"blockNonLocalUrls": { "type": "boolean", "description": "Block non-local URLs for web tools." },
 		"skillsPaths": {

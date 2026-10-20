@@ -8,7 +8,7 @@ import { isSqliteIndexAvailable } from './indexSqlite';
 import { detectMerkleIssues, loadMerkle } from './merkle';
 import { inspectManifest, loadManifest } from './store';
 import { getSymbolIndexMetrics, loadSymbolIndex } from './symbolIndex';
-import { isTreeSitterAvailable, listSupportedTreeSitterLanguages } from './treeSitter';
+import { isTreeSitterAvailable, listEffectiveTreeSitterLanguages, listMissingWasmLanguages, listSupportedTreeSitterLanguages } from './treeSitter';
 import type { IndexProgress } from './types';
 import { loadVectorsDocument, localVectorCount } from './vectorStore';
 
@@ -34,6 +34,8 @@ export interface IndexEngineStatus {
 	merkleMismatch?: boolean;
 	treeSitterAvailable?: boolean;
 	treeSitterGrammars?: string[];
+	treeSitterEnabledLangs?: string[];
+	treeSitterMissingWasm?: string[];
 	// 0..1 доля файлов с AST-чанками в последнем прогоне
 	astChunkRatio?: number;
 	outlineBySource?: Record<string, number>;
@@ -158,6 +160,8 @@ export async function collectIndexEngineStatus(): Promise<IndexEngineStatus> {
 		} catch {}
 	}
 
+	const treeSitterEnabledLangs = listEffectiveTreeSitterLanguages(settings.treeSitterLanguages);
+
 	return {
 		mode,
 		gpu: false,
@@ -173,6 +177,8 @@ export async function collectIndexEngineStatus(): Promise<IndexEngineStatus> {
 		merkleMismatch,
 		treeSitterAvailable: isTreeSitterAvailable(),
 		treeSitterGrammars: listSupportedTreeSitterLanguages(),
+		treeSitterEnabledLangs,
+		treeSitterMissingWasm: listMissingWasmLanguages(treeSitterEnabledLangs),
 		astChunkRatio: astRatio,
 		outlineBySource,
 		merkleSkipPct,

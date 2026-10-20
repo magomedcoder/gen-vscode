@@ -1,7 +1,8 @@
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { getEffectiveHooksPath } from '../../core/config/layers';
-import { clearApiKey, clearWebSearchApiKey, getSettings, hasApiKey, hasWebSearchApiKey, isAdminPolicyActive, setApiKey, setSessionModel, setWebSearchApiKey, updateSettings, getAdminPolicySnapshot } from '../../core/config/settings';
+import { getSettings, hasApiKey, hasEmbeddingsApiKey, hasWebSearchApiKey, isAdminPolicyActive, setSessionModel, updateSettings, getAdminPolicySnapshot } from '../../core/config/settings';
+import { applySaveSettingsSecrets, pickSecretFileRef } from './secretHost';
 import { getPersistedAlwaysAllow, setPersistedAlwaysAllow } from '../../core/stores/alwaysAllowStore';
 import { collectIndexEngineStatus } from '../index/engineStatus';
 import { getIndexManagerInstance } from '../index/IndexManager';
@@ -13,9 +14,11 @@ import { BUILTIN_PRESETS, cloneBuiltinPreset, discoverCustomAgents, getAgentDisc
 import { listRulesCandidates, previewRulesMergeConflicts } from '../project/projectRules';
 import { discoverSkills } from '../project/skills';
 import { discoverLocalPlugins } from '../project/plugins';
+import { dryRunHookEvent, type HookEvent } from '../project/hooks';
 import { clearActivity, readActivity, recordActivity } from '../../core/stores/activityStore';
 import { readUsage, resetUsage } from '../../core/stores/usageStore';
 import { createNonce, renderChatHtml } from './chatHtml';
+import { buildDesignSessionMessage } from '../design/designSessionBridge';
 import type { AdminPolicyInfo, FromWebviewMessage, PersonaOption, ToWebviewMessage } from './protocol';
 const VIEW_TYPE = 'gen.settings';
 function isAbortError(err: unknown): boolean {
@@ -136,6 +139,7 @@ export class SettingsPanel {
 			settings: getSettings(),
 			apiKeySet: await hasApiKey(),
 			webSearchApiKeySet: await hasWebSearchApiKey(),
+			embeddingsApiKeySet: await hasEmbeddingsApiKey(),
 			persistedAlwaysAllow: getPersistedAlwaysAllow(),
 			personas: await this.listPersonaOptions(),
 			adminPolicy: this.adminPolicyInfo(),
@@ -203,6 +207,9 @@ export class SettingsPanel {
 			case 'loadIndexStatus':
 				await this.postIndexStatus();
 				return;
+			case 'loadDesignSession':
+				this.post(buildDesignSessionMessage());
+				return;
 			case 'cancelIndex':
 				getIndexManagerInstance()?.cancelIndex();
 				await this.postIndexStatus();
@@ -227,6 +234,9 @@ export class SettingsPanel {
 			case 'openHooksFile':
 				await this.handleOpenHooksFile();
 				return;
+			case 'dryRunHook':
+				await this.handleDryRunHook(msg.event, msg.sample);
+				return;
 			case 'loadAgents':
 				await this.postAgentsData();
 				return;
@@ -242,18 +252,24 @@ export class SettingsPanel {
 			case 'openProjectPath':
 				await this.handleOpenProjectPath(msg.path);
 				return;
+			case 'pickSecretFile': {
+				const value = await pickSecretFileRef();
+				this.post({
+					type: 'secretFilePicked',
+					requestId: msg.requestId,
+					value,
+				});
+				return;
+			}
 			case 'saveSettings':
 				try {
-					if (msg.clearApiKey) {
-						await clearApiKey();
-					} else if (typeof msg.apiKey === 'string' && msg.apiKey.trim()) {
-						await setApiKey(msg.apiKey);
-					}
-
-					if (msg.clearWebSearchApiKey) {
-						await clearWebSearchApiKey();
-					} else if (typeof msg.webSearchApiKey === 'string' && msg.webSearchApiKey.trim()) {
-						await setWebSearchApiKey(msg.webSearchApiKey);
+					const secretsOk = await applySaveSettingsSecrets(msg);
+					if (!secretsOk) {
+						this.post({
+							type: 'settingsError',
+							message: vscode.l10n.t('settings.secret.clearCancelled'),
+						});
+						return;
 					}
 
 					if (Array.isArray(msg.persistedAlwaysAllow)) {
@@ -266,6 +282,7 @@ export class SettingsPanel {
 						settings: saved,
 						apiKeySet: await hasApiKey(),
 						webSearchApiKeySet: await hasWebSearchApiKey(),
+						embeddingsApiKeySet: await hasEmbeddingsApiKey(),
 						persistedAlwaysAllow: getPersistedAlwaysAllow(),
 						personas: await this.listPersonaOptions(),
 						adminPolicy: this.adminPolicyInfo(),
@@ -490,6 +507,73 @@ export class SettingsPanel {
 				fileWatcher: [],
 				path: uri.fsPath,
 				error: err instanceof Error ? err.message : String(err),
+			});
+		}
+	}
+
+	private async handleDryRunHook(event: HookEvent, sample?: string): Promise<void> {
+		const folder = vscode.workspace.workspaceFolders?.[0];
+		if (!folder) {
+			this.post({
+				type: 'hookDryRunResult',
+				event,
+				ok: false,
+				error: vscode.l10n.t('policy.noWorkspace'),
+			});
+			return;
+		}
+
+		const subject = (sample ?? '').trim();
+		const env: Record<string, string> = event === 'beforeSubmit'
+			? { GEN_HOOK_TEXT: subject || 'dry-run sample text' }
+			: event === 'beforeShell'
+				? { GEN_HOOK_COMMAND: subject || 'echo dry-run' }
+				: event === 'session.diff'
+					? {
+						GEN_HOOK_PATHS: subject || 'src/example.ts',
+						GEN_HOOK_TURN_ID: 'dry-run-turn',
+					}
+					: event === 'file.watcher'
+						? {
+							GEN_HOOK_PATH: subject || '.gen/hooks.json',
+							GEN_HOOK_FILE_EVENT: 'change',
+						}
+						: {};
+
+		try {
+			const result = await dryRunHookEvent(event, env);
+			recordActivity({
+				kind: 'shell',
+				label: vscode.l10n.t(
+					'activity.hooks.dryRun',
+					event,
+					String(result.exitCode ?? 0),
+				),
+				toolName: 'hooks.dryRun',
+				status: result.ok ? 'ok' : 'error',
+				exitCode: typeof result.exitCode === 'number' ? result.exitCode : undefined,
+			});
+			this.post({
+				type: 'hookDryRunResult',
+				event,
+				ok: result.ok,
+				exitCode: typeof result.exitCode === 'number' ? result.exitCode : undefined,
+				stdout: result.stdout,
+				stderr: result.stderr,
+			});
+		} catch (err) {
+			const message = err instanceof Error ? err.message : String(err);
+			recordActivity({
+				kind: 'shell',
+				label: vscode.l10n.t('activity.hooks.dryRunFailed', event, message.slice(0, 120)),
+				toolName: 'hooks.dryRun',
+				status: 'error',
+			});
+			this.post({
+				type: 'hookDryRunResult',
+				event,
+				ok: false,
+				error: message,
 			});
 		}
 	}

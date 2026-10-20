@@ -1,5 +1,5 @@
 /**
- * Визуальный MVP Design Mode - не заглушка.
+ * Design Mode (shipped) - визуальный bridge, не заглушка.
  *
  * Честные лимиты: не полный CDP click-to-code. Bridge получает URL/selector,
  * повторяет эвристики design_inspect и открывает лучший workspace-кандидат.
@@ -30,7 +30,9 @@ export const DESIGN_CLICK_PROTOCOL = 'gen.design.click' as const;
 export const DESIGN_SIMPLE_BROWSER_NOTE =
 	'Design click bridge resolves URL + selector through the design_inspect path: ' +
 	'data-component/data-source/sourceMappingURL hints first, then class/id workspace grep. ' +
-	'It is best-effort and does not require full Simple Browser CDP.';
+	'It is best-effort and does not require full Simple Browser CDP. ' +
+	'In Simple Browser: copy the preview URL from the address bar and run command gen.design.pickFromClipboard (optional CSS selector). ' +
+	'For JS-rendered pages use tool design_screenshot (optional Playwright + designScreenshotEnabled).';
 
 export interface DesignSourceHint {
 	value: string;

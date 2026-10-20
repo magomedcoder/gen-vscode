@@ -2,6 +2,14 @@
 
 [English version](CHANGELOG.md)
 
+## dev
+
+- **Tree-sitter:** CI smoke на каждый default-язык (`tree-sitter langs smoke`); rename `TREE_SITTER_DEFAULT_LANGS`; golden spans; Indexing UI langs + missing wasm; spans≥1; worker parity; copy/hint; OTEL `treesitterMissingWasm`
+- **Secrets:** vault + `embeddingsApiKey`; `{file:}` Browse; confirm clear; единый Secrets на Security
+- **Design:** `design_screenshot` (`wait_until`); команда `gen.design.pickFromClipboard`; Design session UI
+- **Agents / hooks / plugins:** `generateAgentFile`; dry-run hooks в Settings; prompt-macro UX
+- **Polish:** webSearch empty title->url; fail-soft notes для image/PDF; `IMAGE_TOKEN_ESTIMATE`
+
 ## 0.6.0 (17 октября 2026)
 
 - **Security:** убраны deny-list UI (`deniedPaths`) и `providerUsePolicy` / `providerUsePatterns` (runtime + schema + admin lock); ignore путей/папок через `.genignore` в корне workspace (seed при `/init` / `gen.initProject`); `deniedCommands` / `sensitivePathPatterns` / `secretPatterns` только в user/project JSON (`UI_LAYER_EXCLUDED_KEYS` - не Settings `globalState`)

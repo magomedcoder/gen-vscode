@@ -284,12 +284,13 @@ async function maybePdfVisionAttachment(
 		}
 
 		const saved = await saveImageAttachments(incoming);
-		if (saved.length === 0) {
+		if (saved.attachments.length === 0) {
 			return { note: 'PDF page PNG rendered but attachment save failed - текст-only' };
 		}
+		const resizeNote = saved.notes.length > 0 ? ` Resize: ${saved.notes.join('; ')}.` : '';
 		return {
-			attachments: saved,
-			note: `PDF multimodal: text + ${saved.length} page PNG(s) -> ${saved.map((s) => s.path).join(', ')}`,
+			attachments: saved.attachments,
+			note: `PDF multimodal: text + ${saved.attachments.length} page PNG(s) -> ${saved.attachments.map((s) => s.path).join(', ')}.${resizeNote}`,
 		};
 	} catch (err) {
 		return {
@@ -392,19 +393,24 @@ async function readImageFile(
 			base64,
 		},
 	]);
-	if (saved.length === 0) {
+	if (saved.attachments.length === 0) {
 		return {
 			ok: false,
 			content: vscode.l10n.t('tool.imageSaveFailed', resolved.relative),
 		};
 	}
 
-	const att = saved[0]!;
+	const att = saved.attachments[0]!;
+	let content = vscode.l10n.t('tool.imageSaved', att.path);
+	if (saved.notes.length > 0) {
+		content += `\n[image resize: ${saved.notes.join('; ')}]`;
+	}
+	
 	return {
 		ok: true,
-		content: vscode.l10n.t('tool.imageSaved', att.path),
+		content,
 		path: resolved.relative,
-		attachments: saved,
+		attachments: saved.attachments,
 	};
 }
 

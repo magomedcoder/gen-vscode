@@ -1,5 +1,22 @@
-struct Greeter {
+struct Point {
+  var x: Double
+  var y: Double
+
+  func distance() -> Double {
+    return (x * x + y * y).squareRoot()
+  }
+}
+
+protocol GreeterProtocol {
+  func hello() -> String
+}
+
+class Greeter: GreeterProtocol {
   let name: String
+
+  init(name: String) {
+    self.name = name
+  }
 
   func hello() -> String {
     return "Hello, \(name)"

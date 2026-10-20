@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { AdminPolicyInfo, ChatViewState, IndexEngineStatus, PanelScreen, PersonaOption, ToWebviewMessage } from '../features/chat/protocol';
+import type { AdminPolicyInfo, ChatViewState, DesignSessionPayload, IndexEngineStatus, PanelScreen, PersonaOption, ToWebviewMessage } from '../features/chat/protocol';
 import type { GenSettings } from '../core/config/types';
 import { DEFAULT_SETTINGS } from '../core/config/types';
 import type { LlmModelOption } from '../core/llm/types';
@@ -56,6 +56,7 @@ export function useGenBridge() {
 	const [adminPolicy, setAdminPolicy] = useState<AdminPolicyInfo | undefined>();
 	const [apiKeySet, setApiKeySet] = useState(false);
 	const [webSearchApiKeySet, setWebSearchApiKeySet] = useState(false);
+	const [embeddingsApiKeySet, setEmbeddingsApiKeySet] = useState(false);
 	const [persistedAlwaysAllow, setPersistedAlwaysAllow] = useState<string[]>([]);
 	const [settingsStatus, setSettingsStatus] = useState<string | undefined>();
 	const [models, setModels] = useState<LlmModelOption[]>([]);
@@ -67,6 +68,7 @@ export function useGenBridge() {
 	} | undefined>();
 	const [connectionHealthLoading, setConnectionHealthLoading] = useState(false);
 	const [indexStatus, setIndexStatus] = useState<IndexEngineStatus | undefined>();
+	const [designSession, setDesignSession] = useState<DesignSessionPayload | null | undefined>();
 	const [hooks, setHooks] = useState<HooksPageData | undefined>();
 	const [hooksStatus, setHooksStatus] = useState<string | undefined>();
 	const [agents, setAgents] = useState<AgentsPageData | undefined>();
@@ -90,6 +92,7 @@ export function useGenBridge() {
 					setSettings(data.settings);
 					setApiKeySet(data.apiKeySet);
 					setWebSearchApiKeySet(Boolean(data.webSearchApiKeySet));
+					setEmbeddingsApiKeySet(Boolean(data.embeddingsApiKeySet));
 					if (Array.isArray(data.persistedAlwaysAllow)) {
 						setPersistedAlwaysAllow(data.persistedAlwaysAllow);
 					}
@@ -104,6 +107,7 @@ export function useGenBridge() {
 					setSettings(data.settings);
 					setApiKeySet(data.apiKeySet);
 					setWebSearchApiKeySet(Boolean(data.webSearchApiKeySet));
+					setEmbeddingsApiKeySet(Boolean(data.embeddingsApiKeySet));
 					if (Array.isArray(data.persistedAlwaysAllow)) {
 						setPersistedAlwaysAllow(data.persistedAlwaysAllow);
 					}
@@ -162,6 +166,9 @@ export function useGenBridge() {
 				case 'indexStatus':
 					setIndexStatus(data.status);
 					return;
+				case 'designSession':
+					setDesignSession(data.session);
+					return;
 				case 'hooksData':
 					setHooks({
 						beforeSubmit: data.beforeSubmit,
@@ -181,6 +188,25 @@ export function useGenBridge() {
 						setHooksStatus(data.error || t('settings.hooks.saveFailed'));
 					}
 					return;
+				case 'hookDryRunResult': {
+					if (data.error) {
+						setHooksStatus(t('settings.hooks.dryRunFailed', data.event, data.error));
+						return;
+					}
+					const detailParts = [
+						data.stdout?.trim(),
+						data.stderr?.trim(),
+					].filter(Boolean);
+					const detail = detailParts.length > 0
+						? `\n${detailParts.join('\n').slice(0, 800)}`
+						: '';
+					setHooksStatus(
+						data.ok
+							? t('settings.hooks.dryRunOk', data.event, String(data.exitCode ?? 0)) + detail
+							: t('settings.hooks.dryRunFailed', data.event, t('settings.hooks.dryRunExit', String(data.exitCode ?? 0))) + detail,
+					);
+					return;
+				}
 				case 'agentsData':
 					setAgents({
 						presets: data.presets,
@@ -224,6 +250,8 @@ export function useGenBridge() {
 		clearApiKey?: boolean;
 		webSearchApiKey?: string;
 		clearWebSearchApiKey?: boolean;
+		embeddingsApiKey?: string;
+		clearEmbeddingsApiKey?: boolean;
 		persistedAlwaysAllow?: string[];
 	}) => {
 		setSettingsStatus(t('settings.status.saving'));
@@ -234,6 +262,8 @@ export function useGenBridge() {
 			clearApiKey: api?.clearApiKey,
 			webSearchApiKey: api?.webSearchApiKey,
 			clearWebSearchApiKey: api?.clearWebSearchApiKey,
+			embeddingsApiKey: api?.embeddingsApiKey,
+			clearEmbeddingsApiKey: api?.clearEmbeddingsApiKey,
 			persistedAlwaysAllow: api?.persistedAlwaysAllow,
 		});
 	}, []);
@@ -288,6 +318,10 @@ export function useGenBridge() {
 		vscodeApi.postMessage({ type: 'loadIndexStatus' });
 	}, []);
 
+	const loadDesignSession = useCallback(() => {
+		vscodeApi.postMessage({ type: 'loadDesignSession' });
+	}, []);
+
 	const cancelIndex = useCallback(() => {
 		vscodeApi.postMessage({ type: 'cancelIndex' });
 	}, []);
@@ -325,6 +359,11 @@ export function useGenBridge() {
 		vscodeApi.postMessage({ type: 'openHooksFile' });
 	}, []);
 
+	const dryRunHook = useCallback((event: 'beforeSubmit' | 'beforeShell' | 'session.diff' | 'session.compacting' | 'shell.env' | 'file.watcher', sample?: string) => {
+		setHooksStatus(t('settings.hooks.dryRunning'));
+		vscodeApi.postMessage({ type: 'dryRunHook', event, sample });
+	}, []);
+
 	const loadAgents = useCallback(() => {
 		setAgentsStatus(undefined);
 		vscodeApi.postMessage({ type: 'loadAgents' });
@@ -355,6 +394,7 @@ export function useGenBridge() {
 		adminPolicy,
 		apiKeySet,
 		webSearchApiKeySet,
+		embeddingsApiKeySet,
 		persistedAlwaysAllow,
 		settingsStatus,
 		models,
@@ -363,6 +403,7 @@ export function useGenBridge() {
 		connectionHealth,
 		connectionHealthLoading,
 		indexStatus,
+		designSession,
 		hooks,
 		hooksStatus,
 		agents,
@@ -373,11 +414,13 @@ export function useGenBridge() {
 		checkConnection,
 		openLogsFolder,
 		loadIndexStatus,
+		loadDesignSession,
 		cancelIndex,
 		repairIndex,
 		loadHooks,
 		saveHooks,
 		openHooksFile,
+		dryRunHook,
 		loadAgents,
 		cloneAgentPreset,
 		loadRulesSkills,

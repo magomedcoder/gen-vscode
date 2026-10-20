@@ -38,7 +38,7 @@ Comment command
 - Optional markdown/text file in the workspace root: coding style, architecture, team conventions.
 - Loaded at extension start and on file change; injected into agent, ask, and comment prompts (truncated at 12k chars).
 
-## Local plugins / tools (MVP)
+## Local plugins / tools (shipped)
 
 Discovery is exposed through the system-prompt catalog and tools `list_plugins` / `plugin` (+ Open in Settings Rules/Skills).
 

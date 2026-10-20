@@ -9,6 +9,7 @@ import { ensureTerminalBufferListener } from './terminalBuffer';
 import { listAgentWorktrees, removeAgentWorktree } from '../agent/worktree';
 import { enableProject } from '../project/config';
 import { dryRunHookEvent, type HookEvent } from '../project/hooks';
+import { runDesignPickFromClipboard } from '../design/designPickCommand';
 
 export function registerChat(context: vscode.ExtensionContext): vscode.Disposable {
 	// Одна сессия и один provider для панели и боковой панели
@@ -119,6 +120,9 @@ export function registerChat(context: vscode.ExtensionContext): vscode.Disposabl
 			void vscode.window.showInformationMessage(
 				ok ? vscode.l10n.t('chat.worktrees.removed') : vscode.l10n.t('chat.worktrees.removeFailed'),
 			);
+		}),
+		vscode.commands.registerCommand('gen.design.pickFromClipboard', async () => {
+			await runDesignPickFromClipboard((message) => provider.postToWebview(message));
 		}),
 		vscode.commands.registerCommand('gen.dryRunHook', async () => {
 			const event = await vscode.window.showQuickPick(

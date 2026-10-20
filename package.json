@@ -111,6 +111,11 @@
         "category": "%extension.category%"
       },
       {
+        "command": "gen.design.pickFromClipboard",
+        "title": "%command.designPickFromClipboard.title%",
+        "category": "%extension.category%"
+      },
+      {
         "command": "gen.hunk.accept",
         "title": "%command.hunkAccept.title%",
         "category": "%extension.category%"
@@ -333,6 +338,9 @@
   "overrides": {
     "diff": "^8.0.4",
     "serialize-javascript": "^7.0.6"
+  },
+  "optionalDependencies": {
+    "playwright": "^1.49.0"
   },
   "dependencies": {
     "@vscode/tree-sitter-wasm": "^0.3.1",

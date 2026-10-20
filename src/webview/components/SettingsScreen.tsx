@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode, type SubmitEvent } from 'react';
-import type { AdminPolicyInfo, IndexEngineStatus, PersonaOption, ResearchJobUi } from '../../features/chat/protocol';
+import type { AdminPolicyInfo, DesignSessionPayload, IndexEngineStatus, PersonaOption, ResearchJobUi } from '../../features/chat/protocol';
 import type { GenSettings } from '../../core/config/types';
 import { DEFAULT_SETTINGS } from '../../core/config/types';
 import type { LlmModelOption } from '../../core/llm/types';
@@ -29,6 +29,7 @@ interface SettingsScreenProps {
 	status?: string;
 	apiKeySet: boolean;
 	webSearchApiKeySet?: boolean;
+	embeddingsApiKeySet?: boolean;
 	persistedAlwaysAllow?: string[];
 	models: LlmModelOption[];
 	modelsStatus?: string;
@@ -39,6 +40,7 @@ interface SettingsScreenProps {
 	};
 	connectionHealthLoading?: boolean;
 	indexStatus?: IndexEngineStatus;
+	designSession?: DesignSessionPayload | null;
 	hooks?: HooksPageData;
 	hooksStatus?: string;
 	agents?: AgentsPageData;
@@ -49,12 +51,15 @@ interface SettingsScreenProps {
 		clearApiKey?: boolean;
 		webSearchApiKey?: string;
 		clearWebSearchApiKey?: boolean;
+		embeddingsApiKey?: string;
+		clearEmbeddingsApiKey?: boolean;
 		persistedAlwaysAllow?: string[];
 	}) => void;
 	onLoadModels: (baseUrl: string) => void;
 	onCheckConnection?: (baseUrl: string) => void;
 	onOpenLogsFolder: () => void;
 	onLoadIndexStatus?: () => void;
+	onLoadDesignSession?: () => void;
 	onCancelIndex?: () => void;
 	onRepairIndex?: () => void;
 	onLoadHooks?: () => void;
@@ -67,6 +72,7 @@ interface SettingsScreenProps {
 		fileWatcher: string[];
 	}) => void;
 	onOpenHooksFile?: () => void;
+	onDryRunHook?: (event: 'beforeSubmit' | 'beforeShell' | 'session.diff' | 'session.compacting' | 'shell.env' | 'file.watcher', sample?: string) => void;
 	onLoadAgents?: () => void;
 	onCloneAgentPreset?: (id: string) => void;
 	onLoadRulesSkills?: () => void;
@@ -105,6 +111,7 @@ export function SettingsScreen({
 	adminPolicy,
 	apiKeySet,
 	webSearchApiKeySet = false,
+	embeddingsApiKeySet = false,
 	persistedAlwaysAllow: persistedAlwaysAllowProp = [],
 	status,
 	models,
@@ -113,6 +120,7 @@ export function SettingsScreen({
 	connectionHealth,
 	connectionHealthLoading = false,
 	indexStatus,
+	designSession,
 	hooks,
 	hooksStatus,
 	agents,
@@ -123,11 +131,13 @@ export function SettingsScreen({
 	onCheckConnection,
 	onOpenLogsFolder,
 	onLoadIndexStatus,
+	onLoadDesignSession,
 	onCancelIndex,
 	onRepairIndex,
 	onLoadHooks,
 	onSaveHooks,
 	onOpenHooksFile,
+	onDryRunHook,
 	onLoadAgents,
 	onCloneAgentPreset,
 	onLoadRulesSkills,
@@ -142,6 +152,8 @@ export function SettingsScreen({
 	const [clearApiKey, setClearApiKey] = useState(false);
 	const [webSearchApiKeyDraft, setWebSearchApiKeyDraft] = useState('');
 	const [clearWebSearchApiKey, setClearWebSearchApiKey] = useState(false);
+	const [embeddingsApiKeyDraft, setEmbeddingsApiKeyDraft] = useState('');
+	const [clearEmbeddingsApiKey, setClearEmbeddingsApiKey] = useState(false);
 	const [persistedAlwaysAllowDraft, setPersistedAlwaysAllowDraft] = useState<string[]>(persistedAlwaysAllowProp);
 
 	const lockedKeySet = useMemo(
@@ -155,13 +167,15 @@ export function SettingsScreen({
 		setClearApiKey(false);
 		setWebSearchApiKeyDraft('');
 		setClearWebSearchApiKey(false);
+		setEmbeddingsApiKeyDraft('');
+		setClearEmbeddingsApiKey(false);
 		setPersistedAlwaysAllowDraft(persistedAlwaysAllowProp);
 		if (settings.baseUrl.trim()) {
 			onLoadModels(settings.baseUrl);
 		} else {
 			onLoadModels('');
 		}
-	}, [settings, apiKeySet, webSearchApiKeySet, persistedAlwaysAllowProp, onLoadModels]);
+	}, [settings, apiKeySet, webSearchApiKeySet, embeddingsApiKeySet, persistedAlwaysAllowProp, onLoadModels]);
 
 	useEffect(() => {
 		if (models.length === 0) {
@@ -205,6 +219,8 @@ export function SettingsScreen({
 		setClearApiKey(false);
 		setWebSearchApiKeyDraft('');
 		setClearWebSearchApiKey(false);
+		setEmbeddingsApiKeyDraft('');
+		setClearEmbeddingsApiKey(false);
 		onSave(next);
 	};
 
@@ -215,6 +231,8 @@ export function SettingsScreen({
 			clearApiKey: clearApiKey || undefined,
 			webSearchApiKey: clearWebSearchApiKey ? undefined : webSearchApiKeyDraft,
 			clearWebSearchApiKey: clearWebSearchApiKey || undefined,
+			embeddingsApiKey: clearEmbeddingsApiKey ? undefined : embeddingsApiKeyDraft,
+			clearEmbeddingsApiKey: clearEmbeddingsApiKey || undefined,
 			persistedAlwaysAllow: persistedAlwaysAllowDraft,
 		});
 	};
@@ -308,7 +326,45 @@ export function SettingsScreen({
 						) : null}
 						{page === 'security' ? (
 							<>
-								<SecurityPage draft={draft} setField={setField} />
+								<SecurityPage
+									draft={draft}
+									setField={setField}
+									apiKeySet={apiKeySet}
+									apiKeyDraft={apiKeyDraft}
+									clearApiKey={clearApiKey}
+									onApiKeyDraft={(v) => {
+										setClearApiKey(false);
+										setApiKeyDraft(v);
+									}}
+									onClearApiKey={() => {
+										setClearApiKey(true);
+										setApiKeyDraft('');
+									}}
+									webSearchApiKeySet={webSearchApiKeySet}
+									webSearchApiKeyDraft={webSearchApiKeyDraft}
+									clearWebSearchApiKey={clearWebSearchApiKey}
+									onWebSearchApiKeyDraft={(v) => {
+										setClearWebSearchApiKey(false);
+										setWebSearchApiKeyDraft(v);
+									}}
+									onClearWebSearchApiKey={() => {
+										setClearWebSearchApiKey(true);
+										setWebSearchApiKeyDraft('');
+									}}
+									embeddingsApiKeySet={embeddingsApiKeySet}
+									embeddingsApiKeyDraft={embeddingsApiKeyDraft}
+									clearEmbeddingsApiKey={clearEmbeddingsApiKey}
+									onEmbeddingsApiKeyDraft={(v) => {
+										setClearEmbeddingsApiKey(false);
+										setEmbeddingsApiKeyDraft(v);
+									}}
+									onClearEmbeddingsApiKey={() => {
+										setClearEmbeddingsApiKey(true);
+										setEmbeddingsApiKeyDraft('');
+									}}
+									designSession={designSession}
+									onLoadDesignSession={onLoadDesignSession}
+								/>
 								<PermissionsPage
 									draft={draft}
 									setField={setField}
@@ -352,6 +408,7 @@ export function SettingsScreen({
 									onLoadHooks={onLoadHooks}
 									onSaveHooks={onSaveHooks}
 									onOpenHooksFile={onOpenHooksFile}
+									onDryRunHook={onDryRunHook}
 								/>
 							</>
 						) : null}

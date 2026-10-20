@@ -2,6 +2,7 @@ import { registerTool } from '../registry';
 import { webSearchTool } from '../search/fileSearchWeb';
 import { taskTool } from '../shell/taskShell';
 import { designInspectTool } from './designInspect';
+import { designScreenshotTool } from './designScreenshot';
 import { fetchPageTool } from './fetchPage';
 import { findLogsTool } from './findLogs';
 import { generateAgentTool } from './generateAgent';
@@ -93,6 +94,10 @@ export function registerMetaTools(): void {
 		risk: 'web' 
 	});
 	registerTool(designInspectTool, {
+		tags: ['meta'],
+		risk: 'web',
+	});
+	registerTool(designScreenshotTool, {
 		tags: ['meta'],
 		risk: 'web',
 	});

@@ -14,7 +14,7 @@ import { collectSpansFromTree, type TreeSitterSpanKind } from './treeSitterRules
  * Go, C++, Rust, JS/TS, PHP, Python, HTML, JSON, YAML, SQL, Kotlin, Dart/Flutter, Swift,
  * CSS, java, bash.
  */
-export const TREE_SITTER_MVP_LANGS = [
+export const TREE_SITTER_DEFAULT_LANGS = [
 	'typescript',
 	'tsx',
 	'javascript',
@@ -35,8 +35,8 @@ export const TREE_SITTER_MVP_LANGS = [
 	'css',
 ] as const;
 
-export type TreeSitterLangId = (typeof TREE_SITTER_MVP_LANGS)[number];
-export type TreeSitterMvpLangId = TreeSitterLangId;
+export type TreeSitterLangId = (typeof TREE_SITTER_DEFAULT_LANGS)[number];
+export type TreeSitterDefaultLangId = TreeSitterLangId;
 
 export interface TreeSitterSpan {
 	name: string;
@@ -110,7 +110,7 @@ const EXT_TO_LANG: Record<string, TreeSitterLangId> = {
 	'.dart': 'dart',
 };
 
-const LANG_WASM: Record<TreeSitterLangId, string> = {
+export const LANG_WASM: Record<TreeSitterLangId, string> = {
 	typescript: 'tree-sitter-typescript.wasm',
 	tsx: 'tree-sitter-tsx.wasm',
 	javascript: 'tree-sitter-javascript.wasm',
@@ -235,7 +235,57 @@ export function resetTreeSitterMetricsForTests(): void {
 	spanCache.clear();
 }
 
-// Пустой / отсутствует = MVP; `*` / `all` = все доступные; иначе пересечение со списком
+// Сброс worker после тестов (workerBroken + terminate)
+export async function resetTreeSitterWorkerForTests(): Promise<void> {
+	useWorkerPreferred = false;
+	workerBroken = false;
+	await disposeTreeSitterWorker();
+}
+
+// Пустой / отсутствует = default langs; `*` / `all` = все с LANG_WASM; иначе пересечение со списком
+export function listEffectiveTreeSitterLanguages(allowlist?: string[]): TreeSitterLangId[] {
+	if (!allowlist || allowlist.length === 0) {
+		return listDefaultTreeSitterLanguages();
+	}
+
+	const lower = allowlist.map((l) => l.trim().toLowerCase()).filter(Boolean);
+	if (lower.includes('*') || lower.includes('all')) {
+		return listAllTreeSitterLanguageIds();
+	}
+
+	const out: TreeSitterLangId[] = [];
+	const seen = new Set<TreeSitterLangId>();
+	for (const id of lower) {
+		if (id in LANG_WASM) {
+			const lang = id as TreeSitterLangId;
+			if (!seen.has(lang)) {
+				seen.add(lang);
+				out.push(lang);
+			}
+		}
+	}
+
+	return out.length > 0 ? out : listDefaultTreeSitterLanguages();
+}
+
+// Языки из списка, для которых нет wasm-файла на диске (относительно wasmRoot)
+export function listMissingWasmLanguages(langs?: TreeSitterLangId[]): TreeSitterLangId[] {
+	const scope = langs ?? listAllTreeSitterLanguageIds();
+	const missing: TreeSitterLangId[] = [];
+	for (const id of scope) {
+		if (!isLangWasmPresent(id)) {
+			missing.push(id);
+		}
+	}
+	return missing;
+}
+
+// Default-языки без wasm на диске (CI smoke / packaging)
+export function listMissingDefaultWasmLangs(): TreeSitterLangId[] {
+	return listMissingWasmLanguages([...TREE_SITTER_DEFAULT_LANGS]);
+}
+
+// Пустой / отсутствует = default langs; `*` / `all` = все доступные; иначе пересечение со списком
 export function setTreeSitterLanguageAllowlist(langs: string[] | undefined): void {
 	if (!langs || langs.length === 0) {
 		enabledLangsOverride = undefined;
@@ -290,6 +340,10 @@ function resolveWorkerScript(): string | undefined {
 		path.join(__dirname, 'treeSitterWorker.js'),
 		path.join(__dirname, '..', 'treeSitterWorker.js'),
 	];
+	if (wasmRoot) {
+		candidates.push(path.join(wasmRoot, '..', 'treeSitterWorker.js'));
+	}
+
 	for (const c of candidates) {
 		if (fs.existsSync(c)) {
 			return c;
@@ -413,8 +467,8 @@ export function listSupportedTreeSitterLanguages(): TreeSitterLangId[] {
 	return listAllTreeSitterLanguageIds().filter((id) => isLangWasmPresent(id));
 }
 
-export function listMvpTreeSitterLanguages(): TreeSitterLangId[] {
-	return [...TREE_SITTER_MVP_LANGS];
+export function listDefaultTreeSitterLanguages(): TreeSitterLangId[] {
+	return [...TREE_SITTER_DEFAULT_LANGS];
 }
 
 function isLangWasmPresent(lang: TreeSitterLangId): boolean {
@@ -427,7 +481,7 @@ function isLangWasmPresent(lang: TreeSitterLangId): boolean {
 
 function isLangEnabled(lang: TreeSitterLangId): boolean {
 	if (!enabledLangsOverride) {
-		return (TREE_SITTER_MVP_LANGS as readonly string[]).includes(lang);
+		return (TREE_SITTER_DEFAULT_LANGS as readonly string[]).includes(lang);
 	}
 
 	return enabledLangsOverride.has(lang);
@@ -765,7 +819,7 @@ export async function parseWithTreeSitter(
 // Имена wasm-файлов для esbuild / упаковки
 export function treeSitterWasmFileNames(): string[] {
 	const names = new Set<string>(['tree-sitter.wasm', 'tree-sitter.js', 'web-tree-sitter.d.ts']);
-	for (const id of TREE_SITTER_MVP_LANGS) {
+	for (const id of TREE_SITTER_DEFAULT_LANGS) {
 		names.add(LANG_WASM[id]);
 	}
 	return [...names];

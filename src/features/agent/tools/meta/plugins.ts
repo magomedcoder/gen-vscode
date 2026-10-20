@@ -76,7 +76,10 @@ export const pluginTool: ToolDefinition = {
 			});
 		}
 
-		const kindLabel = hit.kind === 'tool' ? 'Tool' : hit.kind === 'npm' ? 'npm' : 'Plugin';
+		const kindLabel = hit.kind === 'tool' ? 'Tool (prompt-macro)' : hit.kind === 'npm' ? 'npm' : 'Plugin';
+		const macroNote = hit.kind === 'tool'
+			? '\n[prompt-macro: instructions for the model only; no host JS execution]'
+			: '';
 		const body = hit.body.trim() || '(пустое тело - только манифест; открой соседний PLUGIN.md / TOOL.md через read_file)';
 		const runNote = hit.executable
 			? `\nRunnable: yes (run_plugin). command=${hit.executable.command}`
@@ -85,7 +88,7 @@ export const pluginTool: ToolDefinition = {
 				: '';
 		return {
 			ok: true,
-			content: `# ${kindLabel}: ${hit.name}\nПуть: ${hit.path}\nОписание: ${hit.description}${runNote}\n\n${body}`,
+			content: `# ${kindLabel}: ${hit.name}${macroNote}\nПуть: ${hit.path}\nОписание: ${hit.description}${runNote}\n\n${body}`,
 		};
 	},
 };

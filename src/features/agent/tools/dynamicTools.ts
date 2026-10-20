@@ -47,7 +47,8 @@ function buildDynamicTool(item: LocalPluginInfo, name: string): ToolDefinition {
 			return {
 				ok: true,
 				content: [
-					`# Local tool: ${item.name}`,
+					`# Local tool (prompt-macro): ${item.name}`,
+					'[prompt-macro: instructions for the model only; no host JS execution]',
 					`path: ${pathHint}`,
 					'',
 					body,

@@ -65,6 +65,7 @@ Confirmations are a **card in Gen chat** (Apply / Skip / Stop or Apply / Reject)
 | `open_browser`            | Open URL in VSCode Simple Browser                                                                                        | Ask                                                                  |
 | `fetch_page`              | HTTP GET page text/HTML (Design Mode); annotates sourceMappingURL hints                                                  | Ask; remote (non-localhost) always confirms                          |
 | `design_inspect`          | URL + selector -> outerHTML + source hints (`data-component`/source map first, then class/id grep)                       | Ask (same as fetch_page)                                             |
+| `design_screenshot`       | Headless Chromium PNG via optional Playwright (`designScreenshotEnabled`); `wait_until` (`load`/`domcontentloaded`/`networkidle`/`commit`, default `networkidle` with `domcontentloaded` fallback on timeout); optional `selector` waits visible before capture; cache `.gen/cache/design-screenshots/` | Ask (same as fetch_page); hidden when setting off                    |
 | `web_search`              | Web search (`duckduckgo` \                                                                                               | `exa` \                                                              | `parallel` \| `http`)                                                               | Ask (confirmAlwaysOrSkip)                                            |
 | `run_command`             | Command in workspace cwd (allow + denylist)                                                                              | Ask                                                                  |
 | `run_scratch`             | Run a file under `.gen/scratch/**` only (node/python/bash by ext)                                                        | Ask                                                                  |
@@ -78,8 +79,8 @@ Confirmations are a **card in Gen chat** (Apply / Skip / Stop or Apply / Reject)
 
 ## Notes
 
-- Local plugins/tools: see [architecture.md](architecture.md#local-plugins--tools-mvp). Catalog is injected into the system prompt; JS is not executed.
-- Chat modes **Debug** / **Design** are enabled via slash commands `/debug` / `/design`. The best-effort click bridge resolves through the `design_inspect` source-hint/grep path and opens the matching file; it does not require full Simple Browser CDP.
+- Local plugins/tools: see [architecture.md](architecture.md#local-plugins--tools-shipped). Catalog is injected into the system prompt; JS is not executed.
+- Chat modes **Debug** / **Design** are enabled via slash commands `/debug` / `/design`. The best-effort click bridge resolves through the `design_inspect` source-hint/grep path and opens the matching file; it does not require full Simple Browser CDP. For Simple Browser previews, copy the address-bar URL and run **Gen: Design pick from clipboard URL** (`gen.design.pickFromClipboard`) with a CSS selector.
 - Mid-turn: when `shareMode=auto`, each tool-loop iteration refreshes a short live-editor appendix (file + selection snippet) in the system prompt.
 - Scratch: write scripts under `.gen/scratch/` (scaffold dir) and run via `run_scratch` only - **no** arbitrary JS eval from `.gen/tools` / ephemeral tools.
 - Quality: `repo_health` (import cycles + orphans), `test_impact` (related tests). Eval suite: `src/test/eval/` + `vectorStore.test.ts` - retrieval quality gate (precision@k / hit-rate / simpleScore, offline trigram + local-vector) + permissions/confirm smoke; run `npm test -- --grep eval` or `npm run test:eval` (no live LLM / no remote embeddings).

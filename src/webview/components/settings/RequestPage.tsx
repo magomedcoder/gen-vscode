@@ -2,6 +2,7 @@ import { t } from '../../i18n';
 import type { SettingsPageProps } from './pages';
 import { parseNumberInput } from './parseNumber';
 import { FieldNumber, FieldSelect, FieldText, FieldToggle } from './SettingsFields';
+import { SecretFieldBlock } from './SecretFieldBlock';
 import { SettingsSection } from './SettingsSection';
 
 interface RequestPageProps extends SettingsPageProps {
@@ -156,35 +157,22 @@ export function RequestPage({
 				) : null}
 
 				{draft.webSearchBackend === 'exa' || draft.webSearchBackend === 'parallel' || draft.webSearchBackend === 'http' ? (
-					<div className="field">
-						<FieldText
-							labelKey="settings.webSearchApiKey.label"
-							hintKey="settings.webSearchApiKey.hint"
-							type="password"
-							autoComplete="off"
-							value={webSearchApiKeyDraft}
-							placeholder={
-								clearWebSearchApiKey
-									? t('settings.apiKey.placeholderClear')
-									: webSearchApiKeySet
-										? t('settings.apiKey.placeholderSet')
-										: ''
-							}
-							onChange={(v) => onWebSearchApiKeyDraft?.(v)}
-						/>
-						{(webSearchApiKeySet || clearWebSearchApiKey) ? (
-							<div className="field__row" style={{ marginTop: 6 }}>
-								<button
-									className="btn btn--secondary"
-									type="button"
-									onClick={() => onClearWebSearchApiKey?.()}
-									disabled={clearWebSearchApiKey}
-								>
-									{clearWebSearchApiKey ? t('settings.secret.markedClear') : t('settings.secret.clear')}
-								</button>
-							</div>
-						) : null}
-					</div>
+					<SecretFieldBlock
+						labelKey="settings.webSearchApiKey.label"
+						hintKey="settings.webSearchApiKey.hint"
+						value={webSearchApiKeyDraft}
+						keySet={webSearchApiKeySet}
+						markedClear={clearWebSearchApiKey}
+						placeholder={
+							clearWebSearchApiKey
+								? t('settings.apiKey.placeholderClear')
+								: webSearchApiKeySet
+									? t('settings.apiKey.placeholderSet')
+									: ''
+						}
+						onChange={(v) => onWebSearchApiKeyDraft?.(v)}
+						onMarkClear={() => onClearWebSearchApiKey?.()}
+					/>
 				) : null}
 			</SettingsSection>
 

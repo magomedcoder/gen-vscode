@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
-import { getApiKey, buildAuthHeaders } from '../config/apiKey';
+import { buildAuthHeaders } from '../config/apiKey';
+import { getResolvedSecret } from '../config/secretVault';
 import { getSettings, setSessionModel, type GenSettings } from '../config/settings';
 import { httpErrorMessage, isAbortError, isRetryableError, LlmHttpError, parseErrorDetail, parseRetryAfterMs, retryDelayMs, toAbortError, toTimeoutError, isTimeoutError } from './errors';
 import type { LlmRetryInfo } from './types';
@@ -51,7 +52,7 @@ const MAX_ATTEMPTS = 4;
 
 export interface HttpLlmClientDeps {
 	getConfig?: typeof getSettings;
-	readApiKey?: typeof getApiKey;
+	readApiKey?: () => Promise<string>;
 	fetch?: typeof fetch;
 	sleep?: (ms: number) => Promise<void>;
 }
@@ -261,13 +262,13 @@ function accumToResult(acc: StreamAccum): CompleteResult {
 
 export class HttpLlmClient implements LlmClient {
 	private readonly getConfig: typeof getSettings;
-	private readonly readApiKey: typeof getApiKey;
+	private readonly readApiKey: () => Promise<string>;
 	private readonly fetchFn: typeof fetch;
 	private readonly sleep: (ms: number) => Promise<void>;
 
 	constructor(deps: HttpLlmClientDeps = {}) {
 		this.getConfig = deps.getConfig ?? getSettings;
-		this.readApiKey = deps.readApiKey ?? getApiKey;
+		this.readApiKey = deps.readApiKey ?? (() => getResolvedSecret('apiKey'));
 		this.fetchFn = deps.fetch ?? fetch.bind(globalThis);
 		this.sleep = deps.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
 	}

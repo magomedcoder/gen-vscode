@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import type { IndexEngineStatus } from '../../../features/chat/protocol';
 import { t } from '../../i18n';
 import type { SettingsPageProps } from './pages';
@@ -64,6 +64,72 @@ function buildIndexEngineLine(status: IndexEngineStatus): string {
 	return `${t('settings.indexEngine.label')}: ${parts.toString()}`;
 }
 
+const TREE_SITTER_LANGS_DISPLAY_MAX = 96;
+
+function formatTreeSitterLangList(langs: string[]): string {
+	const joined = langs.join(', ');
+	if (joined.length <= TREE_SITTER_LANGS_DISPLAY_MAX) {
+		return joined;
+	}
+	
+	return `${joined.slice(0, TREE_SITTER_LANGS_DISPLAY_MAX - 1)}...`;
+}
+
+async function copyTreeSitterMissingLangs(langs: string[]): Promise<void> {
+	await navigator.clipboard.writeText(langs.join('\n'));
+}
+
+function TreeSitterMissingWasmBlock({ langs }: { langs: string[] }) {
+	const [copied, setCopied] = useState(false);
+
+	return (
+		<div className="field field-status field-status--treesitter-missing">
+			<span className="field__label">
+				{t('settings.indexEngine.treesitterMissingWasm', langs.join(', '))}
+			</span>
+			<pre
+				className="field__hint"
+				style={{ margin: '4px 0', whiteSpace: 'pre-wrap', userSelect: 'text', cursor: 'pointer' }}
+				role="button"
+				tabIndex={0}
+				title={t('settings.indexEngine.treesitterMissingCopy')}
+				onClick={() => {
+					void copyTreeSitterMissingLangs(langs).then(() => {
+						setCopied(true);
+						setTimeout(() => setCopied(false), 2000);
+					});
+				}}
+				onKeyDown={(e) => {
+					if (e.key === 'Enter' || e.key === ' ') {
+						e.preventDefault();
+						void copyTreeSitterMissingLangs(langs).then(() => {
+							setCopied(true);
+							setTimeout(() => setCopied(false), 2000);
+						});
+					}
+				}}
+			>
+				{langs.join('\n')}
+			</pre>
+			<span className="field__hint">{t('settings.indexEngine.treesitterMissingHint')}</span>
+			<div className="field__actions" style={{ marginTop: '4px' }}>
+				<button
+					className="btn btn--secondary"
+					type="button"
+					onClick={() => {
+						void copyTreeSitterMissingLangs(langs).then(() => {
+							setCopied(true);
+							setTimeout(() => setCopied(false), 2000);
+						});
+					}}
+				>
+					{copied ? '✓' : t('settings.indexEngine.treesitterMissingCopy')}
+				</button>
+			</div>
+		</div>
+	);
+}
+
 function buildIndexExtrasLine(status: IndexEngineStatus): string | undefined {
 	const bits: string[] = [];
 	if (status.treeSitterAvailable) {
@@ -71,6 +137,19 @@ function buildIndexExtrasLine(status: IndexEngineStatus): string | undefined {
 		bits.push(t('settings.indexEngine.treesitterOn', n));
 	} else {
 		bits.push(t('settings.indexEngine.treesitterOff'));
+	}
+
+	if (status.treeSitterEnabledLangs && status.treeSitterEnabledLangs.length > 0) {
+		bits.push(t('settings.indexEngine.treesitterLangs', formatTreeSitterLangList(status.treeSitterEnabledLangs)));
+	}
+
+	if (status.treeSitterMissingWasm && status.treeSitterMissingWasm.length > 0) {
+		bits.push(
+			t(
+				'settings.indexEngine.treesitterMissingWasm',
+				formatTreeSitterLangList(status.treeSitterMissingWasm),
+			),
+		);
 	}
 
 	if (typeof status.astChunkRatio === 'number') {
@@ -158,6 +237,9 @@ export function IndexingPage({
 					<span className="field__hint">{t('settings.indexEngine.hint')}</span>
 					{buildIndexExtrasLine(indexStatus) ? (
 						<span className="field__hint">{buildIndexExtrasLine(indexStatus)}</span>
+					) : null}
+					{indexStatus.treeSitterMissingWasm && indexStatus.treeSitterMissingWasm.length > 0 ? (
+						<TreeSitterMissingWasmBlock langs={indexStatus.treeSitterMissingWasm} />
 					) : null}
 					{indexStatus.lastError ? (
 						<span className="field__hint field__hint--error">{indexStatus.lastError}</span>

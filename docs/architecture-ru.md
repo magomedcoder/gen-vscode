@@ -38,7 +38,7 @@ Comment command
 - Опциональный markdown/текст в корне workspace: стиль кода, архитектура, договорённости команды.
 - Загружается при старте расширения и при изменении файла; подмешивается в промпты agent / ask / комментариев (обрезка до 12k символов).
 
-## Локальные plugins / tools (MVP)
+## Локальные plugins / tools (shipped)
 
 Discovery доступен через каталог в system prompt и tools `list_plugins` / `plugin` (+ Open в Settings Rules/Skills).
 

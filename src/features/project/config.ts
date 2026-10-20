@@ -15,7 +15,7 @@ ${DEFAULT_GENIGNORE_PATTERNS.join('\n')}
 `;
 
 /**
- * Каталоги MVP под `.gen/` - создаются командой `gen.initProject` и `/init`.
+ * `.gen/` directories (scaffold) - создаются командой `gen.initProject` и `/init`.
  * Индекс кодовой базы в workspace storage и не требует `.gen/`.
  * `references.json` пишется по требованию (не здесь).
  */

@@ -79,8 +79,8 @@ export function buildAgentSystemPrompt(options?: {
 		);
 	} else if (mode === 'design') {
 		lines.push(
-			`Алгоритм Design: 1) уточни URL preview (часто http://localhost:...); 2) open_browser чтобы показать UI; 3) fetch_page/design_inspect для HTML, selector и source hints; 4) опиши проблемы UX и правь код (CSS/разметка) через ${patchHint}.`,
-			'Design click bridge best-effort открывает исходник через путь design_inspect: data-component/data-source/sourceMappingURL, затем grep class/id. Полного Simple Browser CDP нет. Внешние (не localhost) URL требуют подтверждения.',
+			`Алгоритм Design: 1) уточни URL preview (часто http://localhost:...); 2) open_browser чтобы показать UI; 3) fetch_page/design_inspect для HTML, selector и source hints; design_screenshot для JS-rendered PNG (Playwright, если включено); 4) опиши проблемы UX и правь код (CSS/разметка) через ${patchHint}.`,
+			'Design click bridge best-effort открывает исходник через путь design_inspect: data-component/data-source/sourceMappingURL, затем grep class/id. Полного Simple Browser CDP нет; для отрисованного DOM - design_screenshot. Внешние (не localhost) URL требуют подтверждения.',
 		);
 	} else if (mode === 'plan') {
 		const shellPolicy = options?.planShellPolicy === 'deny' ? 'deny' : 'ask';

@@ -187,12 +187,16 @@ export interface GenSettings {
 	 * Разрешить fetch_page / @link
 	 */
 	webFetchEnabled: boolean;
+	/**
+	 * Разрешить design_screenshot (headless Chromium через optional playwright).
+	 */
+	designScreenshotEnabled: boolean;
 	/** 
 	 * Маскировать вероятные секреты в карточках инструментов и статусе UI.
 	 */
 	privacyMode: boolean;
 	/** 
-	 * Запрещать нелокальные URL для web_search/fetch_page/design_inspect.
+	 * Запрещать нелокальные URL для web_search/fetch_page/design_inspect/design_screenshot.
 	 */
 	blockNonLocalUrls: boolean;
 	/**
@@ -428,7 +432,7 @@ export interface GenSettings {
 	 */
 	chunkEngine: ChunkEngine;
 	/**
-	 * Языки Tree-sitter: пусто = MVP whitelist; `*` / `all` = все доступные wasm;
+	 * Языки Tree-sitter: пусто = полный набор (default langs); `*` / `all` = все доступные wasm;
 	 * иначе список id (typescript, dart, kotlin, swift, css, html, ...). Без c_sharp/ruby/scala.
 	 */
 	treeSitterLanguages: string[];
@@ -588,6 +592,7 @@ export const DEFAULT_SETTINGS: GenSettings = {
 	webSearchHttpUrl: '',
 	webSearchHttpHeader: 'Authorization',
 	webFetchEnabled: true,
+	designScreenshotEnabled: false,
 	privacyMode: false,
 	blockNonLocalUrls: false,
 	systemPrompt: '',

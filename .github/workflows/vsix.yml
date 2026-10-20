@@ -30,6 +30,12 @@ jobs:
       - name: Build extension
         run: yarn package
 
+      - name: Install xvfb (vscode-test)
+        run: sudo apt-get update && sudo apt-get install -y xvfb
+
+      - name: Tree-sitter langs smoke tests
+        run: yarn compile-tests && xvfb-run -a yarn test -- --grep 'tree-sitter langs smoke|tree-sitter wasm'
+
       - name: Package VSIX
         run: yarn package:vsix
 

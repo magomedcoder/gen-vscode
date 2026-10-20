@@ -39,3 +39,19 @@ export async function setWebSearchApiKey(value: string): Promise<void> {
 export async function clearWebSearchApiKey(): Promise<void> {
 	await clearSecret('webSearchApiKey');
 }
+
+export async function getEmbeddingsApiKey(): Promise<string> {
+	return getSecret('embeddingsApiKey');
+}
+
+export async function hasEmbeddingsApiKey(): Promise<boolean> {
+	return hasSecret('embeddingsApiKey');
+}
+
+export async function setEmbeddingsApiKey(value: string): Promise<void> {
+	await setSecret('embeddingsApiKey', value);
+}
+
+export async function clearEmbeddingsApiKey(): Promise<void> {
+	await clearSecret('embeddingsApiKey');
+}

@@ -1,6 +1,5 @@
 import type { GenSettings, WebSearchBackend } from '../../../core/config/types';
-import { getWebSearchApiKey } from '../../../core/config/apiKey';
-import { interpolateConfigString } from '../../../core/config/interpolate';
+import { getResolvedSecret } from '../../../core/config/secretVault';
 
 // Один результат веб-поиска
 export interface WebSearchHit {
@@ -27,6 +26,16 @@ export function buildWebSearchHttpUrl(template: string, query: string): string {
 	return `${trimmed}${sep}q=${encoded}`;
 }
 
+// Title из API: пустая строка, null и пробелы -> fallback на url (Exa/Parallel)
+export function normalizeWebSearchTitle(title: unknown, url: string): string {
+	const fromString = typeof title === 'string' ? title.trim() : '';
+	if (fromString) {
+		return fromString;
+	}
+
+	return url;
+}
+
 /**
  * Извлечь title/url из произвольного объекта результата.
  * Если title пуст - подставляем url (Parallel может отдать title=null).
@@ -46,12 +55,14 @@ function hitFromUnknown(item: unknown): WebSearchHit | undefined {
 		return undefined;
 	}
 
-	const titleRaw = typeof row.title === 'string' ? row.title.trim()
-		: typeof row.name === 'string' ? row.name.trim()
+	const titleCandidate = typeof row.title === 'string' || row.title === null || row.title === undefined
+		? row.title
+		: typeof row.name === 'string'
+			? row.name
 			: '';
 	return {
-		title: titleRaw || url,
-		url
+		title: normalizeWebSearchTitle(titleCandidate, url),
+		url,
 	};
 }
 
@@ -122,7 +133,7 @@ export function parseParallelSearchJson(data: unknown, cap: number): WebSearchHi
 
 async function resolveWebSearchApiKey(backendLabel: string): Promise<string> {
 	// SecretStorage (+ optional `${env:}` / `{file:}` в значении секрета)
-	const apiKey = interpolateConfigString(await getWebSearchApiKey()).trim();
+	const apiKey = await getResolvedSecret('webSearchApiKey');
 	if (!apiKey) {
 		throw new Error(`web_search: задай webSearchApiKey (Settings -> SecretStorage) для бэкенда ${backendLabel}`);
 	}
@@ -269,7 +280,7 @@ export async function searchHttpJson(
 		Accept: 'application/json',
 		'User-Agent': 'GenAgentVSCode/0.2',
 	};
-	const apiKey = interpolateConfigString(await getWebSearchApiKey()).trim();
+	const apiKey = await getResolvedSecret('webSearchApiKey');
 	const headerName = (settings.webSearchHttpHeader || 'Authorization').trim();
 	if (apiKey && headerName) {
 		headers[headerName] = apiKey;

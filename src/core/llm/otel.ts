@@ -232,6 +232,8 @@ export interface IndexMerkleOtelAttrs {
 	chunksIndexed: number;
 	chunksSkipped: number;
 	folderKey?: string;
+	// Число default-языков Tree-sitter без wasm на диске (упаковка / resources/tree-sitter-extra)
+	treesitterMissingWasm?: number;
 }
 
 /**
@@ -253,6 +255,9 @@ export function emitIndexMerkleMetrics(
 		`files=${attrs.filesIndexed}/${attrs.filesTotal} skip=${attrs.filesSkipped} ` +
 		`dirsSkip=${attrs.dirsSkipped}/${attrs.dirsTotal} ` +
 		`chunks=+${attrs.chunksIndexed}/reuse=${attrs.chunksSkipped}` +
+		(typeof attrs.treesitterMissingWasm === 'number'
+			? ` tsMissingWasm=${attrs.treesitterMissingWasm}`
+			: '') +
 		(attrs.folderKey ? ` folder=${attrs.folderKey}` : '');
 	const endpoint = settings.otelEndpoint.trim();
 	if (!endpoint) {
@@ -272,6 +277,9 @@ export function emitIndexMerkleMetrics(
 	];
 	if (attrs.folderKey) {
 		attributes.push(otlpStringAttr('gen.index.folder_key', attrs.folderKey));
+	}
+	if (typeof attrs.treesitterMissingWasm === 'number') {
+		attributes.push(otlpIntAttr('gen.index.treesitter_missing_wasm', attrs.treesitterMissingWasm));
 	}
 	const body = {
 		resourceSpans: [

@@ -1,7 +1,7 @@
 import * as assert from 'assert';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { parseExaSearchJson, parseParallelSearchJson } from '../features/agent/tools/webSearchBackends.js';
+import { normalizeWebSearchTitle, parseExaSearchJson, parseParallelSearchJson } from '../features/agent/tools/webSearchBackends.js';
 
 function fixture(name: string): unknown {
 	const candidates = [
@@ -26,5 +26,18 @@ suite('web search backend adapters', () => {
 			{ title: 'Parallel result', url: 'https://parallel.example/result' },
 			{ title: 'https://parallel.example/untitled', url: 'https://parallel.example/untitled' },
 		]);
+	});
+
+	test('fixture edge-case: empty title falls back to url (exa, parallel)', () => {
+		const exaUrl = 'https://example.com/no-title';
+		const parallelUrl = 'https://parallel.example/untitled';
+		const exaHit = parseExaSearchJson(fixture('exa.json'), 8).find((hit) => hit.url === exaUrl);
+		const parallelHit = parseParallelSearchJson(fixture('parallel.json'), 8).find((hit) => hit.url === parallelUrl);
+		assert.ok(exaHit);
+		assert.ok(parallelHit);
+		assert.strictEqual(exaHit.title, exaUrl);
+		assert.strictEqual(parallelHit.title, parallelUrl);
+		assert.strictEqual(normalizeWebSearchTitle('', exaUrl), exaUrl);
+		assert.strictEqual(normalizeWebSearchTitle(null, parallelUrl), parallelUrl);
 	});
 });

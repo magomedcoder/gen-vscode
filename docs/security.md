@@ -73,3 +73,17 @@ Still always blocked in code:
 ## Permissions
 
 See [chat.md](chat.md#permissions-security).
+
+## API keys (SecretStorage vault)
+
+LLM `apiKey`, optional `embeddingsApiKey`, and `webSearchApiKey` live in VS Code **SecretStorage** only. The Settings webview receives `*Set` booleans, never the secret values.
+
+| Action | Effect |
+|--------|--------|
+| **Rotate** | Type a new value in the field and **Save** - overwrites the stored secret |
+| **Clear** | **Clear stored key**, then **Save** - host asks for confirmation, then deletes the secret |
+| **Plain value** | Stored as-is in SecretStorage |
+| **`${env:NAME}`** | Resolved at use time from `process.env` |
+| **`{file:path}`** | Resolved at use time from file contents (workspace-relative path); use **Browse file...** in Settings |
+
+Embeddings requests use `embeddingsApiKey` when set; otherwise they use the LLM `apiKey`.

@@ -89,6 +89,10 @@ export function getAgentLlmTools(mode?: string, opts?: {
 			return false;
 		}
 
+		if (!settings.designScreenshotEnabled && tool.name === 'design_screenshot') {
+			return false;
+		}
+
 		if ((mode === 'plan' || mode === 'multitask' || mode === 'project') && isMutatingTool(tool.name)) {
 			return false;
 		}

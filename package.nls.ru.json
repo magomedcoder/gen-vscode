@@ -19,6 +19,7 @@
 	"command.notebook.generateCell.title": "Gen: Сгенерировать ячейку",
 	"command.manageWorktrees.title": "Gen: Управление worktrees",
 	"command.dryRunHook.title": "Gen: Тестовый запуск hook-события",
+	"command.designPickFromClipboard.title": "Gen: Design - URL из буфера",
 	"command.hunkAccept.title": "Принять хунк (Keep)",
 	"command.hunkReject.title": "Отклонить хунк (Undo)",
 	"configuration.gen.title": "Gen",

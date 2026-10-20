@@ -6,8 +6,10 @@ import type { ActivityEntry } from '../../core/stores/activityStore';
 import type { ModelUsage } from '../../core/stores/usageStore';
 import type { IndexEngineStatus } from '../index/engineStatus';
 import type { SessionSummary } from './sessionStore';
+import type { DesignClickResult } from '../design/designVisual';
 
 export type { ActivityEntry } from '../../core/stores/activityStore';
+export type { DesignClickResult };
 export type { IndexEngineStatus } from '../index/engineStatus';
 export type { ChatMode, ConfirmChoice, DiffHunkPayload, HunkReviewStatus };
 export type ChatRole = 'user' | 'assistant' | 'error' | 'tool';
@@ -17,7 +19,7 @@ export type ConfirmVariant = 'agent' | 'binary';
 
 /**
  * Design Mode visual click-to-code: см. `features/design/designVisual.ts`.
- * MVP-мост разрешает URL и селектор через поиск подсказки на исходник в `design_inspect`.
+ * Design bridge разрешает URL и селектор через поиск подсказки на исходник в `design_inspect`.
  */
 
 // Снимок admin policy для UI настроек (баннер заблокированных ключей)
@@ -25,6 +27,15 @@ export interface AdminPolicyInfo {
 	active: boolean;
 	path?: string;
 	lockedKeys: string[];
+}
+
+// Последний Design click (workspaceState) для Settings / status UI
+export interface DesignSessionPayload {
+	path?: string;
+	line?: number;
+	url?: string;
+	selector?: string;
+	updatedAt?: number;
 }
 
 export interface ToolCallUi {
@@ -213,8 +224,9 @@ export interface ChatViewState {
 }
 
 export type ToWebviewMessage = | { type: 'state'; state: ChatViewState }
-	| { type: 'settings'; settings: GenSettings; apiKeySet: boolean; webSearchApiKeySet?: boolean; persistedAlwaysAllow?: string[]; personas?: PersonaOption[]; adminPolicy?: AdminPolicyInfo }
-	| { type: 'settingsSaved'; settings: GenSettings; apiKeySet: boolean; webSearchApiKeySet?: boolean; persistedAlwaysAllow?: string[]; personas?: PersonaOption[]; adminPolicy?: AdminPolicyInfo }
+	| { type: 'settings'; settings: GenSettings; apiKeySet: boolean; webSearchApiKeySet?: boolean; embeddingsApiKeySet?: boolean; persistedAlwaysAllow?: string[]; personas?: PersonaOption[]; adminPolicy?: AdminPolicyInfo }
+	| { type: 'settingsSaved'; settings: GenSettings; apiKeySet: boolean; webSearchApiKeySet?: boolean; embeddingsApiKeySet?: boolean; persistedAlwaysAllow?: string[]; personas?: PersonaOption[]; adminPolicy?: AdminPolicyInfo }
+	| { type: 'secretFilePicked'; requestId: number; value?: string }
 	| { type: 'settingsError'; message: string }
 	| { type: 'models'; models: Array<{ id: string; label: string }>; requestId: number }
 	| { type: 'modelsError'; message: string; requestId: number }
@@ -225,6 +237,7 @@ export type ToWebviewMessage = | { type: 'state'; state: ChatViewState }
 	| { type: 'indexStatus'; status: IndexEngineStatus }
 	| { type: 'hooksData'; beforeSubmit: string[]; beforeShell: string[]; sessionDiff: string[]; sessionCompacting: string[]; shellEnv: string[]; fileWatcher: string[]; path?: string; error?: string; }
 	| { type: 'hooksSaved'; ok: boolean; error?: string }
+	| { type: 'hookDryRunResult'; event: string; ok: boolean; exitCode?: number; stdout?: string; stderr?: string; error?: string }
 	// Встроенные пресеты и пользовательские агенты из `.gen/agents/`
 	| { type: 'agentsData'; presets: AgentPresetInfo[]; custom: AgentCustomInfo[]; error?: string }
 	| { type: 'agentsCloned'; relativePath: string; created: boolean; error?: string }
@@ -233,7 +246,9 @@ export type ToWebviewMessage = | { type: 'state'; state: ChatViewState }
 	// Список персон (builtin + `.gen/personas/*.md`) для Settings * Personas
 	| { type: 'personasData'; personas: PersonaOption[] }
 	// Короткий beep в chat webview (завершение хода)
-	| { type: 'playNotifySound' };
+	| { type: 'playNotifySound' }
+	| { type: 'designSession'; session: DesignSessionPayload | null }
+	| { type: 'designClickResult'; result: DesignClickResult };
 
 export interface AgentPresetInfo {
 	id: string;
@@ -282,7 +297,8 @@ export type FromWebviewMessage = | { type: 'ready' }
 	| { type: 'setModel'; model: string }
 	| { type: 'openExternal'; url: string }
 	| { type: 'openSettings' }
-	| { type: 'saveSettings'; settings: GenSettings; apiKey?: string; clearApiKey?: boolean; webSearchApiKey?: string; clearWebSearchApiKey?: boolean; persistedAlwaysAllow?: string[] }
+	| { type: 'saveSettings'; settings: GenSettings; apiKey?: string; clearApiKey?: boolean; webSearchApiKey?: string; clearWebSearchApiKey?: boolean; embeddingsApiKey?: string; clearEmbeddingsApiKey?: boolean; persistedAlwaysAllow?: string[] }
+	| { type: 'pickSecretFile'; requestId: number }
 	| { type: 'loadModels'; baseUrl: string; requestId: number }
 	| { type: 'checkConnection'; baseUrl: string; requestId: number }
 	| { type: 'openLogsFolder' }
@@ -309,11 +325,13 @@ export type FromWebviewMessage = | { type: 'ready' }
 	| { type: 'loadActivity' }
 	| { type: 'clearActivity' }
 	| { type: 'loadIndexStatus' }
+	| { type: 'loadDesignSession' }
 	| { type: 'cancelIndex' }
 	| { type: 'repairIndex' }
 	| { type: 'loadHooks' }
 	| { type: 'saveHooks'; beforeSubmit: string[]; beforeShell: string[]; sessionDiff: string[]; sessionCompacting: string[]; shellEnv: string[]; fileWatcher: string[]; }
 	| { type: 'openHooksFile' }
+	| { type: 'dryRunHook'; event: 'beforeSubmit' | 'beforeShell' | 'session.diff' | 'session.compacting' | 'shell.env' | 'file.watcher'; sample?: string }
 	| { type: 'loadAgents' }
 	| { type: 'cloneAgentPreset'; id: string }
 	| { type: 'loadRulesSkills' }

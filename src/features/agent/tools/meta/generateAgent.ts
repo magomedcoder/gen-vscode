@@ -1,4 +1,4 @@
-import { generateAgentStub, isReservedAgentId } from '../../../project/customAgents';
+import { generateAgentFile, isReservedAgentId } from '../../../project/customAgents';
 import { asString, type ToolDefinition, type ToolResult } from '../../types';
 import { throwIfAborted } from '../../workspacePath';
 import { confirmAlwaysOrSkip } from '../confirm';
@@ -52,7 +52,7 @@ export const generateAgentTool: ToolDefinition = {
 		}
 
 		try {
-			const { relativePath, created } = await generateAgentStub({
+			const { relativePath, created } = await generateAgentFile({
 				name,
 				description,
 				mode: asString(args, 'mode') || undefined,

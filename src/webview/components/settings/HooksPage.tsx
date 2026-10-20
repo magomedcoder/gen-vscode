@@ -9,6 +9,17 @@ const EXAMPLE_SESSION_COMPACTING = ['echo "session.compacting"'];
 const EXAMPLE_SHELL_ENV = ['echo \'{"env":{"GEN_EXAMPLE":"1","GEN_HOOK_CWD_ECHO":"\'"$GEN_HOOK_CWD"\'"}}\''];
 const EXAMPLE_FILE_WATCHER = ['echo "file.watcher: $GEN_HOOK_FILE_EVENT $GEN_HOOK_PATH"'];
 
+const DRY_RUN_EVENTS = [
+	'beforeSubmit',
+	'beforeShell',
+	'session.diff',
+	'session.compacting',
+	'shell.env',
+	'file.watcher',
+] as const;
+
+type DryRunHookEvent = typeof DRY_RUN_EVENTS[number];
+
 export interface HooksPageData {
 	beforeSubmit: string[];
 	beforeShell: string[];
@@ -35,6 +46,7 @@ interface HooksPageProps {
 	onLoadHooks?: () => void;
 	onSaveHooks?: (payload: HooksSavePayload) => void;
 	onOpenHooksFile?: () => void;
+	onDryRunHook?: (event: DryRunHookEvent, sample?: string) => void;
 }
 
 function linesToList(raw: string): string[] {
@@ -51,7 +63,10 @@ export function HooksPage({
 	onLoadHooks,
 	onSaveHooks,
 	onOpenHooksFile,
+	onDryRunHook,
 }: HooksPageProps) {
+	const [dryRunEvent, setDryRunEvent] = useState<DryRunHookEvent>('beforeSubmit');
+	const [dryRunSample, setDryRunSample] = useState('');
 	const [beforeSubmitText, setBeforeSubmitText] = useState('');
 	const [beforeShellText, setBeforeShellText] = useState('');
 	const [sessionDiffText, setSessionDiffText] = useState('');
@@ -98,7 +113,10 @@ export function HooksPage({
 	const statusIsError = Boolean(
 		hooksStatus
 		&& hooksStatus !== t('settings.hooks.saved')
-		&& hooksStatus !== t('settings.hooks.saving'),
+		&& hooksStatus !== t('settings.hooks.saving')
+		&& hooksStatus !== t('settings.hooks.dryRunning')
+		&& !hooksStatus.startsWith(t('settings.hooks.dryRunOkPrefix'))
+		&& !hooksStatus.startsWith(t('settings.hooks.dryRunFailedPrefix')),
 	);
 
 	return (
@@ -124,6 +142,43 @@ export function HooksPage({
 					{t('settings.hooks.insertExample')}
 				</button>
 			</div>
+
+			<div className="settings__actions" style={{ marginTop: 8, flexWrap: 'wrap', gap: 8 }}>
+				<label className="field" style={{ flex: '1 1 200px', margin: 0 }}>
+					<span className="field__label">{t('settings.hooks.dryRun.event')}</span>
+					<select
+						className="field__input"
+						value={dryRunEvent}
+						onChange={(e) => setDryRunEvent(e.target.value as DryRunHookEvent)}
+					>
+						{DRY_RUN_EVENTS.map((ev) => (
+							<option key={ev} value={ev}>{ev}</option>
+						))}
+					</select>
+				</label>
+				{(dryRunEvent === 'beforeSubmit' || dryRunEvent === 'beforeShell' || dryRunEvent === 'session.diff' || dryRunEvent === 'file.watcher') ? (
+					<label className="field" style={{ flex: '2 1 280px', margin: 0 }}>
+						<span className="field__label">{t('settings.hooks.dryRun.sample')}</span>
+						<input
+							className="field__input"
+							type="text"
+							value={dryRunSample}
+							spellCheck={false}
+							placeholder={t('settings.hooks.dryRun.samplePlaceholder')}
+							onChange={(e) => setDryRunSample(e.target.value)}
+						/>
+					</label>
+				) : null}
+				<button
+					className="btn btn--secondary"
+					type="button"
+					style={{ alignSelf: 'flex-end' }}
+					onClick={() => onDryRunHook?.(dryRunEvent, dryRunSample.trim() || undefined)}
+				>
+					{t('settings.hooks.dryRun')}
+				</button>
+			</div>
+			<span className="field__hint">{t('settings.hooks.dryRunHint')}</span>
 			</SettingsSection>
 
 			<SettingsSection titleKey="settings.section.hooks.commands" hintKey="settings.section.hooks.commandsHint" defaultOpen={false}>

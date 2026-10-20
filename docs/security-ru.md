@@ -73,3 +73,17 @@ docs/private/
 ## Права
 
 См. [chat-ru.md](chat-ru.md#права-безопасность).
+
+## API-ключи (vault SecretStorage)
+
+LLM `apiKey`, опциональный `embeddingsApiKey` и `webSearchApiKey` хранятся только в **SecretStorage** VS Code. Webview настроек получает флаги `*Set`, не сами значения.
+
+| Действие | Эффект |
+|----------|--------|
+| **Ротация** | Новое значение в поле и **Save** - перезапись секрета |
+| **Clear** | **Удалить сохранённый ключ**, затем **Save** - подтверждение на host, затем удаление |
+| **Обычное значение** | Как есть в SecretStorage |
+| **`${env:NAME}`** | Подстановка при использовании из `process.env` |
+| **`{file:path}`** | Подстановка из файла (путь относительно workspace); **Выбрать файл...** в Settings |
+
+Запросы embeddings используют `embeddingsApiKey`, если задан; иначе - LLM `apiKey`.

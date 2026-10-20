@@ -1,12 +1,14 @@
 import * as vscode from 'vscode';
 import type { ExtensionContext, SecretStorage } from 'vscode';
+import { interpolateConfigString } from './interpolate';
 
 // Идентификаторы секретов Gen (единый vault поверх VSCode SecretStorage)
-export type GenSecretId = 'apiKey' | 'webSearchApiKey';
+export type GenSecretId = 'apiKey' | 'webSearchApiKey' | 'embeddingsApiKey';
 
 const SECRET_KEYS: Record<GenSecretId, string> = {
 	apiKey: 'gen.apiKey',
 	webSearchApiKey: 'gen.webSearchApiKey',
+	embeddingsApiKey: 'gen.embeddingsApiKey',
 };
 
 let secrets: SecretStorage | undefined;
@@ -19,12 +21,18 @@ function requireSecrets(): SecretStorage {
 	if (!secrets) {
 		throw new Error(vscode.l10n.t('config.apiKeyNotInit'));
 	}
-	
+
 	return secrets;
 }
 
 export async function getSecret(id: GenSecretId): Promise<string> {
 	return (await secrets?.get(SECRET_KEYS[id]))?.trim() ?? '';
+}
+
+// Сырой секрет из vault с подстановкой `${env:}` / `{file:}` для HTTP и tools
+export async function getResolvedSecret(id: GenSecretId): Promise<string> {
+	const raw = await getSecret(id);
+	return interpolateConfigString(raw).trim();
 }
 
 export async function hasSecret(id: GenSecretId): Promise<boolean> {

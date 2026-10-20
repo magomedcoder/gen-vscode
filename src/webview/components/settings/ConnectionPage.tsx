@@ -2,6 +2,7 @@ import type { LlmModelOption } from '../../../core/llm/types';
 import { t } from '../../i18n';
 import type { SettingsPageProps } from './pages';
 import { FieldText } from './SettingsFields';
+import { SecretFieldBlock } from './SecretFieldBlock';
 import { SettingsSection } from './SettingsSection';
 
 interface ConnectionPageProps extends SettingsPageProps {
@@ -83,35 +84,22 @@ export function ConnectionPage({
 					) : null}
 				</div>
 
-				<div className="field">
-					<FieldText
-						labelKey="settings.apiKey.label"
-						hintKey="settings.apiKey.hint"
-						type="password"
-						autoComplete="off"
-						value={apiKeyDraft}
-						placeholder={
-							clearApiKey
-								? t('settings.apiKey.placeholderClear')
-								: apiKeySet
-									? t('settings.apiKey.placeholderSet')
-									: ''
-						}
-						onChange={onApiKeyDraft}
-					/>
-					{(apiKeySet || clearApiKey) ? (
-						<div className="field__row" style={{ marginTop: 6 }}>
-							<button
-								className="btn btn--secondary"
-								type="button"
-								onClick={() => onClearApiKey?.()}
-								disabled={clearApiKey}
-							>
-								{clearApiKey ? t('settings.secret.markedClear') : t('settings.secret.clear')}
-							</button>
-						</div>
-					) : null}
-				</div>
+				<SecretFieldBlock
+					labelKey="settings.apiKey.label"
+					hintKey="settings.apiKey.hint"
+					value={apiKeyDraft}
+					keySet={apiKeySet}
+					markedClear={clearApiKey}
+					placeholder={
+						clearApiKey
+							? t('settings.apiKey.placeholderClear')
+							: apiKeySet
+								? t('settings.apiKey.placeholderSet')
+								: ''
+					}
+					onChange={(v) => onApiKeyDraft(v)}
+					onMarkClear={() => onClearApiKey?.()}
+				/>
 				<label className="field">
 					<span className="field__label">{t('settings.model.label')}</span>
 					<div className="field__row">

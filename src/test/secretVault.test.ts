@@ -7,6 +7,10 @@ suite('secret vault boundaries', () => {
 		assert.ok(!(FILE_LAYER_KEYS as readonly string[]).includes('webSearchApiKey'));
 	});
 
+	test('embeddingsApiKey не в FILE_LAYER_KEYS', () => {
+		assert.ok(!(FILE_LAYER_KEYS as readonly string[]).includes('embeddingsApiKey'));
+	});
+
 
 	test('buildAuthHeaders не кладёт пустой ключ', () => {
 		assert.deepStrictEqual(buildAuthHeaders('', 'Authorization', 'Bearer'), {});

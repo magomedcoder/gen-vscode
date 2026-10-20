@@ -4,7 +4,7 @@ import type { ChatContentPart, ChatMessage } from './types';
 const ESTIMATE_FACTOR = 1.15;
 // Грубая эвристика: ~4 символа на токен (латиница/код); RU чуть плотнее - factor компенсирует
 const CHARS_PER_TOKEN = 4;
-const IMAGE_TOKEN_STUB = 300;
+const IMAGE_TOKEN_ESTIMATE = 300;
 const MSG_OVERHEAD_TOKENS = 4;
 
 export function estimateTextTokens(text: string): number {
@@ -29,7 +29,7 @@ function estimateContent(content: string | ChatContentPart[] | null | undefined)
 		if (part.type === 'text') {
 			n += estimateTextTokens(part.text);
 		} else {
-			n += IMAGE_TOKEN_STUB;
+			n += IMAGE_TOKEN_ESTIMATE;
 		}
 	}
 
