@@ -297,7 +297,7 @@ export function filterIgnoredPaths(
 	return paths.filter((rel) => !matchesSimpleIgnore(rel.replace(/\\/g, '/'), active));
 }
 
-export function matchesSimpleIgnore(rel: string, patterns: readonly string[]): boolean {
+function matchesSimpleIgnore(rel: string, patterns: readonly string[]): boolean {
 	const p = rel.replace(/\\/g, '/').replace(/^\.\//, '');
 	for (const raw of patterns) {
 		const pat = raw.trim().replace(/\\/g, '/');

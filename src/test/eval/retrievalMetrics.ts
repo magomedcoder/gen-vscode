@@ -1,9 +1,3 @@
-/**
- * Метрики качества retrieval для offline eval / CI gate.
- * Без сетевых embeddings: работает по уже ранжированным путям (trigram / merge fixtures).
- */
-
-// Нормализация пути для сравнения (POSIX, без ведущего ./)
 export function normalizeRetrievalPath(path: string): string {
 	return path.trim().replace(/\\/g, '/').replace(/^\.\//, '');
 }
@@ -26,7 +20,6 @@ function isRelevantPath(path: string, relevant: Set<string>): boolean {
 		return true;
 	}
 
-	// Допускаем совпадение по basename / суффиксу (chunk id -> path)
 	for (const r of relevant) {
 		if (n === r || n.endsWith(`/${r}`) || r.endsWith(`/${n}`)) {
 			return true;
@@ -36,7 +29,6 @@ function isRelevantPath(path: string, relevant: Set<string>): boolean {
 	return false;
 }
 
-// Precision@k: доля релевантных среди top-k (пустой ranked -> 0)
 export function precisionAtK(
 	rankedPaths: readonly string[],
 	relevant: Iterable<string>,
@@ -62,7 +54,6 @@ export function precisionAtK(
 	return hits / Math.min(k, top.length);
 }
 
-// Hit@k: есть ли хотя бы один релевантный в top-k
 export function hitAtK(
 	rankedPaths: readonly string[],
 	relevant: Iterable<string>,
@@ -76,10 +67,6 @@ export function hitAtK(
 	return top.some((p) => isRelevantPath(p, rel));
 }
 
-/**
- * Обратный ранг (reciprocal rank): 1/rank первого релевантного (1-based), иначе 0.
- * Rank считается в пределах всего ranked-списка (не только k).
- */
 export function reciprocalRank(
 	rankedPaths: readonly string[],
 	relevant: Iterable<string>,
@@ -95,9 +82,7 @@ export function reciprocalRank(
 
 export interface RetrievalCaseInput {
 	query: string;
-	// Ранжированные пути (уже отсортированы по убыванию score)
 	rankedPaths: readonly string[];
-	// Золотые релевантные пути
 	relevant: readonly string[];
 }
 
@@ -107,32 +92,25 @@ export interface RetrievalCaseMetrics {
 	precisionAtK: number;
 	hit: boolean;
 	reciprocalRank: number;
-	// Простой score кейса: среднее hit (0|1), P@k и RR
 	simpleScore: number;
 }
 
 export interface RetrievalSuiteMetrics {
 	k: number;
 	cases: RetrievalCaseMetrics[];
-	// Доля кейсов с hit@k
 	hitRate: number;
 	meanPrecisionAtK: number;
 	meanReciprocalRank: number;
-	// Простой suite score: среднее simpleScore по кейсам
 	simpleScore: number;
 }
 
 export interface RetrievalGateThresholds {
 	k: number;
-	// Мин. hit-rate по кейсам (0..1)
 	minHitRate: number;
-	// Мин. средний precision@k
 	minMeanPrecisionAtK: number;
-	// Мин. простой suite score
 	minSimpleScore: number;
 }
 
-// Пороги CI для offline-корпуса trigram/merge (без remote embeddings)
 export const DEFAULT_RETRIEVAL_GATE: RetrievalGateThresholds = {
 	k: 3,
 	minHitRate: 1,
@@ -194,7 +172,6 @@ export interface RetrievalGateResult {
 	thresholds: RetrievalGateThresholds;
 }
 
-// Проверка порогов без throw - удобно для отчёта в тесте
 export function checkRetrievalGate(
 	metrics: RetrievalSuiteMetrics,
 	thresholds: RetrievalGateThresholds = DEFAULT_RETRIEVAL_GATE,
@@ -226,7 +203,6 @@ export function checkRetrievalGate(
 	};
 }
 
-// Порог CI: бросает Error со списком провалов
 export function assertRetrievalGate(
 	metrics: RetrievalSuiteMetrics,
 	thresholds: RetrievalGateThresholds = DEFAULT_RETRIEVAL_GATE,

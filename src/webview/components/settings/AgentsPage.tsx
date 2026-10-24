@@ -15,7 +15,6 @@ interface AgentsPageProps {
 	agentsStatus?: string;
 	onLoadAgents?: () => void;
 	onCloneAgentPreset?: (id: string) => void;
-	// Активные research jobs из состояния чата (если доступны)
 	researchJobs?: ResearchJobUi[];
 }
 
@@ -35,7 +34,7 @@ export function AgentsPage({
 
 	return (
 		<>
-			<SettingsSection titleKey="chat.research.teamsLive" hintKey="chat.research.empty">
+			<SettingsSection titleKey="chat.research.teamsLive" hintKey="settings.section.agents.teamsHint">
 				{jobs.length > 0 ? (
 					<ResearchJobsPanel jobs={jobs} titleKey="chat.research.teamsLive" />
 				) : (

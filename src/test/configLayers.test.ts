@@ -3,7 +3,7 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { deepMerge, parseFileConfig, pickNonDefaultSettings, stripUiExcludedKeys, UI_LAYER_EXCLUDED_KEYS } from '../core/config/layers.js';
-import { applyAdminPolicy, matchAdminPattern, parseAdminPolicy, reloadAdminPolicy, resetAdminPolicyForTests, resolveAdminPolicyCandidates } from '../core/config/adminPolicy.js';
+import { applyAdminPolicy, matchAdminPattern, parseAdminPolicy, reloadAdminPolicy, resetAdminPolicyForTests, resolveAdminPolicyCandidates, setAdminPolicyPathForTests } from '../core/config/adminPolicy.js';
 import { DEFAULT_SETTINGS } from '../core/config/types.js';
 import { getGenUserConfigDir, getGenUserConfigPath } from '../core/config/userPaths.js';
 
@@ -67,16 +67,37 @@ suite('config layers', () => {
 		}
 	});
 
-	test('stripUiExcludedKeys убирает ключи команд/redact', () => {
+	test('stripUiExcludedKeys убирает JSON-only knobs (security + settings slim)', () => {
 		const stripped = stripUiExcludedKeys({
 			...DEFAULT_SETTINGS,
 			deniedCommands: ['curl'],
+			authHeader: 'X-Api-Key',
+			planWriteToFile: false,
+			outlineEngine: 'treesitter',
 			systemPrompt: 'keep',
 		});
 		assert.strictEqual(stripped.systemPrompt, 'keep');
 		assert.strictEqual('deniedCommands' in stripped, false);
 		assert.strictEqual('sensitivePathPatterns' in stripped, false);
 		assert.strictEqual('secretPatterns' in stripped, false);
+		assert.strictEqual('authHeader' in stripped, false);
+		assert.strictEqual('planWriteToFile' in stripped, false);
+		assert.strictEqual('outlineEngine' in stripped, false);
+		assert.ok(UI_LAYER_EXCLUDED_KEYS.includes('authHeader'));
+		assert.ok(UI_LAYER_EXCLUDED_KEYS.includes('outlineEngine'));
+	});
+
+	test('FILE_LAYER принимает auth/comments/image knobs для JSON-only UI', () => {
+		const parsed = parseFileConfig({
+			authHeader: 'X-Api-Key',
+			authScheme: '',
+			commentStyle: 'block',
+			previewBeforeApply: false,
+			attachmentImageMaxWidth: 1024,
+		});
+		assert.strictEqual(parsed.settings.authHeader, 'X-Api-Key');
+		assert.strictEqual(parsed.settings.commentStyle, 'block');
+		assert.strictEqual(parsed.settings.attachmentImageMaxWidth, 1024);
 	});
 
 	test('parseFileConfig: project может задать команды/redact; неизвестные ключи не попадают в settings', () => {
@@ -92,28 +113,16 @@ suite('config layers', () => {
 		assert.deepStrictEqual(parsed.settings.secretPatterns, ['token']);
 	});
 
-	test('getGenUserConfigPath уважает GEN_CONFIG_DIR и XDG', () => {
-		const prevGen = process.env.GEN_CONFIG_DIR;
+	test('getGenUserConfigPath уважает XDG / стандартные пути', () => {
 		const prevXdg = process.env.XDG_CONFIG_HOME;
 		try {
-			process.env.GEN_CONFIG_DIR = path.join(os.tmpdir(), 'gen-cfg-test');
-			assert.strictEqual(getGenUserConfigDir(), path.resolve(process.env.GEN_CONFIG_DIR));
-			assert.strictEqual(
-				getGenUserConfigPath(),
-				path.join(path.resolve(process.env.GEN_CONFIG_DIR), 'config.json'),
-			);
-
-			delete process.env.GEN_CONFIG_DIR;
+			assert.ok(getGenUserConfigPath().endsWith(`${path.sep}config.json`));
+			assert.ok(getGenUserConfigDir().length > 0);
 			if (process.platform === 'linux') {
 				process.env.XDG_CONFIG_HOME = path.join(os.tmpdir(), 'xdg-cfg');
 				assert.ok(getGenUserConfigDir().startsWith(process.env.XDG_CONFIG_HOME));
 			}
 		} finally {
-			if (prevGen === undefined) {
-				delete process.env.GEN_CONFIG_DIR;
-			} else {
-				process.env.GEN_CONFIG_DIR = prevGen;
-			}
 			if (prevXdg === undefined) {
 				delete process.env.XDG_CONFIG_HOME;
 			} else {
@@ -141,7 +150,6 @@ suite('config layers', () => {
 suite('admin policy', () => {
 	teardown(() => {
 		resetAdminPolicyForTests();
-		delete process.env.GEN_ADMIN_POLICY;
 	});
 
 	test('parseAdminPolicy: только ADMIN_POLICY_KEYS', () => {
@@ -165,10 +173,10 @@ suite('admin policy', () => {
 		assert.ok(!matchAdminPattern('corp-*', 'other'));
 	});
 
-	test('resolveAdminPolicyCandidates: GEN_ADMIN_POLICY wins', () => {
-		const custom = path.join(os.tmpdir(), 'gen-admin-policy.json');
-		process.env.GEN_ADMIN_POLICY = custom;
-		assert.deepStrictEqual(resolveAdminPolicyCandidates(), [path.resolve(custom)]);
+	test('resolveAdminPolicyCandidates: системный путь', () => {
+		const candidates = resolveAdminPolicyCandidates();
+		assert.strictEqual(candidates.length, 1);
+		assert.ok(candidates[0].endsWith(`${path.sep}gen${path.sep}policy.json`) || candidates[0].endsWith('/gen/policy.json'));
 	});
 
 	test('applyAdminPolicy: force keys', async () => {
@@ -183,7 +191,7 @@ suite('admin policy', () => {
 			}),
 			'utf8',
 		);
-		process.env.GEN_ADMIN_POLICY = file;
+		setAdminPolicyPathForTests(file);
 		const snap = await reloadAdminPolicy();
 		assert.strictEqual(snap.active, true);
 		assert.ok(snap.lockedKeys.includes('webSearchEnabled'));
@@ -200,8 +208,8 @@ suite('admin policy', () => {
 		fs.rmSync(dir, { recursive: true, force: true });
 	});
 
-	test('reloadAdminPolicy: missing GEN_ADMIN_POLICY * inactive', async () => {
-		process.env.GEN_ADMIN_POLICY = path.join(os.tmpdir(), 'gen-no-such-policy.json');
+	test('reloadAdminPolicy: missing path -> inactive', async () => {
+		setAdminPolicyPathForTests(path.join(os.tmpdir(), 'gen-no-such-policy.json'));
 		const snap = await reloadAdminPolicy();
 		assert.strictEqual(snap.active, false);
 		assert.deepStrictEqual(snap.lockedKeys, []);

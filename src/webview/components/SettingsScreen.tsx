@@ -1,38 +1,45 @@
 import { useEffect, useMemo, useState, type ReactNode, type SubmitEvent } from 'react';
 import type { AdminPolicyInfo, DesignSessionPayload, IndexEngineStatus, PersonaOption, ResearchJobUi } from '../../features/chat/protocol';
+import { UI_LAYER_EXCLUDED_KEYS } from '../../core/config/layerKeys';
 import type { GenSettings } from '../../core/config/types';
 import { DEFAULT_SETTINGS } from '../../core/config/types';
 import type { LlmModelOption } from '../../core/llm/types';
 import { t } from '../i18n';
+import { AgentBehaviorPage } from './settings/AgentBehaviorPage';
+import { AgentsPage, type AgentsPageData } from './settings/AgentsPage';
 import { ChatPage } from './settings/ChatPage';
-import { ConnectionPage } from './settings/ConnectionPage';
 import { HooksPage, type HooksPageData } from './settings/HooksPage';
 import { IndexingPage } from './settings/IndexingPage';
 import { LoggingPage } from './settings/LoggingPage';
+import { ModelsPage } from './settings/ModelsPage';
 import { SETTINGS_PAGE_CODICON, SETTINGS_PAGE_IDS, settingsNavTitleKey } from './settings/pages';
 import type { SettingsPageId } from './settings/pages';
 import { PermissionsPage } from './settings/PermissionsPage';
 import { PersonasPage } from './settings/PersonasPage';
+import { ProvidersPage } from './settings/ProvidersPage';
 import { RequestPage } from './settings/RequestPage';
 import { RulesSkillsPage, type RulesSkillsPageData } from './settings/RulesSkillsPage';
 import { SecurityPage } from './settings/SecurityPage';
+import { SettingsPageHeader } from './settings/SettingsPageHeader';
+import { SettingsSubNavProvider } from './settings/SettingsSubNav';
 import { UsagePage } from './settings/UsagePage';
-import { AgentBehaviorPage } from './settings/AgentBehaviorPage';
-import { AgentsPage, type AgentsPageData } from './settings/AgentsPage';
 
 interface SettingsScreenProps {
 	settings: GenSettings;
 	personas?: PersonaOption[];
-	// Баннер admin policy: заблокированные ключи
 	adminPolicy?: AdminPolicyInfo;
 	status?: string;
 	persistedAlwaysAllow?: string[];
 	models: LlmModelOption[];
 	modelsStatus?: string;
 	modelsLoading: boolean;
-	connectionHealth?: { 
+	connectionHealth?: {
 		ok: boolean;
-		message: string
+		message: string;
+		capabilities?: { 
+			contextLength?: number; 
+			toolsHint?: string 
+		};
 	};
 	connectionHealthLoading?: boolean;
 	indexStatus?: IndexEngineStatus;
@@ -68,9 +75,7 @@ interface SettingsScreenProps {
 	onLoadRulesSkills?: () => void;
 	onLoadPersonas?: () => void;
 	onOpenProjectPath?: (path: string) => void;
-	// Известный n_ctx сервера для предупреждения о maxContextTokens
 	cachedNCtx?: number;
-	// Активные research jobs (Teams) - из состояния чата, если Settings в том же webview
 	researchJobs?: ResearchJobUi[];
 }
 
@@ -133,7 +138,7 @@ export function SettingsScreen({
 	cachedNCtx,
 	researchJobs,
 }: SettingsScreenProps) {
-	const [page, setPage] = useState<SettingsPageId>('connection');
+	const [page, setPage] = useState<SettingsPageId>('providers');
 	const [draft, setDraft] = useState<GenSettings>(settings);
 	const [persistedAlwaysAllowDraft, setPersistedAlwaysAllowDraft] = useState<string[]>(persistedAlwaysAllowProp);
 
@@ -168,8 +173,23 @@ export function SettingsScreen({
 		});
 	}, [models]);
 
+	const updateDraft = (fn: (prev: GenSettings) => GenSettings) => {
+		setDraft((prev) => {
+			const next = fn(prev);
+			if (lockedKeySet.size === 0) {
+				return next;
+			}
+
+			const out = { ...next };
+			for (const key of lockedKeySet) {
+				(out as Record<string, unknown>)[key] = prev[key as keyof GenSettings];
+			}
+
+			return out;
+		});
+	};
+
 	const setField = <K extends keyof GenSettings>(key: K, value: GenSettings[K]) => {
-		// Заблокированные admin-ключи - только чтение
 		if (lockedKeySet.has(key)) {
 			return;
 		}
@@ -178,16 +198,15 @@ export function SettingsScreen({
 
 	const onReset = () => {
 		const next: GenSettings = { ...DEFAULT_SETTINGS };
-		// Принудительные admin-значения остаются из эффективных настроек
 		for (const key of lockedKeySet) {
 			if (key in settings) {
 				(next as unknown as Record<string, unknown>)[key] = settings[key as keyof GenSettings];
 			}
 		}
-		// Команды и redact не из UI; сохраняем эффективное значение (project/user/default)
-		next.sensitivePathPatterns = [...settings.sensitivePathPatterns];
-		next.deniedCommands = [...settings.deniedCommands];
-		next.secretPatterns = [...settings.secretPatterns];
+		
+		for (const key of UI_LAYER_EXCLUDED_KEYS) {
+			(next as unknown as Record<string, unknown>)[key] = structuredClone(settings[key]);
+		}
 
 		setDraft(next);
 		onSave(next);
@@ -210,7 +229,9 @@ export function SettingsScreen({
 					<span className="header__title">{t('settings.title')}</span>
 					<span className="header__subtitle">{currentTitle}</span>
 				</div>
-				<button className="btn btn--secondary" type="button" onClick={onReset}>{t('settings.reset')}</button>
+				<button className="btn btn--secondary" type="button" onClick={onReset} title={t('settings.reset.hint')}>
+					{t('settings.reset')}
+				</button>
 			</header>
 
 			{showAdminBanner ? (
@@ -234,55 +255,63 @@ export function SettingsScreen({
 
 				<div className="settings-main">
 					<div className="settings">
-						{page === 'connection' ? (
-							<>
-								<ConnectionPage
-									draft={draft}
-									setField={setField}
-									models={models}
-									modelsStatus={modelsStatus}
-									modelsLoading={modelsLoading}
-									connectionHealth={connectionHealth}
-									connectionHealthLoading={connectionHealthLoading}
-									onLoadModels={onLoadModels}
-									onCheckConnection={onCheckConnection}
-								/>
-								<RequestPage
-									draft={draft}
-									setField={setField}
-									cachedNCtx={cachedNCtx}
-								/>
-							</>
+						<SettingsSubNavProvider key={page}>
+						{page === 'providers' ? (
+							<ProvidersPage
+								draft={draft}
+								setField={setField}
+								connectionHealth={connectionHealth}
+								connectionHealthLoading={connectionHealthLoading}
+								onLoadModels={onLoadModels}
+								onCheckConnection={onCheckConnection}
+							/>
+						) : null}
+						{page === 'models' ? (
+							<ModelsPage
+								draft={draft}
+								setField={setField}
+								models={models}
+								modelsStatus={modelsStatus}
+								modelsLoading={modelsLoading}
+								onLoadModels={onLoadModels}
+							/>
+						) : null}
+						{page === 'request' ? (
+							<RequestPage
+								draft={draft}
+								setField={setField}
+								cachedNCtx={cachedNCtx}
+							/>
 						) : null}
 						{page === 'chat' ? (
 							<ChatPage
 								draft={draft}
 								setField={setField}
-								personas={personas}
-								onOpenPersonasPage={() => setPage('project')}
+								updateDraft={updateDraft}
 							/>
 						) : null}
 						{page === 'agent' ? (
-							<AgentBehaviorPage draft={draft} setField={setField} />
+							<AgentBehaviorPage draft={draft} setField={setField} updateDraft={updateDraft} />
 						) : null}
 						{page === 'security' ? (
-							<>
-								<SecurityPage
-									draft={draft}
-									setField={setField}
-									designSession={designSession}
-									onLoadDesignSession={onLoadDesignSession}
-								/>
-								<PermissionsPage
-									draft={draft}
-									setField={setField}
-									persistedAlwaysAllow={persistedAlwaysAllowDraft}
-									onPersistedAlwaysAllowChange={setPersistedAlwaysAllowDraft}
-								/>
-							</>
+							<SecurityPage
+								draft={draft}
+								setField={setField}
+								designSession={designSession}
+								onLoadDesignSession={onLoadDesignSession}
+							/>
+						) : null}
+						{page === 'permissions' ? (
+							<PermissionsPage
+								draft={draft}
+								setField={setField}
+								persistedAlwaysAllow={persistedAlwaysAllowDraft}
+								onPersistedAlwaysAllowChange={setPersistedAlwaysAllowDraft}
+							/>
 						) : null}
 						{page === 'project' ? (
 							<>
+								<SettingsPageHeader pageId="project" />
 								<IndexingPage
 									draft={draft}
 									setField={setField}
@@ -322,6 +351,7 @@ export function SettingsScreen({
 						) : null}
 						{page === 'journal' ? (
 							<>
+								<SettingsPageHeader pageId="journal" />
 								<UsagePage draft={draft} setField={setField} />
 								<LoggingPage
 									draft={draft}
@@ -330,6 +360,7 @@ export function SettingsScreen({
 								/>
 							</>
 						) : null}
+						</SettingsSubNavProvider>
 					</div>
 
 					<div className="settings-footer">

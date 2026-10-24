@@ -20,8 +20,6 @@
 	"command.manageWorktrees.title": "Gen: Управление worktrees",
 	"command.dryRunHook.title": "Gen: Тестовый запуск hook-события",
 	"command.designPickFromClipboard.title": "Gen: Design - URL из буфера",
-	"command.hunkAccept.title": "Принять хунк (Keep)",
-	"command.hunkReject.title": "Отклонить хунк (Undo)",
 	"command.generateCommitMessage.title": "Gen: Сгенерировать Commit Message",
 	"command.abortCommitMessage.title": "Gen: Отменить Commit Message",
 	"viewsContainers.panel.gen.title": "Gen",

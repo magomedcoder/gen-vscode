@@ -217,7 +217,14 @@ export type ToWebviewMessage = | { type: 'state'; state: ChatViewState }
 	| { type: 'settingsError'; message: string }
 	| { type: 'models'; models: Array<{ id: string; label: string }>; requestId: number }
 	| { type: 'modelsError'; message: string; requestId: number }
-	| { type: 'connectionHealth'; ok: boolean; modelCount: number; message: string; requestId: number }
+	| {
+		type: 'connectionHealth';
+		ok: boolean;
+		modelCount: number;
+		message: string;
+		requestId: number;
+		capabilities?: { contextLength?: number; toolsHint?: string };
+	}
 	| { type: 'mentionSuggestions'; requestId: number; items: MentionSuggestion[] }
 	// Ответ на resolveComposerUris: относительные пути workspace для chips
 	| { type: 'composerUrisResolved'; requestId: number; items: Array<{ path: string; kind: 'file' | 'folder' }> }

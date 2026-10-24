@@ -56,6 +56,7 @@ export class LlmHostRequests {
 				modelCount: health.modelCount,
 				message: health.message,
 				requestId,
+				capabilities: health.capabilities,
 			});
 		} catch (err) {
 			if (isAbortError(err) || controller.signal.aborted) {

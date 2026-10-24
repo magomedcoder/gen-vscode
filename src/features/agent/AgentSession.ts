@@ -697,7 +697,7 @@ export class AgentSession {
 			}
 
 			if (toolCalls.length === 0) {
-				if (!content) {
+				if (!content && !thinking) {
 					params.ui.update(assistantId, {
 						content: vscode.l10n.t('agent.emptyModelReply'),
 					});

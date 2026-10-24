@@ -59,7 +59,7 @@ Remote skills and instruction URLs use a persistent cache, accept optional `#sha
 
 - User JSON + project `.gen/config.json` merge into effective `GenSettings` (`src/core/config/layers.ts`).
 - Settings UI (`globalState`) stores only non-default keys and **never** `deniedCommands` / `sensitivePathPatterns` / `secretPatterns` (`UI_LAYER_EXCLUDED_KEYS`).
-- Optional **admin policy** (`GEN_ADMIN_POLICY` / `/etc/gen/policy.json` / `%ProgramData%/gen/policy.json`) locks a security subset - highest precedence (`src/core/config/adminPolicy.ts`).
+- Optional **admin policy** (`/etc/gen/policy.json` / `%ProgramData%/gen/policy.json`) locks a security subset - highest precedence (`src/core/config/adminPolicy.ts`).
 - Precedence: defaults -> user -> UI (non-default) -> project -> **admin policy**. Remote `.well-known` / full MDM not implemented.
 - Details: [settings.md](settings.md).
 

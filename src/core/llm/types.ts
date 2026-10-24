@@ -88,11 +88,18 @@ export interface ListModelsParams {
 	signal?: AbortSignal;
 }
 
+// Capabilities, если сервер отдал в /v1/models (report-only)
+export interface ConnectionCapabilities {
+	contextLength?: number;
+	toolsHint?: string;
+}
+
 // Результат GET /v1/models как health-probe соединения
 export interface ConnectionHealthResult {
 	ok: boolean;
 	modelCount: number;
 	message: string;
+	capabilities?: ConnectionCapabilities;
 }
 
 export interface LlmClient {

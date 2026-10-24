@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import { stripComments } from './styles';
 
 export type { CommentStyleConfig, CommentStyleId } from './styles';
-export { stripComments, resolveCommentStyleId, getCommentStyleConfig, COMMENT_STYLES } from './styles';
+export { stripComments, resolveCommentStyleId, getCommentStyleConfig } from './styles';
 
 export interface ValidationResult {
 	ok: boolean;

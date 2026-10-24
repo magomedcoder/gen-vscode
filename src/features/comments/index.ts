@@ -8,7 +8,7 @@ export { runCommentPipeline } from './runCommentPipeline';
 export { buildCommentMessages } from './commentPrompt';
 export { pickFewShot } from './commentFewShot';
 export { extractCommentedCode } from './extractCommentedCode';
-export { validateUnchangedCode, stripComments, resolveCommentStyleId, getCommentStyleConfig, COMMENT_STYLES } from './validateUnchangedCode';
+export { validateUnchangedCode, stripComments, resolveCommentStyleId, getCommentStyleConfig } from './validateUnchangedCode';
 export type { CommentStyleConfig, CommentStyleId } from './validateUnchangedCode';
 
 // Команды comment selection / file

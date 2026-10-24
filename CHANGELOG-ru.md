@@ -2,6 +2,7 @@
 
 ## dev
 
+- **Settings:** упрощение настроек - 9 экранов, только essentials (редкие knobs -> JSON); drill-down секции; один Base URL без профилей; ключи только в SecretStorage; убраны loopback/Secrets UI и связанный мёртвый код
 - **Patch apply:** tool `apply_diff` (unified diff как primary, multi-file); search-replace fallback с устойчивым `old_string` (exact -> переносы -> unique whitespace) + цепочка в `apply_workspace_edit`; при fail: одна retry + auto `read_file` в ответе tool
 - **Chat modes:** единый реестр `CHAT_MODE_DEFS`; в composer - select всех режимов; Settings + slash из того же списка; убраны legacy Ask/Agent toggle, mode-badge
 - **IDE / DX:** `gen.generateCommitMessage` (+ Abort) в SCM title; opt-in gen Tab `InlineCompletionItemProvider` (`inlineCompletionEnabled`)

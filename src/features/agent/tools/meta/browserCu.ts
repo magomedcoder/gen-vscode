@@ -12,11 +12,8 @@ type BrowserAction = (typeof ACTIONS)[number];
 
 // Сессия Playwright без жёстких типов (optional dep; типы зависят от установки)
 type CuSession = {
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	browser: any;
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	context: any;
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	page: any;
 	consoleLogs: string[];
 	cdp: boolean;
@@ -200,7 +197,6 @@ export const browserActionTool: ToolDefinition = {
 				height: Math.max(240, settings.browserViewportHeight || 720),
 			};
 
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any
 			const chromium = pw.chromium as any;
 			let browser: CuSession['browser'];
 			let cdp = false;

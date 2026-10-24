@@ -2,7 +2,9 @@ import { useEffect, useState } from 'react';
 import type { IndexEngineStatus } from '../../../features/chat/protocol';
 import { t } from '../../i18n';
 import type { SettingsPageProps } from './pages';
-import { FieldSelect, FieldText, FieldTextarea, FieldToggle } from './SettingsFields';
+import { JsonOnlyHint } from './JsonOnlyHint';
+import { SettingsBlock, SettingsCallout, SettingsToolbar } from './SettingsChrome';
+import { FieldToggle } from './SettingsFields';
 import { SettingsSection } from './SettingsSection';
 
 interface IndexingPageProps extends SettingsPageProps {
@@ -71,7 +73,7 @@ function formatTreeSitterLangList(langs: string[]): string {
 	if (joined.length <= TREE_SITTER_LANGS_DISPLAY_MAX) {
 		return joined;
 	}
-	
+
 	return `${joined.slice(0, TREE_SITTER_LANGS_DISPLAY_MAX - 1)}...`;
 }
 
@@ -200,7 +202,7 @@ function showRepairButton(status: IndexEngineStatus): boolean {
 	if (!status.indexingEnabled) {
 		return false;
 	}
-	
+
 	if (status.progressState === 'indexing') {
 		return false;
 	}
@@ -229,161 +231,94 @@ export function IndexingPage({
 		onLoadIndexStatus?.();
 	}, [onLoadIndexStatus]);
 
-	return (
-		<SettingsSection titleKey="settings.section.indexing" hintKey="settings.section.indexingHint">
-			{indexStatus ? (
-				<div className="field field-status" role="status">
-					<span className="field__label">{buildIndexEngineLine(indexStatus)}</span>
-					<span className="field__hint">{t('settings.indexEngine.hint')}</span>
-					{buildIndexExtrasLine(indexStatus) ? (
-						<span className="field__hint">{buildIndexExtrasLine(indexStatus)}</span>
-					) : null}
-					{indexStatus.treeSitterMissingWasm && indexStatus.treeSitterMissingWasm.length > 0 ? (
-						<TreeSitterMissingWasmBlock langs={indexStatus.treeSitterMissingWasm} />
-					) : null}
-					{indexStatus.lastError ? (
-						<span className="field__hint field__hint--error">{indexStatus.lastError}</span>
-					) : null}
-					{indexStatus.partialErrors && indexStatus.partialErrors.length > 0 ? (
-						<span className="field__hint field__hint--error">
-							{indexStatus.partialErrors.slice(0, 5).join('\n')}
-							{indexStatus.partialErrors.length > 5
-								? `\n...+${indexStatus.partialErrors.length - 5}`
-								: ''}
-						</span>
-					) : null}
-					<div className="field__actions" style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
-						{indexStatus.progressState === 'indexing' ? (
-							<button
-								className="btn btn--secondary"
-								type="button"
-								onClick={() => onCancelIndex?.()}
-							>
-								{t('settings.indexEngine.cancel')}
-							</button>
-						) : null}
-						{showRepairButton(indexStatus) ? (
-							<button
-								className="btn btn--secondary"
-								type="button"
-								onClick={() => onRepairIndex?.()}
-							>
-								{t('settings.indexEngine.repair')}
-							</button>
-						) : null}
-					</div>
-				</div>
-			) : null}
+	const statusTone = !indexStatus
+		? 'neutral'
+		: indexStatus.progressState === 'error' || indexStatus.corrupt
+			? 'error'
+			: indexStatus.progressState === 'indexing'
+				? 'warn'
+				: 'ok';
 
-			<FieldToggle
-				labelKey="settings.indexingEnabled.label"
-				hintKey="settings.indexingEnabled.hint"
-				checked={draft.indexingEnabled}
-				onChange={(v) => setField('indexingEnabled', v)}
-			/>
-			<FieldToggle
-				labelKey="settings.indexNewFolders.label"
-				hintKey="settings.indexNewFolders.hint"
-				checked={draft.indexNewFolders}
-				onChange={(v) => setField('indexNewFolders', v)}
-			/>
-			<FieldToggle
-				labelKey="settings.indexForGrep.label"
-				hintKey="settings.indexForGrep.hint"
-				checked={draft.indexForGrep}
-				onChange={(v) => setField('indexForGrep', v)}
-			/>
-			<FieldSelect
-				labelKey="settings.localEmbeddingsMode.label"
-				hintKey="settings.localEmbeddingsMode.hint"
-				value={draft.localEmbeddingsMode}
-				onChange={(v) =>
-					setField('localEmbeddingsMode', v as typeof draft.localEmbeddingsMode)
-				}
+	return (
+		<>
+			<SettingsBlock
+				titleKey="settings.section.indexing"
+				hintKey="settings.section.indexingHint"
 			>
-				<option value="off">{t('settings.localEmbeddingsMode.off')}</option>
-				<option value="trigram">{t('settings.localEmbeddingsMode.trigram')}</option>
-				<option value="vector">{t('settings.localEmbeddingsMode.vector')}</option>
-			</FieldSelect>
-			<FieldSelect
-				labelKey="settings.outlineEngine.label"
-				hintKey="settings.outlineEngine.hint"
-				value={draft.outlineEngine}
-				onChange={(v) => setField('outlineEngine', v as typeof draft.outlineEngine)}
+				{indexStatus ? (
+					<SettingsCallout tone={statusTone}>
+						<p className="settings-callout__text">{buildIndexEngineLine(indexStatus)}</p>
+						<p className="settings-callout__meta">{t('settings.indexEngine.hint')}</p>
+						{buildIndexExtrasLine(indexStatus) ? (
+							<p className="settings-callout__meta">{buildIndexExtrasLine(indexStatus)}</p>
+						) : null}
+						{indexStatus.lastError ? (
+							<p className="settings-callout__meta field__hint--error">{indexStatus.lastError}</p>
+						) : null}
+						{indexStatus.partialErrors && indexStatus.partialErrors.length > 0 ? (
+							<p className="settings-callout__meta field__hint--error">
+								{indexStatus.partialErrors.slice(0, 5).join('\n')}
+								{indexStatus.partialErrors.length > 5
+									? `\n...+${indexStatus.partialErrors.length - 5}`
+									: ''}
+							</p>
+						) : null}
+						<SettingsToolbar>
+							{indexStatus.progressState === 'indexing' ? (
+								<button
+									className="btn btn--secondary"
+									type="button"
+									onClick={() => onCancelIndex?.()}
+								>
+									{t('settings.indexEngine.cancel')}
+								</button>
+							) : null}
+							{showRepairButton(indexStatus) ? (
+								<button
+									className="btn btn--secondary"
+									type="button"
+									onClick={() => onRepairIndex?.()}
+								>
+									{t('settings.indexEngine.repair')}
+								</button>
+							) : null}
+						</SettingsToolbar>
+					</SettingsCallout>
+				) : null}
+
+				{indexStatus?.treeSitterMissingWasm && indexStatus.treeSitterMissingWasm.length > 0 ? (
+					<TreeSitterMissingWasmBlock langs={indexStatus.treeSitterMissingWasm} />
+				) : null}
+
+				<div className="settings-toggle-stack">
+					<FieldToggle
+						labelKey="settings.indexingEnabled.label"
+						hintKey="settings.indexingEnabled.hint"
+						checked={draft.indexingEnabled}
+						onChange={(v) => setField('indexingEnabled', v)}
+					/>
+					<FieldToggle
+						labelKey="settings.indexNewFolders.label"
+						hintKey="settings.indexNewFolders.hint"
+						checked={draft.indexNewFolders}
+						onChange={(v) => setField('indexNewFolders', v)}
+					/>
+					<FieldToggle
+						labelKey="settings.indexForGrep.label"
+						hintKey="settings.indexForGrep.hint"
+						checked={draft.indexForGrep}
+						onChange={(v) => setField('indexForGrep', v)}
+					/>
+				</div>
+			</SettingsBlock>
+
+			<SettingsSection
+				titleKey="settings.section.indexing.advanced"
+				hintKey="settings.section.indexing.advancedHint"
+				defaultOpen={false}
 			>
-				<option value="auto">{t('settings.outlineEngine.auto')}</option>
-				<option value="treesitter">{t('settings.outlineEngine.treesitter')}</option>
-				<option value="lsp">{t('settings.outlineEngine.lsp')}</option>
-				<option value="typescript">{t('settings.outlineEngine.typescript')}</option>
-			</FieldSelect>
-			<FieldSelect
-				labelKey="settings.chunkEngine.label"
-				hintKey="settings.chunkEngine.hint"
-				value={draft.chunkEngine}
-				onChange={(v) => setField('chunkEngine', v as typeof draft.chunkEngine)}
-			>
-				<option value="auto">{t('settings.chunkEngine.auto')}</option>
-				<option value="treesitter">{t('settings.chunkEngine.treesitter')}</option>
-				<option value="lines">{t('settings.chunkEngine.lines')}</option>
-			</FieldSelect>
-			<FieldTextarea
-				labelKey="settings.treeSitterLanguages.label"
-				hintKey="settings.treeSitterLanguages.hint"
-				code
-				rows={2}
-				value={draft.treeSitterLanguages.join('\n')}
-				onChange={(v) => setField('treeSitterLanguages', v.split(/\r?\n/))}
-			/>
-			<FieldSelect
-				labelKey="settings.treeSitterUseWorker.label"
-				hintKey="settings.treeSitterUseWorker.hint"
-				value={draft.treeSitterUseWorker ? 'on' : 'off'}
-				onChange={(v) => setField('treeSitterUseWorker', v === 'on')}
-			>
-				<option value="off">{t('settings.treeSitterUseWorker.off')}</option>
-				<option value="on">{t('settings.treeSitterUseWorker.on')}</option>
-			</FieldSelect>
-			<FieldToggle
-				labelKey="settings.indexForceContentHash.label"
-				hintKey="settings.indexForceContentHash.hint"
-				checked={draft.indexForceContentHash}
-				onChange={(v) => setField('indexForceContentHash', v)}
-			/>
-			<FieldSelect
-				labelKey="settings.indexStorageBackend.label"
-				hintKey="settings.indexStorageBackend.hint"
-				value={draft.indexStorageBackend}
-				onChange={(v) => setField('indexStorageBackend', v as typeof draft.indexStorageBackend)}
-			>
-				<option value="json">{t('settings.indexStorageBackend.json')}</option>
-				<option value="sqlite">{t('settings.indexStorageBackend.sqlite')}</option>
-			</FieldSelect>
-			<FieldText
-				labelKey="settings.indexSqliteMinFiles.label"
-				hintKey="settings.indexSqliteMinFiles.hint"
-				value={String(draft.indexSqliteMinFiles)}
-				onChange={(v) => setField('indexSqliteMinFiles', Math.max(0, Number(v) || 0))}
-			/>
-			<FieldText
-				labelKey="settings.embeddingsBaseUrl.label"
-				hintKey="settings.embeddingsBaseUrl.hint"
-				value={draft.embeddingsBaseUrl}
-				onChange={(v) => setField('embeddingsBaseUrl', v)}
-			/>
-			<FieldText
-				labelKey="settings.embeddingsModel.label"
-				hintKey="settings.embeddingsModel.hint"
-				value={draft.embeddingsModel}
-				onChange={(v) => setField('embeddingsModel', v)}
-			/>
-			<FieldTextarea
-				labelKey="settings.watcherIgnore.label"
-				hintKey="settings.watcherIgnore.hint"
-				code
-				rows={3}
-				value={draft.watcherIgnore.join('\n')}
-				onChange={(v) => setField('watcherIgnore', v.split(/\r?\n/))}
-			/>
-		</SettingsSection>
+				<JsonOnlyHint messageKey="settings.indexing.jsonOnlyHint" />
+			</SettingsSection>
+		</>
 	);
 }

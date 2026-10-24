@@ -4,9 +4,9 @@ const JS_EXT = /\.(?:[cm]?[jt]s|tsx|jsx)$/i;
 const PY_EXT = /\.py$/i;
 const GO_EXT = /\.go$/i;
 
-export type ImportLang = 'js' | 'python' | 'go';
+type ImportLang = 'js' | 'python' | 'go';
 
-export function detectImportLang(rel: string): ImportLang | undefined {
+function detectImportLang(rel: string): ImportLang | undefined {
 	if (JS_EXT.test(rel)) {
 		return 'js';
 	}
@@ -26,7 +26,7 @@ export function isGraphPath(rel: string): boolean {
 	return detectImportLang(rel) !== undefined;
 }
 
-export function isJsLikePath(rel: string): boolean {
+function isJsLikePath(rel: string): boolean {
 	return JS_EXT.test(rel);
 }
 
@@ -97,7 +97,7 @@ export function extractPythonImports(source: string): string[] {
 	return [...new Set(out)];
 }
 
-export function extractGoImports(source: string): string[] {
+function extractGoImports(source: string): string[] {
 	const out: string[] = [];
 	const block = /import\s*\(([\s\S]*?)\)/g;
 	let m: RegExpExecArray | null;
@@ -124,7 +124,7 @@ export function extractGoImports(source: string): string[] {
  * Диапазоны Tree-sitter и текст import-узла -> относительные спецификаторы для JS.
  * Резервный вариант: регулярное выражение extractJsImports.
  */
-export function extractImportsForFile(
+function extractImportsForFile(
 	rel: string,
 	source: string,
 	opts?: { treeSitterImportSpecs?: string[] },
@@ -154,7 +154,7 @@ function stripExt(rel: string): string {
 	return rel.replace(/\.(?:[cm]?[jt]s|tsx|jsx|py|go)$/i, '');
 }
 
-export function resolveImportSpec(
+function resolveImportSpec(
 	fromFile: string,
 	spec: string,
 	fileSet: Set<string>,

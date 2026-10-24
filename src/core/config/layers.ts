@@ -4,7 +4,10 @@ import * as vscode from 'vscode';
 import { GEN_CONFIG_RELATIVE } from '../../features/project/config';
 import { getAdminPolicySnapshot, reloadAdminPolicy, resolveAdminPolicyCandidates } from './adminPolicy';
 import { DEFAULT_SETTINGS, type GenSettings } from './types';
+import { FILE_LAYER_KEYS, UI_LAYER_EXCLUDED_KEYS } from './layerKeys';
 import { getGenUserConfigPath } from './userPaths';
+
+export { FILE_LAYER_KEYS, UI_LAYER_EXCLUDED_KEYS, type FileLayerKey } from './layerKeys';
 
 /**
  * Слои JSON-конфигурации: локальные слои, без `.well-known`.
@@ -15,21 +18,11 @@ import { getGenUserConfigPath } from './userPaths';
  * 3. Gen Settings UI (`globalState`) - только ключи, отличающиеся от defaults
  *    (без `UI_LAYER_EXCLUDED_KEYS` - команды/redact только в пользовательском/проектном JSON)
  * 4. проект: `<workspace>/.gen/config.json`
- * 5. admin policy (`GEN_ADMIN_POLICY` / `/etc/gen/policy.json` / ProgramData) - locked-ключи
+ * 5. admin policy (`/etc/gen/policy.json` / ProgramData) - locked-ключи
  *
  * VSCode `contributes.configuration` пуст (чат только в panel); knobs - Gen Settings / JSON-слои.
  * UI настроек не ломаем: слои аддитивны; проект перекрывает пользователя и UI только по явно заданным в JSON ключам; admin нельзя обойти.
  */
-
-/**
- * Не из UI настроек/globalState - только пользовательский/проектный JSON.
- * Игнор путей/папок - `.genignore`, не эти ключи.
- */
-export const UI_LAYER_EXCLUDED_KEYS = [
-	'sensitivePathPatterns',
-	'deniedCommands',
-	'secretPatterns',
-] as const satisfies readonly (keyof GenSettings)[];
 
 // Убрать из blob ключи, которые UI-слой не хранит
 export function stripUiExcludedKeys<T extends Partial<GenSettings>>(input: T): T {
@@ -40,104 +33,6 @@ export function stripUiExcludedKeys<T extends Partial<GenSettings>>(input: T): T
 
 	return out as T;
 }
-
-/** Ключи GenSettings, которые можно задать в JSON-слоях */
-export const FILE_LAYER_KEYS = [
-	'systemPrompt',
-	'commentSystemPrompt',
-	'primaryTools',
-	'modelRoutedPatch',
-	'watcherIgnore',
-	'webSearchEnabled',
-	'webSearchBackend',
-	'webSearchHttpUrl',
-	'webSearchHttpHeader',
-	'webFetchEnabled',
-	'designScreenshotEnabled',
-	'browserComputerUseEnabled',
-	'browserViewportWidth',
-	'browserViewportHeight',
-	'browserCdpEndpoint',
-	'browserChromePath',
-	'inlineCompletionEnabled',
-	'privacyMode',
-	'blockNonLocalUrls',
-	'skillsPaths',
-	'skillsUrls',
-	'instructionUrls',
-	'trustedPlugins',
-	'personaId',
-	'deniedCommands',
-	'sensitivePathPatterns',
-	'secretPatterns',
-	'allowExternalDirectory',
-	'enableTerminal',
-	'enableFileReading',
-	'enableWorkspaceContext',
-	'alwaysOnWorkspaceContext',
-	'indexingEnabled',
-	'indexNewFolders',
-	'indexForGrep',
-	'formatAfterEdit',
-	'agentMaxIterations',
-	'autoApprove',
-	'persistAlwaysAllow',
-	'continueLoopOnDeny',
-	'approvalPolicy',
-	'baseUrl',
-	'smallModel',
-	'planModel',
-	'actModel',
-	'temperature',
-	'maxTokens',
-	'maxContextTokens',
-	'contextOverflowPolicy',
-	'requestTimeoutMs',
-	'defaultToolTimeoutMs',
-	'maxToolTimeoutMs',
-	'maxInputChars',
-	'planWriteToFile',
-	'planShellPolicy',
-	'snapshotEnabled',
-	'subagentDepth',
-	'worktreesEnabled',
-	'worktreeStartCommand',
-	'toolOutputMaxChars',
-	'toolOutputModelMaxChars',
-	'gitSyncAutoKeep',
-	'embeddingsBaseUrl',
-	'embeddingsModel',
-	'localEmbeddingsMode',
-	'outlineEngine',
-	'chunkEngine',
-	'treeSitterLanguages',
-	'treeSitterUseWorker',
-	'indexForceContentHash',
-	'indexStorageBackend',
-	'indexSqliteMinFiles',
-	'compactTailTurns',
-	'compactPruneToolResults',
-	'compactReservedTokens',
-	'midLoopAutoCompact',
-	'llmAutoCompact',
-	'chatMode',
-	'shareMode',
-	'revealOnEdit',
-	'backgroundEditMode',
-	'notifyOnComplete',
-	'notifySoundOnComplete',
-	'loggingEnabled',
-	'visionEnabled',
-	'attachmentImageQuality',
-	'pdfVisionMaxPages',
-	'thinkingDisplay',
-	'toolDetailsExpanded',
-	'maxTabCount',
-	'maxConcurrentRuns',
-	'tabEvictionPolicy',
-] as const satisfies readonly (keyof GenSettings)[];
-
-export type FileLayerKey = (typeof FILE_LAYER_KEYS)[number];
 
 const FILE_LAYER_KEY_SET = new Set<string>(FILE_LAYER_KEYS);
 
@@ -580,7 +475,7 @@ export function initConfigLayers(context: vscode.ExtensionContext): void {
 		);
 	} catch {}
 
-	// Admin policy (системный путь / GEN_ADMIN_POLICY)
+	// Admin policy (системный путь)
 	for (const policyPath of resolveAdminPolicyCandidates()) {
 		try {
 			const policyWatcher = vscode.workspace.createFileSystemWatcher(policyPath);

@@ -37,7 +37,7 @@ function formatRemaining(ms: number): string {
 }
 
 // Схлопывает подряд идущие одинаковые строки в `строка *N`
-export function collapseRepeatedLines(text: string): string {
+function collapseRepeatedLines(text: string): string {
 	if (!text) {
 		return text;
 	}

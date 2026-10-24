@@ -1,38 +1,42 @@
-import type { PersonaOption } from '../../../features/chat/protocol';
+import { applyWorkspaceContextScale, readWorkspaceContextScale } from '../../../core/config/connections';
+import type { WorkspaceContextScale } from '../../../core/config/connections';
 import { CHAT_MODE_DEFS } from '../../../features/chat/chatModes';
-import type { ChatMode, CommentStyle, ThinkingDisplay } from '../../../core/config/types';
+import type { ChatMode, ThinkingDisplay } from '../../../core/config/types';
 import { t } from '../../i18n';
+import { JsonOnlyHint } from './JsonOnlyHint';
 import type { SettingsPageProps } from './pages';
-import { FieldSelect, FieldTextarea, FieldToggle } from './SettingsFields';
+import { SettingsBlock } from './SettingsChrome';
+import { FieldSelect, FieldToggle } from './SettingsFields';
+import { SettingsPageHeader } from './SettingsPageHeader';
 import { SettingsSection } from './SettingsSection';
-
-interface ChatPageProps extends SettingsPageProps {
-	personas?: PersonaOption[];
-	onOpenPersonasPage?: () => void;
-}
 
 export function ChatPage({
 	draft,
 	setField,
-	personas = [],
-	onOpenPersonasPage,
-}: ChatPageProps) {
-	const personaValue = draft.personaId && personas.some((p) => p.id === draft.personaId) ? draft.personaId : '';
+	updateDraft,
+}: SettingsPageProps) {
+	const contextScale = readWorkspaceContextScale(draft);
 
 	return (
 		<>
-			<span className="field__hint">{t('settings.chat.referencesHint')}</span>
+			<SettingsPageHeader pageId="chat" />
 
-			<SettingsSection titleKey="settings.section.chat.basics" hintKey="settings.section.chat.basicsHint" defaultOpen={false}>
-				<FieldSelect
-					labelKey="settings.chatMode.label"
-					value={draft.chatMode}
-					onChange={(v) => setField('chatMode', v as ChatMode)}
-				>
-					{CHAT_MODE_DEFS.map((def) => (
-						<option key={def.id} value={def.id}>{t(def.labelKey)}</option>
-					))}
-				</FieldSelect>
+			<SettingsBlock
+				titleKey="settings.section.chat.basics"
+				hintKey="settings.section.chat.basicsHint"
+			>
+				<label className="field">
+					<span className="field__label">{t('settings.chatMode.label')}</span>
+					<select
+						className="field__input field__input--lg"
+						value={draft.chatMode}
+						onChange={(e) => setField('chatMode', e.target.value as ChatMode)}
+					>
+						{CHAT_MODE_DEFS.map((def) => (
+							<option key={def.id} value={def.id}>{t(def.labelKey)}</option>
+						))}
+					</select>
+				</label>
 
 				<FieldSelect
 					labelKey="settings.thinkingDisplay.label"
@@ -51,72 +55,58 @@ export function ChatPage({
 					checked={draft.toolDetailsExpanded}
 					onChange={(v) => setField('toolDetailsExpanded', v)}
 				/>
+			</SettingsBlock>
 
-				<FieldSelect
-					labelKey="settings.personaId.label"
-					hintKey="settings.personaId.hint"
-					value={personaValue}
-					onChange={(v) => setField('personaId', v)}
-				>
-					<option value="">{t('settings.personaId.none')}</option>
-					{personas.map((p) => (
-						<option key={p.id} value={p.id} title={p.description}>{p.name}</option>
-					))}
-				</FieldSelect>
+			<SettingsBlock
+				titleKey="settings.section.chat.context"
+				hintKey="settings.section.chat.contextHint"
+			>
+				<label className="field">
+					<span className="field__label">{t('settings.workspaceContextScale.label')}</span>
+					<select
+						className="field__input field__input--lg"
+						value={contextScale}
+						onChange={(e) => {
+							const scale = e.target.value as WorkspaceContextScale;
+							const patch = applyWorkspaceContextScale(draft, scale);
+							if (updateDraft) {
+								updateDraft((prev) => ({ ...prev, ...patch }));
+								return;
+							}
+							setField('enableWorkspaceContext', patch.enableWorkspaceContext);
+							setField('shareMode', patch.shareMode);
+							setField('alwaysOnWorkspaceContext', patch.alwaysOnWorkspaceContext);
+						}}
+					>
+						<option value="off">{t('settings.workspaceContextScale.off')}</option>
+						<option value="manual">{t('settings.workspaceContextScale.manual')}</option>
+						<option value="auto">{t('settings.workspaceContextScale.auto')}</option>
+						<option value="full">{t('settings.workspaceContextScale.full')}</option>
+					</select>
+					<span className="field__hint">{t('settings.workspaceContextScale.hint')}</span>
+				</label>
+			</SettingsBlock>
 
-				{onOpenPersonasPage ? (
-					<div className="settings__actions">
-						<button
-							className="btn btn--secondary"
-							type="button"
-							onClick={() => onOpenPersonasPage()}
-						>
-							{t('settings.personaId.openPage')}
-						</button>
-					</div>
-				) : null}
-			</SettingsSection>
-
-			<SettingsSection titleKey="settings.section.chat.notify" defaultOpen={false}>
+			<SettingsSection
+				titleKey="settings.section.chat.notify"
+				hintKey="settings.section.chat.notifyHint"
+				defaultOpen={false}
+			>
 				<FieldToggle
 					labelKey="settings.notifyOnComplete.label"
 					hintKey="settings.notifyOnComplete.hint"
 					checked={draft.notifyOnComplete}
 					onChange={(v) => setField('notifyOnComplete', v)}
 				/>
-				<FieldToggle
-					labelKey="settings.notifySoundOnComplete.label"
-					hintKey="settings.notifySoundOnComplete.hint"
-					checked={draft.notifySoundOnComplete}
-					onChange={(v) => setField('notifySoundOnComplete', v)}
-					disabled={!draft.notifyOnComplete}
-				/>
+				<span className="field__hint">{t('settings.notifySoundOnComplete.jsonHint')}</span>
 			</SettingsSection>
 
-			<SettingsSection titleKey="settings.section.comments" hintKey="settings.section.commentsHint" defaultOpen={false}>
-				<FieldSelect
-					labelKey="settings.commentStyle.label"
-					value={draft.commentStyle}
-					onChange={(v) => setField('commentStyle', v as CommentStyle)}
-				>
-					<option value="inline">{t('settings.commentStyle.inline')}</option>
-					<option value="block">{t('settings.commentStyle.block')}</option>
-				</FieldSelect>
-
-				<FieldToggle
-					labelKey="settings.previewBeforeApply.label"
-					checked={draft.previewBeforeApply}
-					onChange={(v) => setField('previewBeforeApply', v)}
-				/>
-
-				<FieldTextarea
-					labelKey="settings.commentSystemPrompt.label"
-					rows={4}
-					placeholder={t('settings.commentSystemPrompt.placeholder')}
-					value={draft.commentSystemPrompt}
-					onChange={(v) => setField('commentSystemPrompt', v)}
-					spellCheck
-				/>
+			<SettingsSection
+				titleKey="settings.section.chat.advanced"
+				hintKey="settings.section.chat.advancedHint"
+				defaultOpen={false}
+			>
+				<JsonOnlyHint messageKey="settings.chat.referencesHint" />
 			</SettingsSection>
 		</>
 	);

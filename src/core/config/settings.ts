@@ -7,17 +7,13 @@ import { initAlwaysAllowStore } from '../stores/alwaysAllowStore';
 import { applyAdminPolicy, stripAdminLockedForStorage } from './adminPolicy';
 import { deepMerge, getFileSettingsOverlay, initConfigLayers, onConfigLayersChanged, pickNonDefaultSettings, stripUiExcludedKeys } from './layers';
 import { clearCachedNCtx } from '../llm/contextBudget';
+import { normalizeBaseUrl } from '../llm/normalizeBaseUrl';
 import { DEFAULT_SETTINGS } from './types';
 import { isChatMode } from '../../features/chat/chatModes';
 import type { ChatMode, GenSettings, RevealOnEdit, ShareMode, TabEvictionPolicy, ThinkingDisplay, WebSearchBackend } from './types';
 export type { ChatMode, CommentStyle, GenSettings, RevealOnEdit, ShareMode, TabEvictionPolicy, ThinkingDisplay, WebSearchBackend } from './types';
-export { DEFAULT_SETTINGS, EXAMPLE_DENIED_COMMANDS, DEFAULT_GENIGNORE_PATTERNS, EXAMPLE_SECRET_PATTERNS, DEFAULT_SENSITIVE_PATH_PATTERNS, isAgentLikeMode, resolveModeModel, resolveSmallModel } from './types';
-export { getApiKey, hasApiKey, initApiKeyStore, setApiKey, clearApiKey, getWebSearchApiKey, hasWebSearchApiKey, setWebSearchApiKey, clearWebSearchApiKey, getEmbeddingsApiKey, hasEmbeddingsApiKey, setEmbeddingsApiKey, clearEmbeddingsApiKey } from './apiKey';
-export { initSecretVault } from './secretVault';
-export type { GenSecretId } from './secretVault';
-export { FILE_LAYER_KEYS, getConfigLayersSnapshot, getEffectiveHooksInline, getEffectiveHooksPath, reloadConfigLayers } from './layers';
-export { ADMIN_POLICY_KEYS, getAdminPolicySnapshot, isAdminPolicyActive } from './adminPolicy';
-export type { AdminPolicyKey, AdminPolicySnapshot } from './adminPolicy';
+export { DEFAULT_SETTINGS, isAgentLikeMode, resolveSmallModel } from './types';
+export { getAdminPolicySnapshot, isAdminPolicyActive } from './adminPolicy';
 const STORAGE_KEY = 'gen.settings';
 
 let store: Memento | undefined;
@@ -133,7 +129,6 @@ function normalize(raw: Partial<GenSettings>): GenSettings {
 	const commentStyle = raw.commentStyle === 'block' ? 'block' : 'inline';
 	const chatMode = normalizeChatMode(raw.chatMode);
 	const shareMode = normalizeShareMode(raw);
-	const baseUrl = String(raw.baseUrl ?? '').trim();
 	const authHeader = String(raw.authHeader ?? DEFAULT_SETTINGS.authHeader).trim() || DEFAULT_SETTINGS.authHeader;
 	const authScheme = String(raw.authScheme ?? DEFAULT_SETTINGS.authScheme).trim();
 	const defaultToolTimeoutMs = Math.max(1000, Math.floor(asNumber(raw.defaultToolTimeoutMs, DEFAULT_SETTINGS.defaultToolTimeoutMs)));
@@ -143,7 +138,7 @@ function normalize(raw: Partial<GenSettings>): GenSettings {
 	);
 
 	return {
-		baseUrl,
+		baseUrl: normalizeBaseUrl(String(raw.baseUrl ?? '')),
 		model: String(raw.model ?? '').trim(),
 		smallModel: String(raw.smallModel ?? '').trim(),
 		planModel: String(raw.planModel ?? '').trim(),
@@ -296,9 +291,10 @@ export function getSettings(): GenSettings {
 		...merged,
 		model: '',
 	});
+	const fromSettings = settings.model.trim();
 	return {
 		...settings,
-		model: sessionModel,
+		model: sessionModel.trim() || fromSettings,
 	};
 }
 
@@ -311,14 +307,14 @@ export async function updateSettings(next: GenSettings): Promise<GenSettings> {
 	sessionModel = String(next.model ?? '').trim();
 	const normalized = stripUiExcludedKeys(stripAdminLockedForStorage(normalize({
 		...next,
-		model: ''
+		model: sessionModel,
 	})));
 	await store.update(STORAGE_KEY, normalized);
 	const effective = getSettings();
 	if (prev.baseUrl !== effective.baseUrl || prev.model !== effective.model) {
 		clearCachedNCtx();
 	}
-	
+
 	for (const listener of listeners) {
 		listener();
 	}

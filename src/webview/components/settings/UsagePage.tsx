@@ -3,7 +3,7 @@ import type { ModelUsage } from '../../../core/stores/usageStore';
 import { t } from '../../i18n';
 import { vscodeApi } from '../../vscodeApi';
 import type { SettingsPageProps } from './pages';
-import { SettingsSection } from './SettingsSection';
+import { SettingsBlock, SettingsToolbar } from './SettingsChrome';
 
 type UsageSort = 'lastUsed' | 'tokens' | 'requests';
 
@@ -82,8 +82,7 @@ export function UsagePage(_props: SettingsPageProps) {
 	}, [ledger]);
 
 	return (
-		<>
-			<SettingsSection titleKey="settings.section.usage.ledger" hintKey="settings.usage.hint">
+		<SettingsBlock titleKey="settings.section.usage.ledger" hintKey="settings.usage.hint">
 			{rows.length > 0 ? (
 				<label className="field">
 					<span className="field__label">{t('settings.usage.sort')}</span>
@@ -102,38 +101,40 @@ export function UsagePage(_props: SettingsPageProps) {
 			{rows.length === 0 ? (
 				<span className="field__hint">{t('settings.usage.empty')}</span>
 			) : (
-				<table className="usage-table">
-					<thead>
-						<tr>
-							<th>{t('settings.usage.model')}</th>
-							<th>{t('settings.usage.prompt')}</th>
-							<th>{t('settings.usage.completion')}</th>
-							<th>{t('settings.usage.requests')}</th>
-							<th>{t('settings.usage.lastUsed')}</th>
-						</tr>
-					</thead>
-					<tbody>
-						{rows.map(([model, row]) => (
-							<tr key={model}>
-								<td>{model}</td>
-								<td>{formatCount(row.promptTokens)}</td>
-								<td>{formatCount(row.completionTokens)}</td>
-								<td>{formatCount(row.requests)}</td>
-								<td>{formatTs(row.lastUsed)}</td>
+				<div className="usage-table-wrap">
+					<table className="usage-table">
+						<thead>
+							<tr>
+								<th>{t('settings.usage.model')}</th>
+								<th>{t('settings.usage.prompt')}</th>
+								<th>{t('settings.usage.completion')}</th>
+								<th>{t('settings.usage.requests')}</th>
+								<th>{t('settings.usage.lastUsed')}</th>
 							</tr>
-						))}
-						<tr className="usage-table__totals">
-							<td>{t('settings.usage.totals')}</td>
-							<td>{formatCount(totals.promptTokens)}</td>
-							<td>{formatCount(totals.completionTokens)}</td>
-							<td>{formatCount(totals.requests)}</td>
-							<td>-</td>
-						</tr>
-					</tbody>
-				</table>
+						</thead>
+						<tbody>
+							{rows.map(([model, row]) => (
+								<tr key={model}>
+									<td>{model}</td>
+									<td>{formatCount(row.promptTokens)}</td>
+									<td>{formatCount(row.completionTokens)}</td>
+									<td>{formatCount(row.requests)}</td>
+									<td>{formatTs(row.lastUsed)}</td>
+								</tr>
+							))}
+							<tr className="usage-table__totals">
+								<td>{t('settings.usage.totals')}</td>
+								<td>{formatCount(totals.promptTokens)}</td>
+								<td>{formatCount(totals.completionTokens)}</td>
+								<td>{formatCount(totals.requests)}</td>
+								<td>-</td>
+							</tr>
+						</tbody>
+					</table>
+				</div>
 			)}
 
-			<div className="field__row" style={{ gap: 8 }}>
+			<SettingsToolbar>
 				<button
 					className="btn btn--secondary"
 					type="button"
@@ -148,8 +149,7 @@ export function UsagePage(_props: SettingsPageProps) {
 				>
 					{t('settings.usage.reset')}
 				</button>
-			</div>
-			</SettingsSection>
-		</>
+			</SettingsToolbar>
+		</SettingsBlock>
 	);
 }

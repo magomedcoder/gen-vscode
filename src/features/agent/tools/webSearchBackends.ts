@@ -11,7 +11,7 @@ const EXA_SEARCH_URL = 'https://api.exa.ai/search';
 const PARALLEL_SEARCH_URL = 'https://api.parallel.ai/v1/search';
 
 // Собрать URL HTTP-бэкенда: подставить `{query}` или дописать `?q=` / `&q=`.
-export function buildWebSearchHttpUrl(template: string, query: string): string {
+function buildWebSearchHttpUrl(template: string, query: string): string {
 	const trimmed = template.trim();
 	const encoded = encodeURIComponent(query);
 	if (!trimmed) {
@@ -70,7 +70,7 @@ function hitFromUnknown(item: unknown): WebSearchHit | undefined {
  * Разобрать типичные JSON-формы: `{results:[...]}`, `{organic_results:[...]}`, голый массив.
  * Ожидаемые поля элемента: `title`/`name` + `url`/`link`/`href` (title опционален * fallback на url).
  */
-export function parseWebSearchJson(data: unknown, cap: number): WebSearchHit[] {
+function parseWebSearchJson(data: unknown, cap: number): WebSearchHit[] {
 	let list: unknown[] = [];
 	if (Array.isArray(data)) {
 		list = data;
@@ -170,7 +170,7 @@ async function postJsonSearch(
 }
 
 // DuckDuckGo HTML-выдача (без API-ключа)
-export async function searchDuckDuckGo(
+async function searchDuckDuckGo(
 	query: string,
 	cap: number,
 	signal?: AbortSignal,
@@ -208,7 +208,7 @@ export async function searchDuckDuckGo(
  * Ответ: `{ results: [{ title, url, ... }] }`.
  * Документация: https://exa.ai/docs/reference/search
  */
-export async function searchExa(
+async function searchExa(
 	query: string,
 	cap: number,
 	signal: AbortSignal | undefined,
@@ -236,7 +236,7 @@ export async function searchExa(
  * Ответ: `{ results: [{ url, title?, excerpts[] }] }` - title может быть null.
  * Документация: https://docs.parallel.ai/api-reference/search/search
  */
-export async function searchParallel(
+async function searchParallel(
 	query: string,
 	cap: number,
 	signal: AbortSignal | undefined,
@@ -265,7 +265,7 @@ export async function searchParallel(
  * HTTP JSON API: GET по URL из настроек, опциональный auth-заголовок.
  * Ключ - SecretStorage; в значении секрета можно `${env:}` / `{file:}`.
  */
-export async function searchHttpJson(
+async function searchHttpJson(
 	query: string,
 	cap: number,
 	signal: AbortSignal | undefined,

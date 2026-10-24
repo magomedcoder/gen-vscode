@@ -2,7 +2,7 @@
 
 [English version](settings.md)
 
-Кнопка **Сбросить по умолчанию** возвращает все поля к defaults. Полей API-ключа в UI нет (local-first: пустой ключ; иначе env `GEN_API_KEY` / `OPENAI_API_KEY`).
+Кнопка **Сбросить по умолчанию** возвращает все поля к defaults. Полей API-ключа в UI нет (local-first: пустой ключ; иначе VS Code SecretStorage, в vault можно `${env:NAME}` / `{file:...}`).
 
 ## Экраны настроек
 
@@ -17,7 +17,7 @@
 Effective `GenSettings` собирается из нескольких слоёв (приоритет **низкий  высокий**):
 
 1. Встроенные `DEFAULT_SETTINGS`
-2. User: `~/.config/gen/config.json` (Linux: `$XDG_CONFIG_HOME/gen` или `~/.config/gen`; Windows: `%APPDATA%/gen`; macOS: `~/.config/gen`; override: `GEN_CONFIG_DIR`)
+2. User: `~/.config/gen/config.json` (Linux: `$XDG_CONFIG_HOME/gen` или `~/.config/gen`; Windows: `%APPDATA%/gen`; macOS: `~/.config/gen`)
 3. Gen Settings UI (extension `globalState`) - только поля, **отличающиеся от defaults** (без `deniedCommands` / `sensitivePathPatterns` / `secretPatterns` - они не из UI)
 4. Project: `<workspace>/.gen/config.json` (только явно заданные ключи)
 5. **Admin policy** (наивысший): блокирует/форсирует security-subset - project/UI не могут переопределить
@@ -28,9 +28,8 @@ Effective `GenSettings` собирается из нескольких слоё�
 
 Опциональный машинный policy-файл (первый найденный):
 
-1. `GEN_ADMIN_POLICY` - абсолютный путь к JSON (если задан - пробуется только он)
-2. Linux / macOS: `/etc/gen/policy.json`
-3. Windows: `%ProgramData%/gen/policy.json`
+1. Linux / macOS: `/etc/gen/policy.json`
+2. Windows: `%ProgramData%/gen/policy.json`
 
 Ключи из файла **блокируются** и форсируют effective settings. Lock-ключи: `approvalPolicy`, `autoApprove`, `continueLoopOnDeny`, `enableTerminal`, `enableFileReading`, `enableWorkspaceContext`, `webSearchEnabled`, `webFetchEnabled`, `allowExternalDirectory`, плюс connection/index (`baseUrl`, `planModel`, `actModel`, `smallModel`, `indexingEnabled`, `embeddingsBaseUrl`, `localEmbeddingsMode`).
 

@@ -67,7 +67,10 @@ export function RulesSkillsPage({ data, onLoad, onOpenPath }: RulesSkillsPagePro
 				</div>
 			) : null}
 
-			<SettingsSection titleKey="settings.section.rulesSkills.rules">
+			<SettingsSection
+				titleKey="settings.section.rulesSkills.rules"
+				hintKey="settings.section.rulesSkills.rulesHint"
+			>
 			{rules.length === 0 ? (
 				<span className="field__hint">{t('settings.rulesSkills.rulesEmpty')}</span>
 			) : (
@@ -103,7 +106,11 @@ export function RulesSkillsPage({ data, onLoad, onOpenPath }: RulesSkillsPagePro
 			)}
 			</SettingsSection>
 
-			<SettingsSection titleKey="settings.section.rulesSkills.skills" defaultOpen={false}>
+			<SettingsSection
+				titleKey="settings.section.rulesSkills.skills"
+				hintKey="settings.section.rulesSkills.skillsHint"
+				defaultOpen={false}
+			>
 			{skills.length === 0 ? (<span className="field__hint">{t('settings.rulesSkills.skillsEmpty')}</span>) : (
 				<div className="settings-list">
 					{skills.map((skill) => (

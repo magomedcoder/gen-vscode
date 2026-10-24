@@ -2,6 +2,7 @@
 
 ## dev
 
+- **Settings:** simplify Settings - 9 pages, essentials only (power knobs -> JSON); drill-down sections; flat Base URL (no profiles); keys in SecretStorage only; drop loopback/Secrets UI clutter and related dead code
 - **Patch apply:** tool `apply_diff` (unified diff primary, multi-file); search-replace fallback with resilient `old_string` (exact -> newline -> unique whitespace) + chained `apply_workspace_edit`; on fail: one retry + auto `read_file` in tool result
 - **Chat modes:** shared `CHAT_MODE_DEFS` registry; composer mode `<select>`; Settings + slash from the same list; removed legacy Ask/Agent toggle, mode-badge
 - **IDE / DX:** `gen.generateCommitMessage` (+ Abort) on SCM title; opt-in gen Tab `InlineCompletionItemProvider` (`inlineCompletionEnabled`)

@@ -2,7 +2,7 @@
 
 [Русская версия](settings-ru.md)
 
-**Reset to defaults** restores all fields to defaults. There is no API-key field in the UI (local-first: empty key; otherwise env `GEN_API_KEY` / `OPENAI_API_KEY`).
+**Reset to defaults** restores all fields to defaults. There is no API-key field in the UI (local-first: empty key; otherwise VS Code SecretStorage, with optional `${env:NAME}` / `{file:...}` inside vault values).
 
 ## Settings screens
 
@@ -17,7 +17,7 @@ Use Base URL + model list for any OpenAI-compatible endpoint (e.g. `http://127.0
 Effective `GenSettings` is merged from several layers (**low * high** precedence):
 
 1. Built-in `DEFAULT_SETTINGS`
-2. User: `~/.config/gen/config.json` (Linux: `$XDG_CONFIG_HOME/gen` or `~/.config/gen`; Windows: `%APPDATA%/gen`; macOS: `~/.config/gen`; override: `GEN_CONFIG_DIR`)
+2. User: `~/.config/gen/config.json` (Linux: `$XDG_CONFIG_HOME/gen` or `~/.config/gen`; Windows: `%APPDATA%/gen`; macOS: `~/.config/gen`)
 3. Gen Settings UI (extension `globalState`) - only fields that **differ from defaults** (excludes `deniedCommands` / `sensitivePathPatterns` / `secretPatterns` - not from UI)
 4. Project: `<workspace>/.gen/config.json` (only keys present in the file)
 5. **Admin policy** (highest): locks/forces a security subset - cannot be overridden by project or UI
@@ -28,9 +28,8 @@ Effective `GenSettings` is merged from several layers (**low * high** precedence
 
 Optional machine-wide policy file (first match):
 
-1. `GEN_ADMIN_POLICY` - absolute path to a JSON file (if set, only this path is tried)
-2. Linux / macOS: `/etc/gen/policy.json`
-3. Windows: `%ProgramData%/gen/policy.json`
+1. Linux / macOS: `/etc/gen/policy.json`
+2. Windows: `%ProgramData%/gen/policy.json`
 
 Keys present in the file are **locked** and force effective settings. Supported lock keys: `approvalPolicy`, `autoApprove`, `continueLoopOnDeny`, `enableTerminal`, `enableFileReading`, `enableWorkspaceContext`, `webSearchEnabled`, `webFetchEnabled`, `allowExternalDirectory`, `indexingEnabled`, `embeddingsBaseUrl`, `baseUrl`, `planModel`, `actModel`, `smallModel`, and `localEmbeddingsMode`.
 

@@ -20,8 +20,6 @@
 	"command.manageWorktrees.title": "Gen: Manage worktrees",
 	"command.dryRunHook.title": "Gen: Dry-run hook event",
 	"command.designPickFromClipboard.title": "Gen: Design pick from clipboard URL",
-	"command.hunkAccept.title": "Accept hunk (Keep)",
-	"command.hunkReject.title": "Reject hunk (Undo)",
 	"command.generateCommitMessage.title": "Gen: Generate Commit Message",
 	"command.abortCommitMessage.title": "Gen: Abort Commit Message",
 	"viewsContainers.panel.gen.title": "Gen",

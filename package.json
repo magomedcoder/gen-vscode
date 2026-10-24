@@ -116,16 +116,6 @@
         "category": "%extension.category%"
       },
       {
-        "command": "gen.hunk.accept",
-        "title": "%command.hunkAccept.title%",
-        "category": "%extension.category%"
-      },
-      {
-        "command": "gen.hunk.reject",
-        "title": "%command.hunkReject.title%",
-        "category": "%extension.category%"
-      },
-      {
         "command": "gen.generateCommitMessage",
         "title": "%command.generateCommitMessage.title%",
         "category": "%extension.category%",
@@ -176,16 +166,6 @@
       ]
     },
     "menus": {
-      "commandPalette": [
-        {
-          "command": "gen.hunk.accept",
-          "when": "false"
-        },
-        {
-          "command": "gen.hunk.reject",
-          "when": "false"
-        }
-      ],
       "editor/context": [
         {
           "command": "gen.addToChat",

@@ -1,7 +1,9 @@
 import type { ApprovalActionType, ApprovalMode } from '../../../core/config/approvalTypes';
 import { t } from '../../i18n';
 import type { SettingsPageProps } from './pages';
+import { SettingsBlock, SettingsToolbar } from './SettingsChrome';
 import { FieldTextarea, FieldToggle } from './SettingsFields';
+import { SettingsPageHeader } from './SettingsPageHeader';
 import { SettingsSection } from './SettingsSection';
 
 const APPROVAL_ACTIONS: ApprovalActionType[] = ['shell', 'edits', 'delete', 'web', 'outside', 'task', 'skill'];
@@ -38,8 +40,20 @@ export function PermissionsPage({
 
 	return (
 		<>
-			<SettingsSection titleKey="settings.section.permissions.presets" hintKey="settings.section.permissions.presetsHint">
-				<div className="field__row" style={{ flexWrap: 'wrap', gap: 8 }}>
+			<SettingsPageHeader pageId="permissions" />
+
+			<SettingsBlock
+				titleKey="settings.section.permissions.presets"
+				hintKey="settings.section.permissions.presetsHint"
+			>
+				<FieldToggle
+					labelKey="settings.autoApprove.label"
+					hintKey="settings.autoApprove.hint"
+					checked={draft.autoApprove}
+					onChange={(v) => setField('autoApprove', v)}
+				/>
+				<p className="field__hint">{t('settings.section.permissions.presetsLead')}</p>
+				<SettingsToolbar>
 					<button
 						className="btn btn--secondary"
 						type="button"
@@ -82,10 +96,10 @@ export function PermissionsPage({
 					>
 						{t('settings.approvalPreset.allowMost')}
 					</button>
-				</div>
-			</SettingsSection>
+				</SettingsToolbar>
+			</SettingsBlock>
 
-			<SettingsSection titleKey="settings.section.permissions.always" hintKey="settings.section.permissions.alwaysHint">
+			<SettingsSection titleKey="settings.section.permissions.always" hintKey="settings.section.permissions.alwaysHint" defaultOpen={false}>
 				<FieldToggle
 					labelKey="settings.persistAlwaysAllow.label"
 					hintKey="settings.persistAlwaysAllow.hint"
@@ -104,7 +118,7 @@ export function PermissionsPage({
 					/>
 					<span className="field__hint">{t('settings.persistedAlwaysAllow.hint')}</span>
 					{draft.persistAlwaysAllow && persistedAlwaysAllow.length > 0 ? (
-						<div className="field__row" style={{ marginTop: 6 }}>
+						<SettingsToolbar>
 							<button
 								type="button"
 								className="btn btn--secondary"
@@ -112,12 +126,12 @@ export function PermissionsPage({
 							>
 								{t('settings.persistedAlwaysAllow.clear')}
 							</button>
-						</div>
+						</SettingsToolbar>
 					) : null}
 				</div>
 			</SettingsSection>
 
-			<SettingsSection titleKey="settings.section.permissions.policy" hintKey="settings.section.permissions.policyHint">
+			<SettingsSection titleKey="settings.section.permissions.policy" hintKey="settings.section.permissions.policyHint" defaultOpen={false}>
 				{APPROVAL_ACTIONS.map((action) => {
 					const rule = draft.approvalPolicy[action];
 					return (

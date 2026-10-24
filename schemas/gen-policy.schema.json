@@ -2,7 +2,7 @@
 	"$schema": "https://json-schema.org/draft-07/schema#",
 	"$id": "https://raw.githubusercontent.com/magomedcoder/gen-vscode/main/schemas/gen-policy.schema.json",
 	"title": "Gen Agent admin policy",
-	"description": "Managed / admin policy (MDM-style file policy). Loaded from GEN_ADMIN_POLICY, /etc/gen/policy.json (Unix), or %ProgramData%/gen/policy.json (Windows). Keys present here lock and force effective GenSettings; project/UI cannot override them.",
+	"description": "Managed / admin policy (MDM-style file policy). Loaded from /etc/gen/policy.json (Unix) or %ProgramData%/gen/policy.json (Windows). Keys present here lock and force effective GenSettings; project/UI cannot override them.",
 	"type": "object",
 	"properties": {
 		"$schema": {

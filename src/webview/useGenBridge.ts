@@ -61,7 +61,11 @@ export function useGenBridge() {
 	const [modelsLoading, setModelsLoading] = useState(false);
 	const [connectionHealth, setConnectionHealth] = useState<{
 		ok: boolean;
-		message: string
+		message: string;
+		capabilities?: { 
+			contextLength?: number; 
+			toolsHint?: string 
+		};
 	} | undefined>();
 	const [connectionHealthLoading, setConnectionHealthLoading] = useState(false);
 	const [indexStatus, setIndexStatus] = useState<IndexEngineStatus | undefined>();
@@ -172,7 +176,8 @@ export function useGenBridge() {
 					setConnectionHealthLoading(false);
 					setConnectionHealth({
 						ok: data.ok,
-						message: data.message
+						message: data.message,
+						capabilities: data.capabilities,
 					});
 					return;
 				case 'indexStatus':
@@ -292,9 +297,9 @@ export function useGenBridge() {
 	const checkConnection = useCallback((baseUrl: string) => {
 		const trimmed = baseUrl.trim();
 		if (!trimmed) {
-			setConnectionHealth({ 
-				ok: false, 
-				message: t('settings.models.needUrl')
+			setConnectionHealth({
+				ok: false,
+				message: t('settings.models.needUrl'),
 			});
 			return;
 		}

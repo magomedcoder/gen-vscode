@@ -8,9 +8,8 @@ import { DEFAULT_SETTINGS } from './types';
  * Управляемый слой admin policy (MDM-паттерн, без полного Enterprise).
  *
  * Путь к policy.json (первый существующий):
- * 1. `GEN_ADMIN_POLICY` - явный путь к файлу
- * 2. Linux/macOS - системный файл `/etc/gen/policy.json`
- * 3. Windows - системный файл `%ProgramData%/gen/policy.json`
+ * 1. Linux/macOS - системный файл `/etc/gen/policy.json`
+ * 2. Windows - системный файл `%ProgramData%/gen/policy.json`
  *
  * Ключи из файла принудительно перекрывают пользовательский слой, UI и проект.
  */
@@ -61,14 +60,19 @@ const EMPTY: AdminPolicySnapshot = {
 
 let snapshot: AdminPolicySnapshot = EMPTY;
 
+// Только для тестов: подменить системный путь policy
+let testPolicyPathOverride: string | undefined;
+
+export function setAdminPolicyPathForTests(pathOverride: string | undefined): void {
+	testPolicyPathOverride = pathOverride?.trim() || undefined;
+}
+
 /**
  * Кандидаты пути к admin policy (порядок приоритета).
- * Если задан `GEN_ADMIN_POLICY` - только он (даже если файла нет * нет политики).
  */
 export function resolveAdminPolicyCandidates(): string[] {
-	const envPath = process.env.GEN_ADMIN_POLICY?.trim();
-	if (envPath) {
-		return [path.resolve(envPath)];
+	if (testPolicyPathOverride) {
+		return [path.resolve(testPolicyPathOverride)];
 	}
 
 	if (process.platform === 'win32') {
@@ -234,16 +238,10 @@ export function stripAdminLockedForStorage(settings: GenSettings): GenSettings {
 // Перечитать admin policy с диска
 export async function reloadAdminPolicy(): Promise<AdminPolicySnapshot> {
 	const candidates = resolveAdminPolicyCandidates();
-	const envForced = Boolean(process.env.GEN_ADMIN_POLICY?.trim());
 
 	for (const candidate of candidates) {
 		const raw = await readJsonFile(candidate);
 		if (raw === undefined) {
-			if (envForced) {
-				// Явный путь задан, но файла нет - политики нет
-				snapshot = EMPTY;
-				return snapshot;
-			}
 			continue;
 		}
 
@@ -265,4 +263,5 @@ export async function reloadAdminPolicy(): Promise<AdminPolicySnapshot> {
 // Сброс кэша (тесты)
 export function resetAdminPolicyForTests(): void {
 	snapshot = EMPTY;
+	testPolicyPathOverride = undefined;
 }

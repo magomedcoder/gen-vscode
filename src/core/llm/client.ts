@@ -8,8 +8,31 @@ import { logLlm } from './log';
 import { parseModelsListResponse, type LlmModelOption } from './modelLabel';
 import { parseUsage } from './usage';
 import { extractThinkingDelta, splitAssistantPayload } from './thinking';
-import type { ChatMessage, CompleteParams, CompleteResult, ConnectionHealthResult, ListModelsParams, LlmClient, LlmToolCall } from './types';
+import type { ChatMessage, CompleteParams, CompleteResult, ConnectionCapabilities, ConnectionHealthResult, ListModelsParams, LlmClient, LlmToolCall } from './types';
 import { extractNCtxFromModelsPayload, extractNCtxFromProps, getCachedNCtx, setCachedNCtx, softCacheNCtxFromCompletePayload } from './contextBudget';
+import { normalizeBaseUrl } from './normalizeBaseUrl';
+
+function formatHealthError(err: unknown, baseUrl: string): string {
+	const raw = err instanceof Error ? err.message : String(err);
+	const lower = raw.toLowerCase();
+	if (/econnrefused|connection refused|fetch failed/i.test(raw) || lower.includes('econnrefused')) {
+		return vscode.l10n.t('settings.connection.healthRefused', baseUrl || '-');
+	}
+
+	if (/enotfound|getaddrinfo|name not resolved|dns/i.test(raw)) {
+		return vscode.l10n.t('settings.connection.healthDns', baseUrl || '-');
+	}
+
+	if (/\b404\b/.test(raw) || /not found/i.test(raw)) {
+		return vscode.l10n.t('settings.connection.healthNotFound', baseUrl || '-');
+	}
+
+	if (/timed?\s*out|timeout|aborterror/i.test(raw)) {
+		return vscode.l10n.t('settings.connection.healthTimeout', baseUrl || '-');
+	}
+
+	return raw;
+}
 
 interface ChatCompletionsResponse {
 	choices?: Array<{
@@ -422,7 +445,7 @@ export class HttpLlmClient implements LlmClient {
 
 	async listModelOptions(params: ListModelsParams = {}): Promise<LlmModelOption[]> {
 		const settings = this.getConfig();
-		const baseUrl = (params.baseUrl ?? settings.baseUrl).trim();
+		const baseUrl = normalizeBaseUrl(params.baseUrl ?? settings.baseUrl);
 		if (!baseUrl) {
 			throw new Error(vscode.l10n.t('llm.needBaseUrl'));
 		}
@@ -455,25 +478,58 @@ export class HttpLlmClient implements LlmClient {
 	}
 
 	async checkConnectionHealth(params: ListModelsParams = {}): Promise<ConnectionHealthResult> {
+		const baseUrl = normalizeBaseUrl(params.baseUrl ?? this.getConfig().baseUrl);
 		try {
-			const options = await this.listModelOptions(params);
+			if (!baseUrl) {
+				return {
+					ok: false,
+					modelCount: 0,
+					message: vscode.l10n.t('settings.connection.healthNeedUrl'),
+				};
+			}
+			const settings = this.getConfig();
+			const cfg = {
+				...settings,
+				baseUrl,
+				requestTimeoutMs: Math.min(settings.requestTimeoutMs, 30_000),
+			};
+			const data = await this.requestJson<ModelsListResponse>('/v1/models', {
+				method: 'GET',
+				signal: params.signal,
+			}, cfg);
+			if (data.error?.message) {
+				throw new Error(data.error.message);
+			}
+
+			const options = parseModelsListResponse(data);
+			const modelHint = settings.model.trim() || options[0]?.id;
+			const contextLength = extractNCtxFromModelsPayload(data, modelHint);
+			if (contextLength && modelHint) {
+				setCachedNCtx(baseUrl, modelHint, contextLength);
+			}
+			
+			const capabilities: ConnectionCapabilities | undefined = contextLength
+				? { contextLength }
+				: undefined;
 			if (options.length === 0) {
 				return {
 					ok: false,
 					modelCount: 0,
 					message: vscode.l10n.t('settings.connection.healthNoModels'),
+					capabilities,
 				};
 			}
 			return {
 				ok: true,
 				modelCount: options.length,
 				message: vscode.l10n.t('settings.connection.healthOk', options.length),
+				capabilities,
 			};
 		} catch (err) {
 			return {
 				ok: false,
 				modelCount: 0,
-				message: err instanceof Error ? err.message : String(err),
+				message: formatHealthError(err, baseUrl),
 			};
 		}
 	}

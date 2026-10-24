@@ -1,7 +1,7 @@
 import * as assert from 'assert';
 import { chunkFileContent, chunkFileContentAst, contentChunkId } from '../../features/index/chunk.js';
 import { contentHash } from '../../features/index/hash.js';
-import { aggregateRetrievalMetrics, assertRetrievalGate, DEFAULT_RETRIEVAL_GATE, hitAtK, precisionAtK, reciprocalRank } from '../../features/index/retrievalMetrics.js';
+import { aggregateRetrievalMetrics, assertRetrievalGate, DEFAULT_RETRIEVAL_GATE, hitAtK, precisionAtK, reciprocalRank } from './retrievalMetrics.js';
 import type { IndexManifest } from '../../features/index/types.js';
 import { buildTrigramIndex, searchTrigrams } from '../../features/index/trigram.js';
 import { FIND_CODE_MAX_CHARS, mergeFindCodeHits, truncateFindCodeJson } from '../../features/agent/tools/search/findCodeMerge.js';

@@ -7,7 +7,7 @@ import { setIndexStorageRootForTests } from '../features/index/indexStorage.js';
 import { loadManifestCached, saveManifest } from '../features/index/store.js';
 import { emptyManifest } from '../features/index/types.js';
 import { contentChunkId } from '../features/index/chunk.js';
-import { aggregateRetrievalMetrics, assertRetrievalGate, DEFAULT_RETRIEVAL_GATE } from '../features/index/retrievalMetrics.js';
+import { aggregateRetrievalMetrics, assertRetrievalGate, DEFAULT_RETRIEVAL_GATE } from './eval/retrievalMetrics.js';
 
 suite('vectorStore feature-hash', () => {
 	test('embed dim + cosine self≈1', () => {

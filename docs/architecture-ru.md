@@ -59,7 +59,7 @@ npm plugins попадают в каталог из `.gen/npm-plugins.json`, л�
 
 - User JSON + project `.gen/config.json` мержатся в effective `GenSettings` (`src/core/config/layers.ts`).
 - Settings UI (`globalState`) хранит только non-default ключи и **никогда** `deniedCommands` / `sensitivePathPatterns` / `secretPatterns` (`UI_LAYER_EXCLUDED_KEYS`).
-- Опциональная **admin policy** (`GEN_ADMIN_POLICY` / `/etc/gen/policy.json` / `%ProgramData%/gen/policy.json`) блокирует security-subset - наивысший приоритет (`src/core/config/adminPolicy.ts`).
+- Опциональная **admin policy** (`/etc/gen/policy.json` / `%ProgramData%/gen/policy.json`) блокирует security-subset - наивысший приоритет (`src/core/config/adminPolicy.ts`).
 - Приоритет: defaults -> user -> UI (non-default) -> project -> **admin policy**. Remote `.well-known` / полный MDM - не реализован.
 - Подробнее: [settings-ru.md](settings-ru.md).
 
