@@ -19,6 +19,8 @@ export type ImageQualityPreset = 'low' | 'medium' | 'high';
  * `deny` - shell-инструменты скрыты (как раньше). Правки в Plan всегда запрещены.
  */
 export type PlanShellPolicy = 'deny' | 'ask';
+// После правки агента: diagnostics / related tests в tool result
+export type VerifyAfterEdit = 'off' | 'diagnostics' | 'diagnostics_tests' | 'full';
 // При лимите вкладок: блокировать new / закрывать самые старые idle
 export type TabEvictionPolicy = 'block' | 'closeOldestIdle';
 // Движок outline: Tree-sitter wasm / LSP / TypeScript API / auto
@@ -75,15 +77,6 @@ export interface GenSettings {
 	 * Режим чата по умолчанию: ask / agent / debug / design / plan / multitask / project
 	 */
 	chatMode: ChatMode;
-	/**
-	 * Максимум итераций agent loop (LLM -> tools -> LLM)
-	 *
-	 * 0 - без лимита
-	 * минимум - 0
-	 * максимум - 40
-	 * по умолчанию - 40
-	 */
-	agentMaxIterations: number;
 	/**
 	 * Политика подтверждений по типам действий (shell / edits / delete / ...)
 	 */
@@ -395,6 +388,15 @@ export interface GenSettings {
 	 */
 	formatAfterEdit: boolean;
 	/**
+	 * После успешной правки: вшить diagnostics / related tests в tool result.
+	 * off | diagnostics (default) | diagnostics_tests | full (tests auto-run при shell allow)
+	 */
+	verifyAfterEdit: VerifyAfterEdit;
+	/**
+	 * Если true - attempt_completion отказывается при красных diagnostics после правок в этом turn.
+	 */
+	verifyGateCompletion: boolean;
+	/**
 	 * Auto-Keep через git-sync: если pending-файл clean в git (нет изменений по path) - принять pending-хунки.
 	 * По умолчанию выключено.
 	 */
@@ -570,7 +572,6 @@ export const DEFAULT_SETTINGS: GenSettings = {
 	planModel: '',
 	actModel: '',
 	chatMode: 'ask',
-	agentMaxIterations: 40,
 	approvalPolicy: structuredClone(DEFAULT_APPROVAL_POLICY),
 	autoApprove: false,
 	persistAlwaysAllow: false,
@@ -634,6 +635,8 @@ export const DEFAULT_SETTINGS: GenSettings = {
 	trustedPlugins: [],
 	personaId: '',
 	formatAfterEdit: false,
+	verifyAfterEdit: 'diagnostics',
+	verifyGateCompletion: false,
 	gitSyncAutoKeep: false,
 	indexingEnabled: true,
 	indexNewFolders: true,

@@ -35,6 +35,10 @@
 		"file.watcher": {
 			"$ref": "#/$defs/hookCommandList",
 			"description": "Notify-only (debounced). Env: GEN_HOOK_PATH, GEN_HOOK_FILE_EVENT, GEN_HOOK_PATHS, GEN_HOOK_FILE_EVENTS."
+		},
+		"afterEdit": {
+			"$ref": "#/$defs/hookCommandList",
+			"description": "Notify-only after successful write/patch. Env: GEN_HOOK_PATHS. Does not roll back the write."
 		}
 	},
 	"additionalProperties": {

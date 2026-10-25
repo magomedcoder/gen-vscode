@@ -101,10 +101,16 @@
 		"indexNewFolders": { "type": "boolean" },
 		"indexForGrep": { "type": "boolean" },
 		"formatAfterEdit": { "type": "boolean" },
-		"agentMaxIterations": {
-			"type": "integer",
-			"minimum": 0,
-			"maximum": 40
+		"verifyAfterEdit": {
+			"type": "string",
+			"enum": ["off", "diagnostics", "diagnostics_tests", "full"],
+			"default": "diagnostics",
+			"description": "Embed diagnostics / related tests into tool results after successful edits"
+		},
+		"verifyGateCompletion": {
+			"type": "boolean",
+			"default": false,
+			"description": "Block attempt_completion when last edit verify still has errors"
 		},
 		"autoApprove": { "type": "boolean" },
 		"persistAlwaysAllow": {

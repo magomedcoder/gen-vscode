@@ -26,6 +26,8 @@ import type { ChatMode } from '../../../core/config/types';
 import './builtins';
 
 export type ExtendedToolContext = ToolContext & TaskToolContext & {
+	// Primary turn: красные diagnostics после последней правки (verify gate)
+	lastVerifyHadErrors?: boolean;
 	sessionAllow?: string[];
 	onAlwaysAllow?: (pattern: string) => void;
 	// Паттерн для кнопки Always (из suggestPattern); читает confirmAlwaysOrSkip

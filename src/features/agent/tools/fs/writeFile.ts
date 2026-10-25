@@ -104,6 +104,6 @@ export const writeFileTool: ToolDefinition = {
 			content: exists
 				? vscode.l10n.t('tool.fileOverwritten', resolved.relative, bytes.byteLength)
 				: vscode.l10n.t('tool.fileCreated', resolved.relative, bytes.byteLength),
-		}, resolved.uri);
+		}, resolved.uri, ctx);
 	},
 };

@@ -145,6 +145,6 @@ export const applyPatchTool: ToolDefinition = {
 				path: resolved.relative
 			}),
 			content: vscode.l10n.t('tool.patchApplied', resolved.relative, next.count, note),
-		}, doc.uri);
+		}, doc.uri, ctx);
 	},
 };

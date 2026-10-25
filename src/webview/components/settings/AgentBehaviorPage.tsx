@@ -1,6 +1,6 @@
 import { applyOpenAfterEdit, readOpenAfterEdit } from '../../../core/config/connections';
 import type { OpenAfterEditMode } from '../../../core/config/connections';
-import type { PlanShellPolicy, TabEvictionPolicy } from '../../../core/config/types';
+import type { PlanShellPolicy, TabEvictionPolicy, VerifyAfterEdit } from '../../../core/config/types';
 import { t } from '../../i18n';
 import { JsonOnlyHint } from './JsonOnlyHint';
 import type { SettingsPageProps } from './pages';
@@ -22,16 +22,6 @@ export function AgentBehaviorPage({ draft, setField, updateDraft }: SettingsPage
 				hintKey="settings.section.agent.loopHint"
 			>
 				<SettingsFieldGrid>
-					<FieldNumber
-						labelKey="settings.agentMaxIterations.label"
-						hintKey="settings.agentMaxIterations.hint"
-						value={draft.agentMaxIterations}
-						min={0}
-						max={40}
-						step={1}
-						parse={parseNumberInput}
-						onChange={(v) => setField('agentMaxIterations', v)}
-					/>
 					<FieldNumber
 						labelKey="settings.subagentDepth.label"
 						hintKey="settings.subagentDepth.hint"
@@ -114,6 +104,18 @@ export function AgentBehaviorPage({ draft, setField, updateDraft }: SettingsPage
 						onChange={(v) => setField('formatAfterEdit', v)}
 					/>
 				</div>
+				<FieldSelect
+					labelKey="settings.verifyAfterEdit.label"
+					hintKey="settings.verifyAfterEdit.hint"
+					value={draft.verifyAfterEdit}
+					onChange={(v) => setField('verifyAfterEdit', v as VerifyAfterEdit)}
+				>
+					<option value="off">{t('settings.verifyAfterEdit.off')}</option>
+					<option value="diagnostics">{t('settings.verifyAfterEdit.diagnostics')}</option>
+					<option value="diagnostics_tests">{t('settings.verifyAfterEdit.diagnostics_tests')}</option>
+					<option value="full">{t('settings.verifyAfterEdit.full')}</option>
+				</FieldSelect>
+				<JsonOnlyHint messageKey="settings.verifyGateCompletion.jsonOnlyHint" />
 			</SettingsBlock>
 
 			<SettingsSection

@@ -1,14 +1,8 @@
 import * as vscode from 'vscode';
 import { AGENT_LIMITS } from '../../policy';
 import { asOptionalInt, asString, type ToolContext, type ToolDefinition, type ToolResult } from '../../types';
-import { relativeFromUri, resolveWorkspacePath, throwIfAborted } from '../../workspacePath';
-
-const SEVERITY: Record<number, string> = {
-	[vscode.DiagnosticSeverity.Error]: 'error',
-	[vscode.DiagnosticSeverity.Warning]: 'warning',
-	[vscode.DiagnosticSeverity.Information]: 'info',
-	[vscode.DiagnosticSeverity.Hint]: 'hint',
-};
+import { resolveWorkspacePath, throwIfAborted } from '../../workspacePath';
+import { collectDiagnosticsForUris } from './diagnosticsSnapshot';
 
 export const getDiagnosticsTool: ToolDefinition = {
 	name: 'get_diagnostics',
@@ -35,43 +29,31 @@ export const getDiagnosticsTool: ToolDefinition = {
 		);
 		const pathArg = asString(args, 'path');
 
-		let entries: Array<[vscode.Uri, vscode.Diagnostic[]]>;
+		let uris: vscode.Uri[];
 		if (pathArg) {
 			const resolved = await resolveWorkspacePath(pathArg);
-			entries = [[resolved.uri, vscode.languages.getDiagnostics(resolved.uri)]];
+			uris = [resolved.uri];
 		} else {
-			entries = vscode.languages.getDiagnostics();
+			uris = vscode.languages.getDiagnostics().map(([uri]) => uri);
 		}
 
-		const items: Array<Record<string, unknown>> = [];
-		let total = 0;
-		for (const [uri, diags] of entries) {
-			throwIfAborted(ctx.signal);
-			const file = await relativeFromUri(uri);
-			for (const diag of diags) {
-				total += 1;
-				if (items.length >= cap) {
-					continue;
-				}
-
-				items.push({
-					path: file,
-					line: diag.range.start.line + 1,
-					character: diag.range.start.character + 1,
-					severity: SEVERITY[diag.severity] ?? String(diag.severity),
-					source: diag.source ?? null,
-					message: diag.message,
-				});
-			}
-		}
+		const snap = await collectDiagnosticsForUris(uris, {
+			max: cap,
+			severities: [
+				vscode.DiagnosticSeverity.Error,
+				vscode.DiagnosticSeverity.Warning,
+				vscode.DiagnosticSeverity.Information,
+				vscode.DiagnosticSeverity.Hint,
+			],
+		});
 
 		return {
 			ok: true,
 			content: JSON.stringify({
-				truncated: total > items.length,
-				count: items.length,
-				total,
-				diagnostics: items,
+				truncated: snap.truncated,
+				count: snap.count,
+				total: snap.total,
+				diagnostics: snap.diagnostics,
 			}, null, 2),
 		};
 	},

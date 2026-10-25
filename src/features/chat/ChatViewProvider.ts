@@ -358,12 +358,6 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
 			case 'setComposerDraft':
 				this.session.setComposerDraft(msg.text, msg.chips, msg.sessionId);
 				return;
-			case 'continueAgent':
-				await this.session.continueAgent();
-				return;
-			case 'stopAgentPause':
-				this.session.stopAgentPause();
-				return;
 			case 'cancelToolCall':
 				this.session.cancelToolCall(msg.id);
 				return;

@@ -103,7 +103,6 @@ export function App() {
 	}
 
 	const confirming = Boolean(chat.pendingConfirm) || Boolean(chat.pendingQuestion);
-	const paused = chat.agentPaused;
 	const researchJobs = chat.researchJobs ?? [];
 	const activeSessionTitle = chat.sessions?.find((s) => s.id === chat.sessionId)?.title
 		?? chat.sessions?.[0]?.title;
@@ -197,30 +196,7 @@ export function App() {
 							</div>
 						);
 					})()}
-					{paused ? (
-						<div className="pause-banner" role="status">
-							<span className="pause-banner__text">
-								{t('chat.pause.maxSteps', paused.iterations)}
-							</span>
-							<span className="pause-banner__actions">
-								<button
-									type="button"
-									className="btn"
-									onClick={() => vscodeApi.postMessage({ type: 'continueAgent' })}
-								>
-									{t('chat.pause.continue')}
-								</button>
-								<button
-									type="button"
-									className="btn btn--secondary"
-									onClick={() => vscodeApi.postMessage({ type: 'stopAgentPause' })}
-								>
-									{t('chat.pause.stop')}
-								</button>
-							</span>
-						</div>
-					) : null}
-					{!paused && chat.planHandoff ? (
+					{chat.planHandoff ? (
 						<div className="pause-banner" role="status">
 							<span className="pause-banner__text">
 								{chat.planHandoff.title

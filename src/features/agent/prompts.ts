@@ -133,7 +133,10 @@ export function buildAgentSystemPrompt(options?: {
 				? 'Если apply_diff/apply_patch вернул ошибку - в ответе уже есть актуальный read_file; исправь patch/old_string и повтори один раз. При невалидном JSON - меньший кусок, не огромный write_file.'
 				: 'Если apply_diff вернул ошибку - в ответе уже есть актуальный read_file; исправь diff и повтори один раз. При невалидном JSON - меньший кусок (короткий write_file или apply_workspace_edit).',
 			'Навигация: open_file, reveal_line, close_file. Состояние редактора: get_active_editor, get_open_editors.',
-			'После правок проверяй get_diagnostics. git_status - только чтение, без commit/push.',
+			settings.verifyAfterEdit !== 'off'
+				? 'После правок смотри блок ### Verify в результате tool (diagnostics / tests). Пока есть error - чини; не зови attempt_completion. get_diagnostics - если нужен полный workspace scan.'
+				: 'После правок проверяй get_diagnostics.',
+			'git_status - только чтение, без commit/push.',
 			'Логи: find_logs, read_log_tail. UI: open_browser, fetch_page.',
 			'Тесты: run_tests (если в проекте находится команда test) или run_command. Команды без allowlist языков; запрещены rm, curl, install, git push, eval (-e / -c с кодом). Подтверждения - по approvalPolicy / autoApprove в настройках Безопасность.',
 			'Режимы: plan_enter / plan_exit / switch_mode (ask|agent|debug|design|plan|multitask|project). Субагенты: task (prompts[] = fan-out research; background; allow_mutating_parallel для parallel general; synthesize -> `.gen/reports/`). Handoff: new_task. Обзор модуля: list_code_definition_names. Deep planning: /deep-planning. Кастомные агенты: generate_agent -> `.gen/agents/`.',

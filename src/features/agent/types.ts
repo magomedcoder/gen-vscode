@@ -33,6 +33,8 @@ export interface ToolContext {
 	writes?: AgentWriteTracker;
 	// Потоковый stdout/stderr long shell -> UI (без гонок: только пока tool активен)
 	onPartialOutput?(text: string): void;
+	// После verify-блока postEdit (для attempt_completion gate)
+	recordVerify?(info: { hadErrors: boolean; paths: string[] }): void;
 }
 
 export interface ToolResult {

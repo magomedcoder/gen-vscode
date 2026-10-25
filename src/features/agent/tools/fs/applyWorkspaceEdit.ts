@@ -7,6 +7,7 @@ import type { ToolContext, ToolDefinition, ToolResult } from '../../types';
 import { resolveWorkspacePath, throwIfAborted } from '../../workspacePath';
 import { confirmAlwaysOrSkip, withForcedConfirm } from '../confirm';
 import { appendFreshFileReads } from '../patchFailRead';
+import { enhanceSuccessfulWrite } from '../postEdit';
 
 export interface SearchReplaceEdit {
 	path: string;
@@ -235,12 +236,13 @@ export const applyWorkspaceEditTool: ToolDefinition = {
 			path: item.relative,
 			idPrefix: `f${fileIndex}`,
 		}));
-		return {
+		const result: ToolResult = {
 			ok: true,
 			path: refreshed.map((p) => p.relative).join(', '),
 			diff: fileDiffs.map((item) => `--- ${item.relative}\n${item.mini.text}`).join('\n\n'),
 			hunks,
 			content: vscode.l10n.t('tool.editsApplied', refreshed.length, refreshed.map((p) => `${p.relative}: ${p.count}`).join('\n'), note),
 		};
+		return enhanceSuccessfulWrite(result, refreshed.map((p) => p.uri), ctx);
 	},
 };

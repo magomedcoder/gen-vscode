@@ -55,10 +55,6 @@ export interface ToolCallUi {
 	exitCode?: number;
 }
 
-export interface AgentPausedState {
-	reason: 'max_steps';
-	iterations: number;
-}
 
 export interface ChatUiMessage {
 	id: string;
@@ -191,8 +187,6 @@ export interface ChatViewState {
 		argsHint?: string;
 		minPositionalArgs?: number;
 	}>;
-	// Мягкая пауза агента (лимит итераций) - Continue / Stop в UI
-	agentPaused?: AgentPausedState;
 	// Id выполняемого инструмента (для отдельной остановки)
 	activeToolCallId?: string;
 	// План подтверждён в mode=plan - баннер «Run in Agent»
@@ -332,8 +326,6 @@ export type FromWebviewMessage = | { type: 'ready' }
 	| { type: 'loadPersonas' }
 	// Открыть путь проекта / абсолютный файл в редакторе (или http(s) во внешнем браузере)
 	| { type: 'openProjectPath'; path: string }
-	| { type: 'continueAgent' }
-	| { type: 'stopAgentPause' }
 	| { type: 'cancelToolCall'; id: string }
 	| { type: 'dismissPlanHandoff' }
 	| { type: 'openPath'; path: string }

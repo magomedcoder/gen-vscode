@@ -8,7 +8,14 @@ import { writeLog } from '../../core/log/logger';
 
 const execFileAsync = promisify(execFile);
 
-export type HookEvent = | 'beforeSubmit' | 'beforeShell' | 'session.diff' | 'session.compacting' | 'shell.env' | 'file.watcher';
+export type HookEvent =
+	| 'beforeSubmit'
+	| 'beforeShell'
+	| 'session.diff'
+	| 'session.compacting'
+	| 'shell.env'
+	| 'file.watcher'
+	| 'afterEdit';
 
 export interface HookCommand {
 	command: string;
@@ -30,6 +37,7 @@ export interface ProjectHooks {
 	sessionCompacting: HookCommand[];
 	shellEnv: HookCommand[];
 	fileWatcher: HookCommand[];
+	afterEdit: HookCommand[];
 }
 
 export interface HookRunResult {
@@ -59,6 +67,7 @@ const EMPTY_HOOKS: ProjectHooks = {
 	sessionCompacting: [],
 	shellEnv: [],
 	fileWatcher: [],
+	afterEdit: [],
 };
 
 function asHookList(raw: unknown): HookCommand[] {
@@ -104,12 +113,14 @@ function hooksForEvent(hooks: ProjectHooks, event: HookEvent): HookCommand[] {
 			return hooks.shellEnv;
 		case 'file.watcher':
 			return hooks.fileWatcher;
+		case 'afterEdit':
+			return hooks.afterEdit;
 	}
 }
 
 // События notify: ненулевой exit не блокирует действие
 function isNotifyOnly(event: HookEvent): boolean {
-	return event === 'session.diff' || event === 'file.watcher';
+	return event === 'session.diff' || event === 'file.watcher' || event === 'afterEdit';
 }
 
 // Загрузить hooks: hooksPath из слоёв конфига * иначе `.gen/hooks.json`, плюс inline `hooks` из JSON
@@ -226,10 +237,11 @@ function parseHooksRecord(hooks: Record<string, unknown> | undefined): ProjectHo
 	return {
 		beforeSubmit: asHookList(hooks.beforeSubmit),
 		beforeShell: asHookList(hooks.beforeShell),
-		sessionDiff: asHookList(hooks['session.diff']),
-		sessionCompacting: asHookList(hooks['session.compacting']),
-		shellEnv: asHookList(hooks['shell.env']),
-		fileWatcher: asHookList(hooks['file.watcher']),
+		sessionDiff: asHookList(hooks['session.diff'] ?? hooks.sessionDiff),
+		sessionCompacting: asHookList(hooks['session.compacting'] ?? hooks.sessionCompacting),
+		shellEnv: asHookList(hooks['shell.env'] ?? hooks.shellEnv),
+		fileWatcher: asHookList(hooks['file.watcher'] ?? hooks.fileWatcher),
+		afterEdit: asHookList(hooks.afterEdit ?? hooks['after.edit']),
 	};
 }
 
@@ -244,6 +256,7 @@ function mergeHooks(base: ProjectHooks, overlay: ProjectHooks): ProjectHooks {
 			: base.sessionCompacting,
 		shellEnv: overlay.shellEnv.length > 0 ? overlay.shellEnv : base.shellEnv,
 		fileWatcher: overlay.fileWatcher.length > 0 ? overlay.fileWatcher : base.fileWatcher,
+		afterEdit: overlay.afterEdit.length > 0 ? overlay.afterEdit : base.afterEdit,
 	};
 }
 
@@ -397,6 +410,13 @@ export async function runSessionDiffHook(paths: string[], turnId: string): Promi
 		GEN_HOOK_PATHS: paths.join('\n').slice(0, 8_000),
 		GEN_HOOK_TURN_ID: turnId.slice(0, 200),
 	});
+}
+
+// Notify-only после успешного write/patch (файл уже на диске; veto не откатывает)
+export async function runAfterEditHook(paths: string[], signal?: AbortSignal): Promise<HookRunResult> {
+	return runHookEvent('afterEdit', {
+		GEN_HOOK_PATHS: paths.join('\n').slice(0, 8_000),
+	}, signal);
 }
 
 // Перед compact: ненулевой exit блокирует уплотнение

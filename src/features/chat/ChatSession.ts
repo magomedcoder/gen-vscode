@@ -26,7 +26,7 @@ import { injectImagePathMarkers, saveImageAttachments } from './attachments';
 import type { ImageAttachment, IncomingImage } from './attachments';
 import { getEditorChatContext } from './editorContext';
 import { focusChatView } from './focusChat';
-import type { AgentPausedState, ChatTodoItem, ChatUiMessage, ChatViewState, PendingConfirm, ResearchJobUi, ToWebviewMessage } from './protocol';
+import type { ChatTodoItem, ChatUiMessage, ChatViewState, PendingConfirm, ResearchJobUi, ToWebviewMessage } from './protocol';
 import { SessionStore, fallbackTitleFromMessages, isDefaultSessionTitle, sessionHasUserMessage, setSessionPeek } from './sessionStore';
 import { pickTabsToEvict } from './tabEviction';
 import { abortSessionRuntime, createSessionRuntime } from './sessionRuntime';
@@ -233,13 +233,6 @@ export class ChatSession {
 		return this.runtime.researchAborts;
 	}
 	
-	private get agentPaused(): AgentPausedState | undefined { 
-		return this.runtime.agentPaused; 
-	}
-	
-	private set agentPaused(value: AgentPausedState | undefined) { 
-		this.runtime.agentPaused = value;
-	}
 	
 	private get toolAborts() {
 		return this.runtime.toolAborts;
@@ -455,7 +448,6 @@ export class ChatSession {
 			researchJobs: this.researchJobs.length > 0
 				? this.researchJobs.map((job) => ({ ...job }))
 				: undefined,
-			agentPaused: this.agentPaused,
 			activeToolCallId: this.activeToolCallId,
 			planHandoff,
 			model: settings.model,
@@ -503,9 +495,9 @@ export class ChatSession {
 	}
 
 	// Information Message + опциональный beep в webview
-	private notifyTurnComplete(signal: AbortSignal, paused: boolean): void {
+	private notifyTurnComplete(signal: AbortSignal): void {
 		const settings = getSettings();
-		if (!settings.notifyOnComplete || signal.aborted || paused) {
+		if (!settings.notifyOnComplete || signal.aborted) {
 			return;
 		}
 
@@ -1112,7 +1104,6 @@ export class ChatSession {
 		this.inflight = undefined;
 		this.busyDetail = undefined;
 		this.clearToolAborts();
-		this.agentPaused = undefined;
 		this.settleConfirm('abort');
 		this.settleQuestion('');
 		this.todos = [];
@@ -1133,19 +1124,8 @@ export class ChatSession {
 		this.inflight?.abort();
 		this.clearToolAborts();
 		this.interruptAllResearch();
-		this.agentPaused = undefined;
 		this.settleConfirm('abort');
 		this.settleQuestion('');
-		this.emit();
-	}
-
-	// Снять мягкую паузу без продолжения агента
-	stopAgentPause(): void {
-		if (!this.agentPaused) {
-			return;
-		}
-
-		this.agentPaused = undefined;
 		this.emit();
 	}
 
@@ -1366,17 +1346,6 @@ export class ChatSession {
 		for (const p of paths) {
 			await this.cleanupWorktree(p);
 		}
-	}
-
-	// Продолжение после лимита итераций - та же история и подсказка, новый бюджет N
-	async continueAgent(): Promise<void> {
-		if (!this.agentPaused || this.inflight) {
-			return;
-		}
-
-		this.agentPaused = undefined;
-		this.emit();
-		await this.runContinueTurn();
 	}
 
 	private clearToolAborts(): void {
@@ -2452,7 +2421,6 @@ export class ChatSession {
 		}
 
 		rt.todos = [];
-		rt.agentPaused = undefined;
 		this.seedSessionAllow(rt);
 		const clearSeqAtStart = rt.clearSeq;
 		const controller = new AbortController();
@@ -2652,14 +2620,6 @@ export class ChatSession {
 					},
 					openChildSessionForJob: (params) => this.openChildSessionForJob(params),
 					onRetry,
-					onPaused: (info) => {
-						if (!stillActive()) {
-							return;
-						}
-
-						rt.agentPaused = info;
-						this.emit();
-					},
 					onToolStart: (id, ctrl) => {
 						if (!stillActive()) {
 							return;
@@ -2832,9 +2792,7 @@ export class ChatSession {
 			return;
 		}
 
-		const paused = Boolean(rt.agentPaused);
-
-		if (turnOk && !paused) {
+		if (turnOk) {
 			await this.maybeRenameSessionAfterTurn(controller.signal, runSessionId, rt.messages);
 		}
 
@@ -2852,250 +2810,9 @@ export class ChatSession {
 			writeLog('agent', `[${new Date().toISOString()}] session tokens prompt=${usage.promptTokens} completion=${usage.completionTokens} total=${usage.totalTokens}`);
 		}
 
-		this.notifyTurnComplete(controller.signal, paused);
+		this.notifyTurnComplete(controller.signal);
 
-		// При мягкой паузе ждём Continue/Stop - очередь не дренируем
-		if (!paused) {
-			await this.drainTurnQueue(runSessionId);
-		}
-	}
-
-	// Продолжение после max_steps: история равна сообщениям вкладки, подсказка в API без дубля пользователя в UI
-	private async runContinueTurn(): Promise<void> {
-		const runSessionId = this.sessions.getCurrentSessionId();
-		const rt = this.ensureRuntime(runSessionId);
-		if (rt.inflight) {
-			return;
-		}
-
-		if (!this.canStartConcurrentRun()) {
-			this.notifyMaxConcurrentRuns();
-			return;
-		}
-
-		const clearSeqAtStart = rt.clearSeq;
-		const controller = new AbortController();
-		rt.inflight = controller;
-		rt.busyDetail = undefined;
-		this.emit();
-
-		const settings = getSettings();
-		if (!settings.baseUrl.trim() || !(await this.ensureSessionModel())) {
-			if (rt.inflight === controller) {
-				rt.inflight = undefined;
-			}
-
-			this.append({
-				id: messageId(),
-				role: 'error',
-				content: vscode.l10n.t('chat.error.missingUrlOrModel'),
-			}, runSessionId);
-			this.emit();
-			return;
-		}
-
-		const snapshotEnabled = settings.snapshotEnabled !== false;
-		const checkpoint = new AgentCheckpoint(snapshotEnabled);
-		const nudge = '(продолжи с того места, где остановился - лимит итераций исчерпан)';
-		let turnOk = false;
-		const stillActive = () => rt.clearSeq === clearSeqAtStart;
-
-		const onRetry = (info: { 
-			attempt: number
-			maxAttempts: number
-			status?: number
-			delayMs: number
-		}) => {
-			rt.busyDetail = vscode.l10n.t('chat.retrying', info.attempt, info.maxAttempts, info.status ?? '-');
-			this.emit();
-		};
-
-		try {
-			const planReload = await this.reloadPlanForTurn();
-			if (planReload.parseError) {
-				this.append({
-					id: messageId(),
-					role: 'error',
-					content: vscode.l10n.t('chat.error.planParse', planReload.parseError, this.planStore.relativePath),
-				}, runSessionId);
-			}
-
-			await this.agent.run({
-				history: rt.messages,
-				userText: nudge,
-				signal: controller.signal,
-				sessionId: runSessionId,
-				confirm: (req) => this.requestConfirm(req, runSessionId),
-				askQuestion: (req) => this.requestQuestion(req, runSessionId),
-				revealFile: revealAgentFile,
-				plan: this.stickyPlan,
-				onPlanChanged: () => this.onPlanChanged(),
-				checkpoint,
-				writes: rt.writes,
-				planEditsAppendix: planReload.planEditsAppendix,
-				mode: settings.chatMode,
-				sessionAllow: rt.sessionAllow,
-				onAlwaysAllow: (pattern) => {
-					this.rememberAlwaysAllow(rt, pattern);
-				},
-				onTodosChanged: (items) => {
-					if (!stillActive()) {
-						return;
-					}
-
-					rt.todos = items.map((item) => ({
-						id: item.id,
-						content: item.content,
-						status: (item.status === 'in_progress' || item.status === 'completed' || item.status === 'cancelled'
-							? item.status
-							: 'pending') as ChatTodoItem['status'],
-					}));
-					this.emit();
-				},
-				setChatMode: (mode) => this.setMode(mode),
-				createNewTask: async (params) => this.createNewTaskHandoff(params),
-				onSubagentJob: (event) => {
-					if (!stillActive()) {
-						return;
-					}
-					rt.researchJobs = upsertResearchJob(rt.researchJobs ?? [], {
-						id: event.id,
-						status: event.status,
-						subagent: event.subagent,
-						promptPreview: event.promptPreview,
-						prompt: event.prompt,
-						detail: event.detail,
-						worktreePath: event.worktreePath,
-						background: event.background,
-						mutating: event.mutating,
-						reportSnippet: event.reportSnippet,
-						childSessionId: event.childSessionId,
-						parentSessionId: runSessionId,
-					});
-					rt.busyDetail = researchJobsBusySummary(rt.researchJobs);
-					this.emit();
-				},
-				createJobAbort: (jobId) => {
-					const existing = rt.researchAborts.get(jobId);
-					if (existing) {
-						return existing.signal;
-					}
-					const ctrl = new AbortController();
-					rt.researchAborts.set(jobId, ctrl);
-					return ctrl.signal;
-				},
-				releaseJobAbort: (jobId) => {
-					rt.researchAborts.delete(jobId);
-				},
-				openChildSessionForJob: (params) => this.openChildSessionForJob(params),
-				onRetry,
-				onPaused: (info) => {
-					if (!stillActive()) {
-						return;
-					}
-
-					rt.agentPaused = info;
-					this.emit();
-				},
-				onToolStart: (id, ctrl) => {
-					if (!stillActive()) {
-						return;
-					}
-
-					rt.toolAborts.set(id, ctrl);
-					rt.activeToolCallId = id;
-					this.emit();
-				},
-				onToolEnd: (id) => {
-					if (!stillActive()) {
-						return;
-					}
-
-					rt.toolAborts.delete(id);
-					if (rt.activeToolCallId === id) {
-						rt.activeToolCallId = undefined;
-					}
-
-					this.emit();
-				},
-				onTurnDiff: ({ turnId, paths }) => {
-					if (!stillActive() || paths.length === 0) {
-						return;
-					}
-					void runSessionDiffHook(paths, turnId);
-				},
-				onContextPrune: ({ chars, messages }) => {
-					if (!stillActive()) {						return;
-					}
-
-					this.lastContextPrune = { chars, messages };
-					this.emit();
-				},
-				ui: {
-					append: (message) => {
-						if (!stillActive()) {
-							return;
-						}
-						this.append(message, runSessionId);
-					},
-					update: (id, patch) => {
-						if (!stillActive()) {
-							return;
-						}
-						this.update(id, patch, runSessionId);
-					},
-				},
-			});
-			turnOk = !controller.signal.aborted;
-		} catch (err) {
-			turnOk = false;
-			if (!stillActive()) {
-				return;
-			}
-
-			const cancelled = isAbortError(err) || controller.signal.aborted;
-			this.append({
-				id: messageId(),
-				role: 'error',
-				content: cancelled ? vscode.l10n.t('chat.error.cancelled') : err instanceof Error ? err.message : String(err),
-			}, runSessionId);
-		} finally {
-			if (rt.inflight === controller) {
-				rt.inflight = undefined;
-			}
-
-			rt.busyDetail = undefined;
-			for (const ctrl of rt.toolAborts.values()) {
-				ctrl.abort();
-			}
-
-			rt.toolAborts.clear();
-			rt.activeToolCallId = undefined;
-			rt.todos = [];
-			if (stillActive()) {
-				this.persist(runSessionId);
-				this.emit();
-			}
-		}
-
-		if (!stillActive()) {
-			return;
-		}
-
-		const paused = Boolean(rt.agentPaused);
-
-		if (snapshotEnabled && checkpoint.size > 0) {
-			// Без диалога offerCheckpointRestore - снимок только для /undo и edit+revertFiles
-			if (turnOk) {
-				rt.lastCheckpoint = checkpoint;
-			}
-		}
-
-		this.notifyTurnComplete(controller.signal, paused);
-
-		if (!paused) {
-			await this.drainTurnQueue(runSessionId);
-		}
+		await this.drainTurnQueue(runSessionId);
 	}
 
 	// После первого успешного хода: LLM-заголовок через smallModel, если всё ещё «Новый чат»

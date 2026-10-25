@@ -2,7 +2,7 @@ import { AgentCheckpoint } from '../agent/checkpoint';
 import { AgentWriteTracker } from '../agent/userEdits';
 import type { ConfirmChoice } from '../agent/types';
 import type { ImageAttachment } from './attachments';
-import type { AgentPausedState, ChatTodoItem, ChatUiMessage, PendingConfirm, PendingQuestion, ResearchJobUi } from './protocol';
+import type { ChatTodoItem, ChatUiMessage, PendingConfirm, PendingQuestion, ResearchJobUi } from './protocol';
 
 // Запись отмены и повтора одного хода пользователя
 export interface TurnHistoryEntry {
@@ -34,7 +34,6 @@ export interface SessionRuntime {
 	researchJobs?: ResearchJobUi[];
 	// Отдельный AbortController для каждой задачи (прерывание research без остановки родителя)
 	researchAborts: Map<string, AbortController>;
-	agentPaused?: AgentPausedState;
 	toolAborts: Map<string, AbortController>;
 	activeToolCallId?: string;
 	sessionAllow: string[];
@@ -93,7 +92,6 @@ export function abortSessionRuntime(rt: SessionRuntime): void {
 				: job,
 		);
 	}
-	rt.agentPaused = undefined;
 	if (rt.pendingConfirm) {
 		const pending = rt.pendingConfirm;
 		rt.pendingConfirm = undefined;

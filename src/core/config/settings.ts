@@ -10,7 +10,7 @@ import { clearCachedNCtx } from '../llm/contextBudget';
 import { normalizeBaseUrl } from '../llm/normalizeBaseUrl';
 import { DEFAULT_SETTINGS } from './types';
 import { isChatMode } from '../../features/chat/chatModes';
-import type { ChatMode, GenSettings, RevealOnEdit, ShareMode, TabEvictionPolicy, ThinkingDisplay, WebSearchBackend } from './types';
+import type { ChatMode, GenSettings, RevealOnEdit, ShareMode, TabEvictionPolicy, ThinkingDisplay, VerifyAfterEdit, WebSearchBackend } from './types';
 export type { ChatMode, CommentStyle, GenSettings, RevealOnEdit, ShareMode, TabEvictionPolicy, ThinkingDisplay, WebSearchBackend } from './types';
 export { DEFAULT_SETTINGS, isAgentLikeMode, resolveSmallModel } from './types';
 export { getAdminPolicySnapshot, isAdminPolicyActive } from './adminPolicy';
@@ -19,6 +19,15 @@ const STORAGE_KEY = 'gen.settings';
 let store: Memento | undefined;
 let sessionModel = '';
 const listeners = new Set<() => void>();
+
+function normalizeVerifyAfterEdit(raw: unknown): VerifyAfterEdit {
+	const v = String(raw ?? '');
+	if (v === 'off' || v === 'diagnostics_tests' || v === 'full') {
+		return v;
+	}
+	
+	return 'diagnostics';
+}
 
 function asNumber(value: unknown, fallback: number): number {
 	const n = typeof value === 'number' ? value : Number(value);
@@ -144,7 +153,6 @@ function normalize(raw: Partial<GenSettings>): GenSettings {
 		planModel: String(raw.planModel ?? '').trim(),
 		actModel: String(raw.actModel ?? '').trim(),
 		chatMode,
-		agentMaxIterations: clamp(Math.floor(asNumber(raw.agentMaxIterations, DEFAULT_SETTINGS.agentMaxIterations)), 0, 40),
 		approvalPolicy: normalizeApprovalPolicy(raw.approvalPolicy),
 		autoApprove: raw.autoApprove === true,
 		persistAlwaysAllow: raw.persistAlwaysAllow === true,
@@ -214,6 +222,8 @@ function normalize(raw: Partial<GenSettings>): GenSettings {
 		trustedPlugins: normalizeStringList(raw.trustedPlugins),
 		personaId: String(raw.personaId ?? '').trim(),
 		formatAfterEdit: raw.formatAfterEdit === true,
+		verifyAfterEdit: normalizeVerifyAfterEdit(raw.verifyAfterEdit),
+		verifyGateCompletion: raw.verifyGateCompletion === true,
 		gitSyncAutoKeep: raw.gitSyncAutoKeep === true,
 		indexingEnabled: raw.indexingEnabled !== false,
 		indexNewFolders: raw.indexNewFolders !== false,

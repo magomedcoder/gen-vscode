@@ -274,8 +274,8 @@ export const applyDiffTool: ToolDefinition = {
 			content: vscode.l10n.t('tool.diffApplied', second.prepared.length, summary, note),
 		};
 
-		const firstUri = second.prepared.find((p) => p.file.kind !== 'delete')?.uri;
-		return firstUri ? enhanceSuccessfulWrite(result, firstUri) : result;
+		const uris = second.prepared.filter((p) => p.file.kind !== 'delete').map((p) => p.uri);
+		return uris.length > 0 ? enhanceSuccessfulWrite(result, uris, ctx) : result;
 	},
 };
 

@@ -270,7 +270,6 @@ export class AgentSession {
 		// Id чат-сессии
 		sessionId?: string;
 		// Мягкая пауза при исчерпании лимита итераций (не жёсткий сбой)
-		onPaused?: (info: { reason: 'max_steps'; iterations: number }) => void;
 		// Старт tool - зарегистрировать AbortController для cancelToolCall
 		onToolStart?: (toolCallId: string, controller: AbortController) => void;
 		// Завершение tool - снять AbortController
@@ -310,8 +309,9 @@ export class AgentSession {
 	}): Promise<void> {
 		const settings = getSettings();
 		const modeModel = resolveModeModel(settings) || settings.model;
-		const maxIterations = params.maxIterationsOverride ?? settings.agentMaxIterations;
-		const unlimited = !params.maxIterationsOverride && maxIterations === 0;
+		// Primary: без лимита итераций. Субагенты: maxIterationsOverride.
+		const maxIterations = params.maxIterationsOverride;
+		const unlimited = maxIterations === undefined;
 		let toolsEnabled = true;
 		const plan = params.plan ?? new StickyPlan();
 		const checkpoint = params.checkpoint ?? new AgentCheckpoint();
@@ -413,6 +413,9 @@ export class AgentSession {
 
 		const toolCtxBase: ExtendedToolContext = {
 			signal: params.signal,
+			recordVerify: (info) => {
+				toolCtxBase.lastVerifyHadErrors = info.hadErrors;
+			},
 			confirm: params.confirm,
 			askQuestion: params.askQuestion
 				? async (req) => {
@@ -1047,15 +1050,11 @@ export class AgentSession {
 			return;
 		}
 
-		// Мягкая пауза: не жёсткий сбой - UI предложит Continue / Stop
+		// Субагент упёрся в свой override - без pause banner primary
 		params.ui.append({
 			id: messageId(),
-			role: 'error',
-			content: vscode.l10n.t('chat.pause.maxSteps', maxIterations),
-		});
-		params.onPaused?.({
-			reason: 'max_steps',
-			iterations: maxIterations
+			role: 'assistant',
+			content: vscode.l10n.t('agent.subagentIterationLimit', maxIterations ?? 0),
 		});
 		} finally {
 			todos.clear();
