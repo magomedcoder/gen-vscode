@@ -62,6 +62,8 @@ export const FILE_LAYER_KEYS = [
 	'commentStyle',
 	'previewBeforeApply',
 	'primaryTools',
+	'primaryToolsPreset',
+	'toolsFallbackPolicy',
 	'modelRoutedPatch',
 	'watcherIgnore',
 	'webSearchEnabled',

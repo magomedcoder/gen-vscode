@@ -2,6 +2,8 @@
 
 ## dev
 
+- **Local LLM tools:** multi-dialect text tool parsers (Hermes / invoke XML / JSONL); one structured retry on truncated/invalid args; tools capability cache + preflight text-tools path; `toolsFallbackPolicy` always|ask|stop (default always - less Confirm spam)
+- **Tools budget:** `primaryToolsPreset` auto/coding/explore/debug/all/custom; auto-shrink schemas near context budget; Settings -> Agent slim controls
 - **Agent verify:** after successful edits, embed real diagnostics (opt-in related tests / auto `run_tests`); `verifyAfterEdit` + optional `verifyGateCompletion`; hook `afterEdit`; remove agent iteration limit / pause Continue
 - **Settings:** simplify Settings - 9 pages, essentials only (rest in JSON); drill-down sections; one Base URL; API keys only in SecretStorage; remove unused settings UI and dead code
 - **Patch apply:** tool `apply_diff` (unified diff primary, multi-file); search-replace fallback with resilient `old_string` (exact -> newline -> unique whitespace) + chained `apply_workspace_edit`; on fail: one retry + auto `read_file` in tool result

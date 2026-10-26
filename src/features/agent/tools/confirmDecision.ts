@@ -39,6 +39,24 @@ export function shouldContinueToolsFallback(choice: ConfirmChoice): boolean {
 	return resolveConfirmChoiceOutcome(choice) === 'proceed';
 }
 
+export type ToolsFallbackPolicyDecision = 'continue' | 'stop' | 'ask';
+
+/**
+ * Политика settings.toolsFallbackPolicy до Confirm UI.
+ * always -> сразу text-tools; stop -> выход; ask -> показать Continue/Stop.
+ */
+export function resolveToolsFallbackPolicy(
+	policy: 'ask' | 'always' | 'stop' | undefined,
+): ToolsFallbackPolicyDecision {
+	if (policy === 'stop') {
+		return 'stop';
+	}
+	if (policy === 'ask') {
+		return 'ask';
+	}
+	return 'continue';
+}
+
 /**
  * После deny tool: остановить agent loop, если continueLoopOnDeny выключен.
  * cancelled (per-tool kill) всегда продолжает цикл.

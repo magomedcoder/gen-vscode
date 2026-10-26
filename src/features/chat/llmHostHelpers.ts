@@ -1,6 +1,7 @@
 import { getSettings, setSessionModel } from '../../core/config/settings';
 import { isAbortError } from '../../core/llm/errors';
 import type { LlmClient } from '../../core/llm/types';
+import { mergeToolsHintIntoCapabilities } from '../agent/toolsCapability';
 import type { ToWebviewMessage } from './protocol';
 
 // Ответы loadModels / checkConnection для webview
@@ -50,13 +51,14 @@ export class LlmHostRequests {
 				return;
 			}
 
+			const model = getSettings().model;
 			this.post({
 				type: 'connectionHealth',
 				ok: health.ok,
 				modelCount: health.modelCount,
 				message: health.message,
 				requestId,
-				capabilities: health.capabilities,
+				capabilities: mergeToolsHintIntoCapabilities(health.capabilities, baseUrl, model),
 			});
 		} catch (err) {
 			if (isAbortError(err) || controller.signal.aborted) {

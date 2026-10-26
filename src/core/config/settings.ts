@@ -10,7 +10,7 @@ import { clearCachedNCtx } from '../llm/contextBudget';
 import { normalizeBaseUrl } from '../llm/normalizeBaseUrl';
 import { DEFAULT_SETTINGS } from './types';
 import { isChatMode } from '../../features/chat/chatModes';
-import type { ChatMode, GenSettings, RevealOnEdit, ShareMode, TabEvictionPolicy, ThinkingDisplay, VerifyAfterEdit, WebSearchBackend } from './types';
+import type { ChatMode, GenSettings, PrimaryToolsPreset, RevealOnEdit, ShareMode, TabEvictionPolicy, ThinkingDisplay, ToolsFallbackPolicy, VerifyAfterEdit, WebSearchBackend } from './types';
 export type { ChatMode, CommentStyle, GenSettings, RevealOnEdit, ShareMode, TabEvictionPolicy, ThinkingDisplay, WebSearchBackend } from './types';
 export { DEFAULT_SETTINGS, isAgentLikeMode, resolveSmallModel } from './types';
 export { getAdminPolicySnapshot, isAdminPolicyActive } from './adminPolicy';
@@ -25,8 +25,26 @@ function normalizeVerifyAfterEdit(raw: unknown): VerifyAfterEdit {
 	if (v === 'off' || v === 'diagnostics_tests' || v === 'full') {
 		return v;
 	}
-	
+
 	return 'diagnostics';
+}
+
+function normalizePrimaryToolsPreset(raw: unknown): PrimaryToolsPreset {
+	const v = String(raw ?? '');
+	if (v === 'all' || v === 'coding' || v === 'explore' || v === 'debug' || v === 'custom') {
+		return v;
+	}
+	
+	return 'auto';
+}
+
+function normalizeToolsFallbackPolicy(raw: unknown): ToolsFallbackPolicy {
+	const v = String(raw ?? '');
+	if (v === 'ask' || v === 'stop') {
+		return v;
+	}
+
+	return 'always';
 }
 
 function asNumber(value: unknown, fallback: number): number {
@@ -160,7 +178,9 @@ function normalize(raw: Partial<GenSettings>): GenSettings {
 		enableWorkspaceContext: raw.enableWorkspaceContext !== false,
 		alwaysOnWorkspaceContext: raw.alwaysOnWorkspaceContext === true,
 		shareMode,
+		primaryToolsPreset: normalizePrimaryToolsPreset(raw.primaryToolsPreset),
 		primaryTools: normalizeStringList(raw.primaryTools),
+		toolsFallbackPolicy: normalizeToolsFallbackPolicy(raw.toolsFallbackPolicy),
 		modelRoutedPatch: raw.modelRoutedPatch !== false,
 		watcherIgnore: normalizeStringList(raw.watcherIgnore),
 		revealOnEdit: normalizeRevealOnEdit(raw.revealOnEdit),

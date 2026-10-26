@@ -32,12 +32,14 @@ import { sanitizeToolArgumentsForApi, type ConfirmChoice, type ToolContext, type
 import type { AgentWriteTracker } from './userEdits';
 import { confirmOrSkip } from './tools/confirm';
 import { countRemainingMutatingEdits } from './tools/batchEditConfirm';
-import { shouldContinueToolsFallback, shouldStopLoopOnToolDeny } from './tools/confirmDecision';
+import { resolveToolsFallbackPolicy, shouldContinueToolsFallback, shouldStopLoopOnToolDeny } from './tools/confirmDecision';
 import { buildUserContentWithImages, type ImageAttachment } from '../chat/attachments';
 import { completeWithContextGuard, softCompactApiMessages, shrinkApiMessages, dropSupersededReminders, type ShrinkStats } from '../chat/fitContext';
 import { estimateChatMessagesTokens } from '../../core/llm/estimateTokens';
 import { getCachedNCtx, getEffectiveContextBudget, isNearContextBudget } from '../../core/llm/contextBudget';
 import { extractTextToolCalls, stripTextToolCallsForDisplay } from './textToolCalls';
+import { getCachedToolsCapability, rememberToolsCapability } from './toolsCapability';
+import { buildInvalidArgsRetryPrompt, findInvalidToolCalls, isBadToolCallJsonError } from './toolArgsRetry';
 
 // Уникальные пути из успешного mutating tool (path или hunks)
 function collectTurnDiffPaths(toolResult: ToolResult, into: Set<string>): void {
@@ -313,6 +315,12 @@ export class AgentSession {
 		const maxIterations = params.maxIterationsOverride;
 		const unlimited = maxIterations === undefined;
 		let toolsEnabled = true;
+		// Preflight: кэш «сервер без tools» -> сразу text-tools path (без мёртвого native turn)
+		const toolsCap = getCachedToolsCapability(settings.baseUrl, modeModel);
+		let textToolFallback = toolsCap === 'unsupported';
+		if (textToolFallback) {
+			toolsEnabled = false;
+		}
 		const plan = params.plan ?? new StickyPlan();
 		const checkpoint = params.checkpoint ?? new AgentCheckpoint();
 		const writes = params.writes;
@@ -367,12 +375,19 @@ export class AgentSession {
 
 		let liveEditorAppendix = getLiveEditorAppendix() ?? '';
 		// Опции фильтра tools для текущего режима (API tools и список имён в text-tool промпте)
-		const resolveToolOpts = (mode: ChatMode) => ({
+		const resolveToolOpts = (mode: ChatMode, extra?: {
+			forceAllowlist?: readonly string[];
+			contextBudget?: number;
+			messageTokens?: number;
+		}) => ({
 			readonly: params.readonlySubagent === true || isReadonlyMode(mode),
 			disableTask: depth > 0,
 			// субагенты не режем primaryTools
 			primary: depth === 0,
 			modelId: modeModel,
+			contextBudget: extra?.contextBudget,
+			messageTokens: extra?.messageTokens,
+			forceAllowlist: extra?.forceAllowlist,
 		});
 		const buildSystem = (toolsAvailable: boolean, mode: ChatMode, textToolFormat = false) => [
 			customSystem,
@@ -402,7 +417,7 @@ export class AgentSession {
 		const apiMessages: ChatMessage[] = [
 			{
 				role: 'system',
-				content: buildSystem(true, agentMode),
+				content: buildSystem(toolsEnabled || textToolFallback, agentMode, textToolFallback),
 			},
 			...historyToApiMessages(params.history),
 			{
@@ -527,8 +542,9 @@ export class AgentSession {
 		let doomKey = '';
 		let doomFails = 0;
 		let midLoopCompactDone = false;
-		// API без tools: парсим <tool_call> из content и исполняем локально
-		let textToolFallback = false;
+		// Один structured retry на truncated/invalid tool args за весь run
+		let structuredArgsRetryDone = false;
+		let preflightTextToolsNotified = false;
 
 		const reportPrune = (info: ShrinkStats): void => {
 			if (info.prunedChars <= 0 && info.prunedMessages <= 0) {
@@ -554,7 +570,14 @@ export class AgentSession {
 				content: buildSystem(toolsEnabled || textToolFallback, agentMode, textToolFallback),
 			};
 
-			const toolOpts = resolveToolOpts(agentMode);
+			if (textToolFallback && !preflightTextToolsNotified && toolsCap === 'unsupported') {
+				preflightTextToolsNotified = true;
+				params.ui.append({
+					id: messageId(),
+					role: 'assistant',
+					content: vscode.l10n.t('agent.toolsUnsupportedCached'),
+				});
+			}
 
 			const assistantId = messageId();
 			let streamed = '';
@@ -590,51 +613,115 @@ export class AgentSession {
 				}
 			}
 
-			const result = await completeWithContextGuard({
-				client: this.client,
-				settings: settingsNow,
-				getMessages: () => apiMessages,
-				setMessages: (next) => {
-					apiMessages.length = 0;
-					apiMessages.push(...next);
-				},
-				complete: (messages) => this.client.complete({
-					messages,
-					model: modeModel || undefined,
-					signal: params.signal,
-					tools: toolsEnabled ? getAgentLlmTools(agentMode, toolOpts) : undefined,
-					toolChoice: toolsEnabled ? 'auto' : 'none',
-					onDelta: (chunk) => {
-						streamed += chunk;
-						params.ui.update(assistantId, {
-							content: stripTextToolCallsForDisplay(streamed),
-						});
-					},
-					onThinkingDelta: (chunk) => {
-						streamedThinking += chunk;
-						params.ui.update(assistantId, {
-							thinking: streamedThinking
-						});
-					},
-					onRetry: params.onRetry,
-				}),
-				onStatus: (detail) => {
-					params.onRetry?.({
-						attempt: 1,
-						maxAttempts: 2,
-						status: 400,
-						delayMs: 0,
-					});
-					params.ui.update(assistantId, {
-						content: stripTextToolCallsForDisplay(streamed || detail),
-					});
-				},
-				onPrune: reportPrune,
-				signal: params.signal,
+			const messageTokens = estimateChatMessagesTokens(apiMessages);
+			let toolOpts = resolveToolOpts(agentMode, {
+				contextBudget: budget,
+				messageTokens,
 			});
 
+			const runComplete = async (forceAllowlist?: readonly string[]) => {
+				const opts = forceAllowlist?.length
+					? resolveToolOpts(agentMode, {
+						contextBudget: budget,
+						messageTokens: estimateChatMessagesTokens(apiMessages),
+						forceAllowlist,
+					})
+					: toolOpts;
+				return completeWithContextGuard({
+					client: this.client,
+					settings: settingsNow,
+					getMessages: () => apiMessages,
+					setMessages: (next) => {
+						apiMessages.length = 0;
+						apiMessages.push(...next);
+					},
+					complete: (messages) => this.client.complete({
+						messages,
+						model: modeModel || undefined,
+						signal: params.signal,
+						tools: toolsEnabled ? getAgentLlmTools(agentMode, opts) : undefined,
+						toolChoice: toolsEnabled
+							? (forceAllowlist?.length ? 'required' : 'auto')
+							: 'none',
+						onDelta: (chunk) => {
+							streamed += chunk;
+							params.ui.update(assistantId, {
+								content: stripTextToolCallsForDisplay(streamed),
+							});
+						},
+						onThinkingDelta: (chunk) => {
+							streamedThinking += chunk;
+							params.ui.update(assistantId, {
+								thinking: streamedThinking
+							});
+						},
+						onRetry: params.onRetry,
+					}),
+					onStatus: (detail) => {
+						params.onRetry?.({
+							attempt: 1,
+							maxAttempts: 2,
+							status: 400,
+							delayMs: 0,
+						});
+						params.ui.update(assistantId, {
+							content: stripTextToolCallsForDisplay(streamed || detail),
+						});
+					},
+					onPrune: reportPrune,
+					signal: params.signal,
+				});
+			};
+
+			let result;
+			try {
+				result = await runComplete();
+			} catch (err) {
+				if (
+					!structuredArgsRetryDone
+					&& toolsEnabled
+					&& isBadToolCallJsonError(err)
+				) {
+					structuredArgsRetryDone = true;
+					params.ui.append({
+						id: messageId(),
+						role: 'assistant',
+						content: vscode.l10n.t('agent.toolArgsRetry'),
+					});
+					apiMessages.push({
+						role: 'user',
+						content: buildInvalidArgsRetryPrompt(['(предыдущий tool)']),
+					});
+					streamed = '';
+					streamedThinking = '';
+					toolOpts = resolveToolOpts(agentMode, {
+						contextBudget: budget,
+						messageTokens: estimateChatMessagesTokens(apiMessages),
+					});
+					result = await runComplete();
+				} else {
+					throw err;
+				}
+			}
+
 			if (result.toolsFallback && toolsEnabled) {
-				if (params.confirm) {
+				rememberToolsCapability(settingsNow.baseUrl, modeModel || settingsNow.model, 'unsupported');
+				const policy = resolveToolsFallbackPolicy(settingsNow.toolsFallbackPolicy);
+				if (policy === 'stop') {
+					params.ui.append({
+						id: messageId(),
+						role: 'error',
+						content: vscode.l10n.t('agent.toolsUnsupportedStopped'),
+					});
+					const stoppedExtracted = extractTextToolCalls((result.content || streamed).trim());
+					params.ui.update(assistantId, {
+						content: stoppedExtracted.content || vscode.l10n.t('agent.toolsUnsupportedStopped'),
+						thinking: (result.thinking || streamedThinking).trim() || undefined,
+						usage: result.usage,
+					});
+					return;
+				}
+				if (policy === 'ask' && params.confirm) {
 					params.onBusyDetail?.(vscode.l10n.t('chat.busy.awaitingToolsFallback'));
 					let choice: ConfirmChoice = 'apply';
 					try {
@@ -676,14 +763,73 @@ export class AgentSession {
 					role: 'assistant',
 					content: vscode.l10n.t('agent.toolsUnsupported'),
 				});
+			} else if (toolsEnabled && !result.toolsFallback) {
+				rememberToolsCapability(settingsNow.baseUrl, modeModel || settingsNow.model, 'native');
 			}
 
-			const rawContent = (result.content || streamed).trim();
-			const extracted = extractTextToolCalls(rawContent);
+			let rawContent = (result.content || streamed).trim();
+			let extracted = extractTextToolCalls(rawContent);
 			let toolCalls = result.toolCalls ?? [];
 			if (toolCalls.length === 0 && extracted.toolCalls.length > 0) {
 				toolCalls = extracted.toolCalls;
 			}
+
+			// Обрезанные / невалидные args: один structured retry с force single-tool
+			const invalidCalls = findInvalidToolCalls(toolCalls);
+			if (invalidCalls.length > 0 && !structuredArgsRetryDone) {
+				structuredArgsRetryDone = true;
+				const forceNames = [...new Set(invalidCalls.map((c) => c.function.name))];
+				params.ui.append({
+					id: messageId(),
+					role: 'assistant',
+					content: vscode.l10n.t('agent.toolArgsRetry'),
+				});
+				apiMessages.push({
+					role: 'assistant',
+					content: extracted.content || rawContent || null,
+					tool_calls: invalidCalls.map((call) => ({
+						...call,
+						function: {
+							...call.function,
+							arguments: sanitizeToolArgumentsForApi(call.function.arguments),
+						},
+					})),
+				});
+				for (const call of invalidCalls) {
+					apiMessages.push({
+						role: 'tool',
+						tool_call_id: call.id,
+						name: call.function.name,
+						content: buildInvalidArgsRetryPrompt([call.function.name]),
+					});
+				}
+				apiMessages.push({
+					role: 'user',
+					content: buildInvalidArgsRetryPrompt(forceNames),
+				});
+				streamed = '';
+				streamedThinking = '';
+				const retryResult = await runComplete(
+					toolsEnabled ? forceNames.slice(0, 1) : undefined,
+				);
+				if (retryResult.toolsFallback && toolsEnabled) {
+					rememberToolsCapability(settingsNow.baseUrl, modeModel || settingsNow.model, 'unsupported');
+					toolsEnabled = false;
+					textToolFallback = true;
+					apiMessages[0] = {
+						role: 'system',
+						content: buildSystem(true, agentMode, true),
+					};
+				}
+				result = retryResult;
+				rawContent = (retryResult.content || streamed).trim();
+				extracted = extractTextToolCalls(rawContent);
+				toolCalls = retryResult.toolCalls ?? [];
+				if (toolCalls.length === 0 && extracted.toolCalls.length > 0) {
+					toolCalls = extracted.toolCalls;
+				}
+			}
+
 			const content = extracted.content;
 			const thinking = (result.thinking || streamedThinking).trim() || undefined;
 			params.ui.update(assistantId, {

@@ -2,6 +2,8 @@
 
 ## dev
 
+- **Local LLM tools:** несколько диалектов text tools (Hermes / invoke XML / JSONL); один structured retry при truncated/invalid args; кэш tools capability + preflight text-tools; `toolsFallbackPolicy` always|ask|stop (default always - меньше Confirm)
+- **Tools budget:** `primaryToolsPreset` auto/coding/explore/debug/all/custom; auto-shrink схем у budget; slim UI в Settings -> Agent
 - **Agent verify:** после успешных правок - реальные diagnostics в tool result (опц. related tests / auto `run_tests`); `verifyAfterEdit` + опц. `verifyGateCompletion`; hook `afterEdit`; убран лимит итераций / пауза Continue
 - **Settings:** упрощение настроек - 9 экранов, только essentials (остальное в JSON); drill-down секции; один Base URL; API-ключи только в SecretStorage; убран лишний UI настроек и мёртвый код
 - **Patch apply:** tool `apply_diff` (unified diff как primary, multi-file); search-replace fallback с устойчивым `old_string` (exact -> переносы -> unique whitespace) + цепочка в `apply_workspace_edit`; при fail: одна retry + auto `read_file` в ответе tool

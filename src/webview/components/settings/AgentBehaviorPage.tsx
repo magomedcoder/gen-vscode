@@ -1,6 +1,6 @@
 import { applyOpenAfterEdit, readOpenAfterEdit } from '../../../core/config/connections';
 import type { OpenAfterEditMode } from '../../../core/config/connections';
-import type { PlanShellPolicy, TabEvictionPolicy, VerifyAfterEdit } from '../../../core/config/types';
+import type { PlanShellPolicy, PrimaryToolsPreset, TabEvictionPolicy, ToolsFallbackPolicy, VerifyAfterEdit } from '../../../core/config/types';
 import { t } from '../../i18n';
 import { JsonOnlyHint } from './JsonOnlyHint';
 import type { SettingsPageProps } from './pages';
@@ -16,6 +16,38 @@ export function AgentBehaviorPage({ draft, setField, updateDraft }: SettingsPage
 	return (
 		<>
 			<SettingsPageHeader pageId="agent" />
+
+			<SettingsBlock
+				titleKey="settings.section.agent.tools"
+				hintKey="settings.section.agent.toolsHint"
+			>
+				<FieldSelect
+					labelKey="settings.primaryToolsPreset.label"
+					hintKey="settings.primaryToolsPreset.hint"
+					value={draft.primaryToolsPreset}
+					onChange={(v) => setField('primaryToolsPreset', v as PrimaryToolsPreset)}
+				>
+					<option value="auto">{t('settings.primaryToolsPreset.auto')}</option>
+					<option value="coding">{t('settings.primaryToolsPreset.coding')}</option>
+					<option value="explore">{t('settings.primaryToolsPreset.explore')}</option>
+					<option value="debug">{t('settings.primaryToolsPreset.debug')}</option>
+					<option value="all">{t('settings.primaryToolsPreset.all')}</option>
+					<option value="custom">{t('settings.primaryToolsPreset.custom')}</option>
+				</FieldSelect>
+				{draft.primaryToolsPreset === 'custom' ? (
+					<JsonOnlyHint messageKey="settings.primaryTools.jsonOnlyHint" />
+				) : null}
+				<FieldSelect
+					labelKey="settings.toolsFallbackPolicy.label"
+					hintKey="settings.toolsFallbackPolicy.hint"
+					value={draft.toolsFallbackPolicy}
+					onChange={(v) => setField('toolsFallbackPolicy', v as ToolsFallbackPolicy)}
+				>
+					<option value="always">{t('settings.toolsFallbackPolicy.always')}</option>
+					<option value="ask">{t('settings.toolsFallbackPolicy.ask')}</option>
+					<option value="stop">{t('settings.toolsFallbackPolicy.stop')}</option>
+				</FieldSelect>
+			</SettingsBlock>
 
 			<SettingsBlock
 				titleKey="settings.section.agent.loop"

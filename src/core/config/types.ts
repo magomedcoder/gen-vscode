@@ -21,6 +21,10 @@ export type ImageQualityPreset = 'low' | 'medium' | 'high';
 export type PlanShellPolicy = 'deny' | 'ask';
 // После правки агента: diagnostics / related tests в tool result
 export type VerifyAfterEdit = 'off' | 'diagnostics' | 'diagnostics_tests' | 'full';
+// Пресет tools для primary agent (малый n_ctx)
+export type PrimaryToolsPreset = 'auto' | 'all' | 'coding' | 'explore' | 'debug' | 'custom';
+// Политика toolsFallback: спросить / сразу text-tools / стоп
+export type ToolsFallbackPolicy = 'ask' | 'always' | 'stop';
 // При лимите вкладок: блокировать new / закрывать самые старые idle
 export type TabEvictionPolicy = 'block' | 'closeOldestIdle';
 // Движок outline: Tree-sitter wasm / LSP / TypeScript API / auto
@@ -109,10 +113,19 @@ export interface GenSettings {
 	 */
 	shareMode: ShareMode;
 	/**
-	 * Имена tools только для primary-агента (пустой список = все доступные).
+	 * Пресет tools для primary-агента (auto по n_ctx / all / coding / explore / debug / custom).
+	 */
+	primaryToolsPreset: PrimaryToolsPreset;
+	/**
+	 * Имена tools только для primary при `primaryToolsPreset=custom` (пустой = все).
 	 * Субагенты этот фильтр не применяют.
 	 */
 	primaryTools: string[];
+	/**
+	 * Политика при toolsFallback (сервер без native tools).
+	 * always (default) - сразу text `<tool_call>`; ask - Confirm; stop - выход.
+	 */
+	toolsFallbackPolicy: ToolsFallbackPolicy;
 	/**
 	 * Маршрутизация patch по модели: GPT-семейство получает `apply_patch`; остальные - только write/edit.
 	 * false - всегда отдавать `apply_patch` (как раньше).
@@ -579,7 +592,9 @@ export const DEFAULT_SETTINGS: GenSettings = {
 	enableWorkspaceContext: true,
 	alwaysOnWorkspaceContext: false,
 	shareMode: 'manual',
+	primaryToolsPreset: 'auto',
 	primaryTools: [],
+	toolsFallbackPolicy: 'always',
 	modelRoutedPatch: true,
 	watcherIgnore: [],
 	revealOnEdit: 'never',

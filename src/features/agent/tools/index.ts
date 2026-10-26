@@ -10,6 +10,7 @@ import { getAgentRoot } from '../agentRoot';
 import { extractPathFromPartialJson, parseToolArguments, toLlmToolDefinition } from '../types';
 import type { ToolContext, ToolResult } from '../types';
 import { includeApplyPatchForModel } from '../modelRoutedPatch';
+import { resolvePrimaryToolsAllowlist, shrinkToolsForBudget } from '../primaryToolsPresets';
 import { getToolByName, listTools } from './registry';
 import { confirmAlwaysOrSkip } from './confirm';
 import { shouldOfferAllowRemainingEdits } from './batchEditConfirm';
@@ -69,6 +70,12 @@ export function getAgentLlmTools(mode?: string, opts?: {
 	primary?: boolean;
 	// Id модели текущего run (для маршрутизации patch по модели)
 	modelId?: string;
+	// Бюджет контекста (токены) для auto-пресета / shrink
+	contextBudget?: number;
+	// Токены текущего prompt (для сужения схем)
+	messageTokens?: number;
+	// Принудительный allowlist (напр. retry одного tool)
+	forceAllowlist?: readonly string[];
 }): LlmToolDefinition[] {
 	const settings = getSettings();
 	const modelId = opts?.modelId ?? settings.model;
@@ -127,17 +134,35 @@ export function getAgentLlmTools(mode?: string, opts?: {
 		return true;
 	});
 
-	// primaryTools: только для primary-агента (не readonly / не субагент)
-	const applyPrimary = opts?.primary !== false && !opts?.readonly && settings.primaryTools.length > 0;
-	if (!applyPrimary) {
-		return filtered.map(toLlmToolDefinition);
+	let result = filtered;
+
+	if (opts?.forceAllowlist && opts.forceAllowlist.length > 0) {
+		const allow = new Set(opts.forceAllowlist);
+		const forced = filtered.filter((tool) => allow.has(tool.name));
+		result = forced.length > 0 ? forced : filtered;
+	} else {
+		// primaryTools preset / custom: только для primary-агента
+		const applyPrimary = opts?.primary !== false && !opts?.readonly;
+		if (applyPrimary) {
+			const allowList = resolvePrimaryToolsAllowlist(settings, opts?.contextBudget);
+			if (allowList && allowList.length > 0) {
+				const allow = new Set(allowList);
+				const primaryFiltered = filtered.filter((tool) => allow.has(tool.name));
+				result = primaryFiltered.length > 0 ? primaryFiltered : filtered;
+			}
+		}
 	}
 
-	const allow = new Set(settings.primaryTools.map((name) => name.trim()).filter(Boolean));
-	const primaryFiltered = filtered.filter((tool) => allow.has(tool.name));
-	// пустой результат после фильтра - откат ко всем (запасной essential fallback)
-	const result = primaryFiltered.length > 0 ? primaryFiltered : filtered;
-	return result.map(toLlmToolDefinition);
+	let defs = result.map(toLlmToolDefinition);
+	if (
+		opts?.primary !== false
+		&& !opts?.readonly
+		&& typeof opts?.contextBudget === 'number'
+		&& typeof opts?.messageTokens === 'number'
+	) {
+		defs = shrinkToolsForBudget(defs, opts.messageTokens, opts.contextBudget);
+	}
+	return defs;
 }
 
 function subjectFromArgs(name: string, rawArguments: string): string {

@@ -4,7 +4,7 @@ import { DEFAULT_APPROVAL_POLICY } from '../core/config/approvalTypes.js';
 import { evaluateApproval, suggestPattern, toolActionType } from '../features/agent/permissionPolicy.js';
 import type { ApprovalPolicy } from '../features/agent/permissionPolicy.js';
 import { registerBuiltins } from '../features/agent/tools/builtins.js';
-import { isAlwaysConfirmChoice, resolveConfirmChoiceOutcome, resolveToolConfirmGating, shouldContinueToolsFallback, shouldStopLoopOnToolDeny } from '../features/agent/tools/confirmDecision.js';
+import { isAlwaysConfirmChoice, resolveConfirmChoiceOutcome, resolveToolConfirmGating, resolveToolsFallbackPolicy, shouldContinueToolsFallback, shouldStopLoopOnToolDeny } from '../features/agent/tools/confirmDecision.js';
 import { shouldSkipToolConfirm } from '../features/agent/tools/confirm.js';
 import { getToolMeta } from '../features/agent/tools/registry.js';
 import type { ConfirmChoice } from '../features/agent/types.js';
@@ -263,6 +263,12 @@ suite('permission confirm matrix', () => {
 		test('Stop: skip / abort', () => {
 			assert.strictEqual(shouldContinueToolsFallback('skip'), false);
 			assert.strictEqual(shouldContinueToolsFallback('abort'), false);
+		});
+
+		test('toolsFallbackPolicy always/ask/stop', () => {
+			assert.strictEqual(resolveToolsFallbackPolicy('always'), 'continue');
+			assert.strictEqual(resolveToolsFallbackPolicy('ask'), 'ask');
+			assert.strictEqual(resolveToolsFallbackPolicy('stop'), 'stop');
 		});
 
 		test('stop loop on deny только если !cancelled && !continueLoopOnDeny', () => {
