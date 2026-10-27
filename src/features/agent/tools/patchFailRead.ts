@@ -1,6 +1,8 @@
 import * as vscode from 'vscode';
 import { AGENT_LIMITS } from '../policy';
 import { resolveWorkspacePath } from '../workspacePath';
+import type { UnifiedFilePatch } from '../patch';
+import { diagnoseFailedHunk, diagnoseSearchReplaceFail, formatStructuredPatchFail } from './patchFailPayload';
 
 // При fail patch/diff: подмешать актуальный read_file в ответ tool (чтобы модель могла сразу retry без отдельного хода).
 export async function appendFreshFileReads(
@@ -50,7 +52,7 @@ export async function appendFreshFileReads(
 			if (body.length > budget) {
 				body = `${body.slice(0, budget)}\n...`;
 			}
-			
+
 			chunks.push(header + body);
 			used += header.length + body.length + 2;
 		} catch {
@@ -59,4 +61,38 @@ export async function appendFreshFileReads(
 	}
 
 	return chunks.join('\n');
+}
+
+// Structured fail: constraint + failed hunk + exact file_slice, затем (опц.) полный auto-read
+export async function appendPatchFailRecovery(params: {
+	errorMessage: string;
+	relativePath: string;
+	fileContent?: string;
+	unifiedFile?: UnifiedFilePatch;
+	oldString?: string;
+	maxTotalChars?: number;
+	includeFullRead?: boolean;
+}): Promise<string> {
+	const maxTotal = params.maxTotalChars ?? 6_000;
+	let diagnosis = params.unifiedFile && typeof params.fileContent === 'string'
+		? diagnoseFailedHunk(params.fileContent, params.unifiedFile)
+		: undefined;
+	if (!diagnosis && typeof params.fileContent === 'string' && params.oldString) {
+		diagnosis = diagnoseSearchReplaceFail(params.fileContent, params.oldString);
+	}
+
+	const structured = formatStructuredPatchFail({
+		errorMessage: params.errorMessage,
+		path: params.relativePath,
+		diagnosis,
+	});
+
+	if (params.includeFullRead === false || diagnosis) {
+		// Срез уже есть - короткий hint без полного файла (экономия контекста)
+		return `${structured}\n\n${vscode.l10n.t('patch.retryHint')}`;
+	}
+
+	const restBudget = Math.max(800, maxTotal - structured.length);
+	
+	return appendFreshFileReads(structured, [params.relativePath], restBudget);
 }

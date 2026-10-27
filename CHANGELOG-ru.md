@@ -2,6 +2,7 @@
 
 ## dev
 
+- **Patch-fail recovery:** structured fail (`failed_hunk` + `file_slice` + constraint следующего вызова); один auto model-retry turn только с `apply_diff`/`edit_file`/`apply_patch`
 - **Local LLM tools:** несколько диалектов text tools (Hermes / invoke XML / JSONL); один structured retry при truncated/invalid args; кэш tools capability + preflight text-tools; `toolsFallbackPolicy` always|ask|stop (default always - меньше Confirm)
 - **Tools budget:** `primaryToolsPreset` auto/coding/explore/debug/all/custom; auto-shrink схем у budget; slim UI в Settings -> Agent
 - **Agent verify:** после успешных правок - реальные diagnostics в tool result (опц. related tests / auto `run_tests`); `verifyAfterEdit` + опц. `verifyGateCompletion`; hook `afterEdit`; убран лимит итераций / пауза Continue

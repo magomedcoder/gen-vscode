@@ -40,6 +40,7 @@ import { getCachedNCtx, getEffectiveContextBudget, isNearContextBudget } from '.
 import { extractTextToolCalls, stripTextToolCallsForDisplay } from './textToolCalls';
 import { getCachedToolsCapability, rememberToolsCapability } from './toolsCapability';
 import { buildInvalidArgsRetryPrompt, findInvalidToolCalls, isBadToolCallJsonError } from './toolArgsRetry';
+import { buildPatchFailAutoRetryPrompt, isPatchFailRetryCode, PATCH_FAIL_RETRY_TOOLS } from './tools/patchFailPayload';
 
 // Уникальные пути из успешного mutating tool (path или hunks)
 function collectTurnDiffPaths(toolResult: ToolResult, into: Set<string>): void {
@@ -545,6 +546,9 @@ export class AgentSession {
 		// Один structured retry на truncated/invalid tool args за весь run
 		let structuredArgsRetryDone = false;
 		let preflightTextToolsNotified = false;
+		// Один auto model-retry после patch/diff fail (только apply_diff|edit_file|apply_patch)
+		let patchFailAutoRetryDone = false;
+		let nextForceAllowlist: readonly string[] | undefined;
 
 		const reportPrune = (info: ShrinkStats): void => {
 			if (info.prunedChars <= 0 && info.prunedMessages <= 0) {
@@ -614,17 +618,21 @@ export class AgentSession {
 			}
 
 			const messageTokens = estimateChatMessagesTokens(apiMessages);
+			const iterationForce = nextForceAllowlist;
+			nextForceAllowlist = undefined;
 			let toolOpts = resolveToolOpts(agentMode, {
 				contextBudget: budget,
 				messageTokens,
+				forceAllowlist: iterationForce,
 			});
 
 			const runComplete = async (forceAllowlist?: readonly string[]) => {
-				const opts = forceAllowlist?.length
+				const effectiveForce = forceAllowlist?.length ? forceAllowlist : iterationForce;
+				const opts = effectiveForce?.length
 					? resolveToolOpts(agentMode, {
 						contextBudget: budget,
 						messageTokens: estimateChatMessagesTokens(apiMessages),
-						forceAllowlist,
+						forceAllowlist: effectiveForce,
 					})
 					: toolOpts;
 				return completeWithContextGuard({
@@ -641,7 +649,7 @@ export class AgentSession {
 						signal: params.signal,
 						tools: toolsEnabled ? getAgentLlmTools(agentMode, opts) : undefined,
 						toolChoice: toolsEnabled
-							? (forceAllowlist?.length ? 'required' : 'auto')
+							? (effectiveForce?.length ? 'required' : 'auto')
 							: 'none',
 						onDelta: (chunk) => {
 							streamed += chunk;
@@ -1091,6 +1099,10 @@ export class AgentSession {
 						denied: Boolean(toolResult.denied),
 						cancelled: false,
 						attachments: toolAttachments,
+						ok: toolResult.ok,
+						code: toolResult.code,
+						path: toolResult.path,
+						retryable: toolResult.retryable,
 					};
 				} catch (err) {
 					params.onBusyDetail?.(undefined);
@@ -1105,6 +1117,7 @@ export class AgentSession {
 							content: redactSecrets(resultText).text,
 							denied: true,
 							cancelled: true,
+							ok: false,
 						};
 					}
 					throw err;
@@ -1116,11 +1129,29 @@ export class AgentSession {
 
 			// Tools только на чтение - параллельно; мутирующие - строго по очереди.
 			const toolApiMessages: ChatMessage[] = [];
+			const patchFailPaths: string[] = [];
 			// Картинки из tools этого turn * synthetic user message перед следующим complete()
 			const pendingToolImages: ImageAttachment[] = [];
 			const collectToolImages = (atts: ImageAttachment[] | undefined) => {
 				if (atts?.length) {
 					pendingToolImages.push(...atts);
+				}
+			};
+			const notePatchFail = (msg: {
+				ok?: boolean;
+				code?: string;
+				path?: string;
+				retryable?: boolean;
+				denied?: boolean;
+			}) => {
+				if (msg.denied || msg.ok || !msg.retryable || !isPatchFailRetryCode(msg.code)) {
+					return;
+				}
+				
+				for (const p of (msg.path ?? '').split(',').map((s) => s.trim()).filter(Boolean)) {
+					if (!patchFailPaths.includes(p)) {
+						patchFailPaths.push(p);
+					}
 				}
 			};
 			// Пакет «Allow remaining edits» действует только в пределах этого assistant turn
@@ -1135,6 +1166,7 @@ export class AgentSession {
 				if (isMutatingTool(call.function.name) || call.function.name === 'propose_plan' || call.function.name === 'ask_question') {
 					const msg = await runOne(i);
 					collectToolImages(msg.attachments);
+					notePatchFail(msg);
 					// cancelled (per-tool kill) - всегда продолжаем цикл
 					if (shouldStopLoopOnToolDeny(Boolean(msg.denied), msg.cancelled, settings.continueLoopOnDeny)) {
 						apiMessages.push({
@@ -1164,6 +1196,7 @@ export class AgentSession {
 
 				for (const msg of batch) {
 					collectToolImages(msg.attachments);
+					notePatchFail(msg);
 					toolApiMessages.push({
 						role: 'tool',
 						tool_call_id: msg.tool_call_id,
@@ -1188,6 +1221,26 @@ export class AgentSession {
 				apiMessages.push({
 					role: 'user',
 					content: visionContent,
+				});
+			}
+
+			// Один auto model-retry turn только на failed paths (узкий tool set)
+			if (
+				!patchFailAutoRetryDone
+				&& patchFailPaths.length > 0
+				&& depth === 0
+				&& (toolsEnabled || textToolFallback)
+			) {
+				patchFailAutoRetryDone = true;
+				nextForceAllowlist = [...PATCH_FAIL_RETRY_TOOLS];
+				params.ui.append({
+					id: messageId(),
+					role: 'assistant',
+					content: vscode.l10n.t('agent.patchFailAutoRetry'),
+				});
+				apiMessages.push({
+					role: 'user',
+					content: buildPatchFailAutoRetryPrompt(patchFailPaths),
 				});
 			}
 		}

@@ -5,7 +5,7 @@ import { AGENT_LIMITS } from '../../policy';
 import { asBoolean, asString, type ToolContext, type ToolDefinition, type ToolResult } from '../../types';
 import { pathExists, resolveWorkspacePath, throwIfAborted } from '../../workspacePath';
 import { confirmAlwaysOrSkip, withForcedConfirm } from '../confirm';
-import { appendFreshFileReads } from '../patchFailRead';
+import { appendPatchFailRecovery } from '../patchFailRead';
 import { enhanceSuccessfulWrite } from '../postEdit';
 
 export const applyPatchTool: ToolDefinition = {
@@ -70,7 +70,13 @@ export const applyPatchTool: ToolDefinition = {
 			return {
 				ok: false,
 				path: resolved.relative,
-				content: await appendFreshFileReads(msg, [resolved.relative], 6_000),
+				content: await appendPatchFailRecovery({
+					errorMessage: msg,
+					relativePath: resolved.relative,
+					fileContent: original,
+					oldString,
+					maxTotalChars: 6_000,
+				}),
 				retryable: true,
 				category: 'execution',
 				code: 'patch_not_found',
@@ -109,7 +115,13 @@ export const applyPatchTool: ToolDefinition = {
 			return {
 				ok: false,
 				path: resolved.relative,
-				content: await appendFreshFileReads(stale, [resolved.relative], 6_000),
+				content: await appendPatchFailRecovery({
+					errorMessage: stale,
+					relativePath: resolved.relative,
+					fileContent: original,
+					oldString,
+					maxTotalChars: 6_000,
+				}),
 				retryable: true,
 				category: 'execution',
 				code: 'patch_stale',

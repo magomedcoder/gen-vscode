@@ -7,7 +7,7 @@ import { asString, type ToolContext, type ToolDefinition, type ToolResult } from
 import { pathExists, resolveWorkspacePath, throwIfAborted } from '../../workspacePath';
 import { confirmAlwaysOrSkip, withForcedConfirm } from '../confirm';
 import { enhanceSuccessfulWrite } from '../postEdit';
-import { appendFreshFileReads } from '../patchFailRead';
+import { appendFreshFileReads, appendPatchFailRecovery } from '../patchFailRead';
 
 const MAX_DIFF_FILES = 20;
 const MAX_FAIL_READ_CHARS = 6_000;
@@ -16,6 +16,15 @@ async function loadFileText(uri: vscode.Uri): Promise<string> {
 	const doc = await vscode.workspace.openTextDocument(uri);
 	return doc.getText();
 }
+
+type PrepareDiffFail = {
+	ok: false;
+	content: string;
+	paths: string[];
+	failedRelative?: string;
+	failedBefore?: string;
+	failedFile?: UnifiedFilePatch;
+};
 
 async function prepareDiff(
 	files: UnifiedFilePatch[],
@@ -29,7 +38,7 @@ async function prepareDiff(
 		after: string;
 		userDiff?: string;
 	}>;
-} | { ok: false; content: string; paths: string[] }> {
+} | PrepareDiffFail> {
 	const prepared: Array<{
 		file: UnifiedFilePatch;
 		uri: vscode.Uri;
@@ -80,6 +89,9 @@ async function prepareDiff(
 				ok: false,
 				content: `${resolved.relative}: ${err instanceof Error ? err.message : String(err)}`,
 				paths,
+				failedRelative: resolved.relative,
+				failedBefore: before,
+				failedFile: file,
 			};
 		}
 
@@ -153,18 +165,31 @@ export const applyDiffTool: ToolDefinition = {
 			};
 		}
 
-		// 1) dry-run на текущих буферах
-		let first = await prepareDiff(files);
-		if (!first.ok) {
-			const withReads = await appendFreshFileReads(first.content, first.paths, MAX_FAIL_READ_CHARS);
+		const failResult = async (fail: PrepareDiffFail): Promise<ToolResult> => {
+			const path = fail.failedRelative ?? fail.paths[fail.paths.length - 1] ?? fail.paths.join(', ');
+			const content = fail.failedFile && typeof fail.failedBefore === 'string' && fail.failedRelative
+				? await appendPatchFailRecovery({
+					errorMessage: fail.content,
+					relativePath: fail.failedRelative,
+					fileContent: fail.failedBefore,
+					unifiedFile: fail.failedFile,
+					maxTotalChars: MAX_FAIL_READ_CHARS,
+				})
+				: await appendFreshFileReads(fail.content, fail.paths, MAX_FAIL_READ_CHARS);
 			return {
 				ok: false,
-				path: first.paths.join(', '),
-				content: withReads,
+				path,
+				content,
 				retryable: true,
 				category: 'execution',
 				code: 'diff_apply_failed',
 			};
+		};
+
+		// 1) dry-run на текущих буферах
+		let first = await prepareDiff(files);
+		if (!first.ok) {
+			return failResult(first);
 		}
 
 		for (const item of first.prepared) {
@@ -190,15 +215,7 @@ export const applyDiffTool: ToolDefinition = {
 		// 2) одна retry: перечитать файлы и применить снова (гонка / stale buffer)
 		let second = await prepareDiff(files);
 		if (!second.ok) {
-			const withReads = await appendFreshFileReads(second.content, second.paths, MAX_FAIL_READ_CHARS);
-			return {
-				ok: false,
-				path: second.paths.join(', '),
-				content: withReads,
-				retryable: true,
-				category: 'execution',
-				code: 'diff_apply_failed',
-			};
+			return failResult(second);
 		}
 
 		const ws = new vscode.WorkspaceEdit();

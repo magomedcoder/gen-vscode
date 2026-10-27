@@ -697,6 +697,7 @@
 	"agent.toolsUnsupportedContinue": "Continue with text tools",
 	"agent.toolsUnsupportedStopped": "Stopped: server does not support tools.",
 	"agent.toolArgsRetry": "Tool arguments were truncated or invalid JSON - retrying once with a narrower tool schema.",
+	"agent.patchFailAutoRetry": "Patch apply failed - one recovery turn with apply_diff / edit_file / apply_patch only.",
 	"agent.emptyModelReply": "Empty model response",
 	"agent.responseTruncated": "\nModel reply was truncated by max_tokens. Raise the limit in settings or write the file in chunks with apply_patch.",
 	"agent.unknownTool": "Unknown tool: {0}",

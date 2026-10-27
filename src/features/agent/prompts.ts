@@ -130,8 +130,8 @@ export function buildAgentSystemPrompt(options?: {
 				? 'Для нового файла: write_file только если файл короткий. Большой файл: короткая заготовка write_file, дальше apply_diff (или apply_patch небольшими фрагментами). Несколько файлов: apply_diff или apply_workspace_edit. Не клади весь большой файл в один write_file: JSON аргументов обрежется.'
 				: 'Для нового файла: write_file только если файл короткий. Большой файл: apply_diff или apply_workspace_edit по частям. Несколько файлов: apply_diff / apply_workspace_edit. Не клади весь большой файл в один write_file: JSON аргументов обрежется.',
 			includeApplyPatch
-				? 'Если apply_diff/apply_patch вернул ошибку - в ответе уже есть актуальный read_file; исправь patch/old_string и повтори один раз. При невалидном JSON - меньший кусок, не огромный write_file.'
-				: 'Если apply_diff вернул ошибку - в ответе уже есть актуальный read_file; исправь diff и повтори один раз. При невалидном JSON - меньший кусок (короткий write_file или apply_workspace_edit).',
+				? 'Если apply_diff/apply_patch вернул ошибку - в ответе есть failed_hunk + file_slice и constraint (следующий вызов = apply_diff|edit_file|apply_patch). Исправь hunk по срезу и повтори один раз. При невалидном JSON - меньший кусок, не огромный write_file.'
+				: 'Если apply_diff вернул ошибку - в ответе есть failed_hunk + file_slice и constraint (следующий вызов = apply_diff|edit_file). Исправь diff по срезу и повтори один раз. При невалидном JSON - меньший кусок (короткий write_file или apply_workspace_edit).',
 			'Навигация: open_file, reveal_line, close_file. Состояние редактора: get_active_editor, get_open_editors.',
 			settings.verifyAfterEdit !== 'off'
 				? 'После правок смотри блок ### Verify в результате tool (diagnostics / tests). Пока есть error - чини; не зови attempt_completion. get_diagnostics - если нужен полный workspace scan.'
