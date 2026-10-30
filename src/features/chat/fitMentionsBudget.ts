@@ -8,6 +8,60 @@ export interface ContextBlock {
 	weight: number;
 }
 
+// Порог mention-budget (токены): ниже -> @codebase dump -> tool-hint stub
+export const TIGHT_MENTION_BUDGET_TOKENS = 2_400;
+
+// Доля budget, выше которой dump @codebase уже считается слишком жирным
+export const CODEBASE_DUMP_BUDGET_FRACTION = 0.45;
+
+// Короткий stub вместо гигантского dump -> агент идёт в tools.
+export const CODEBASE_TOOL_HINT_STUB = [
+	'[codebase: полный dump пропущен - тесный budget контекста]',
+	'Предпочитай tools: find_code, project_map, pack_context; затем read_file по hits.',
+	'Не выдумывай содержимое файлов.',
+].join('\n');
+
+export function isCodebaseMentionKind(kind: string): boolean {
+	return kind.toLowerCase().includes('codebase');
+}
+
+export function isTightMentionBudget(mentionBudgetTokens: number): boolean {
+	return mentionBudgetTokens > 0 && mentionBudgetTokens < TIGHT_MENTION_BUDGET_TOKENS;
+}
+
+// Dump слишком большой для текущего mention budget (или budget уже тесный)
+export function shouldStubCodebaseDump(blockText: string, mentionBudgetTokens: number): boolean {
+	if (mentionBudgetTokens <= 0) {
+		return true;
+	}
+
+	if (isTightMentionBudget(mentionBudgetTokens)) {
+		return true;
+	}
+
+	const tokens = estimateTextTokens(blockText);
+	return tokens > mentionBudgetTokens * CODEBASE_DUMP_BUDGET_FRACTION;
+}
+
+// До fitMentionsToBudget: тяжёлый @codebase -> tool-hint stub (prefer find_code / project_map / pack_context вместо dump)
+export function stubHeavyRetrievalBlocks(
+	blocks: ContextBlock[],
+	mentionBudgetTokens: number,
+): ContextBlock[] {
+	return blocks.map((b) => {
+		if (!isCodebaseMentionKind(b.kind)) {
+			return b;
+		}
+		if (!shouldStubCodebaseDump(b.text, mentionBudgetTokens)) {
+			return b;
+		}
+		return {
+			...b,
+			text: CODEBASE_TOOL_HINT_STUB,
+		};
+	});
+}
+
 export interface FitMentionsResult {
 	contextText: string;
 	truncated: boolean;
@@ -138,7 +192,17 @@ export function fitMentionsToBudget(
 		}
 
 		if (heavy.weight >= 45) {
-			kept.delete(key);
+			const entry = kept.get(key)!;
+			if (isCodebaseMentionKind(entry.kind) && entry.text !== CODEBASE_TOOL_HINT_STUB) {
+				// Не выкидывать молча: оставить подсказку про tools
+				kept.set(key, {
+					...entry,
+					text: CODEBASE_TOOL_HINT_STUB,
+					weight: 40,
+				});
+			} else {
+				kept.delete(key);
+			}
 			if (!truncatedKinds.includes(heavy.kind)) {
 				truncatedKinds.push(heavy.kind);
 			}

@@ -16,7 +16,7 @@ import { resolveBangCommands } from './bangCommand';
 import { compactChatMessages } from './compact';
 import { deleteExportArchive, loadExportArchiveResult, saveExportArchive } from './exportArchiveStore';
 import { completeWithContextGuard, resolveContextBudget, dropSupersededReminders } from './fitContext';
-import { computeMentionBudgetTokens, fitMentionsToBudget, weightForKind, type ContextBlock } from './fitMentionsBudget';
+import { computeMentionBudgetTokens, fitMentionsToBudget, stubHeavyRetrievalBlocks, weightForKind, type ContextBlock } from './fitMentionsBudget';
 import { estimateChatMessagesTokens, estimateTextTokens } from '../../core/llm/estimateTokens';
 import type { ChatMessage } from '../../core/llm/types';
 import { getCachedNCtx, isNearContextBudget } from '../../core/llm/contextBudget';
@@ -2111,7 +2111,9 @@ export class ChatSession {
 			});
 		}
 
-		const fitted = fitMentionsToBudget(blocks, mentionBudget);
+		// Тесный budget / жирный @codebase -> stub с prefer find_code / project_map / pack_context
+		const prepared = stubHeavyRetrievalBlocks(blocks, mentionBudget);
+		const fitted = fitMentionsToBudget(prepared, mentionBudget);
 		this.lastMentionsTruncated = fitted.truncated;
 		this.lastMentionsTruncatedKinds = fitted.truncatedKinds;
 		this.lastContextBreakdown = {

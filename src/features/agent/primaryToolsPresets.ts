@@ -12,6 +12,10 @@ export const PRIMARY_TOOLS_PRESETS: Record<'coding' | 'explore' | 'debug', reado
 		'apply_workspace_edit',
 		'glob',
 		'grep',
+		// Retrieval под тесный n_ctx (вместо dump @codebase)
+		'find_code',
+		'project_map',
+		'pack_context',
 		'get_diagnostics',
 		'run_command',
 		'run_tests',

@@ -1,11 +1,44 @@
 import * as assert from 'assert';
 import { estimateTextTokens } from '../core/llm/estimateTokens.js';
-import { computeMentionBudgetTokens, fitMentionsToBudget, weightForKind } from '../features/chat/fitMentionsBudget.js';
+import { CODEBASE_TOOL_HINT_STUB, computeMentionBudgetTokens, fitMentionsToBudget, shouldStubCodebaseDump, stubHeavyRetrievalBlocks, TIGHT_MENTION_BUDGET_TOKENS, weightForKind } from '../features/chat/fitMentionsBudget.js';
 
 suite('fitMentionsBudget', () => {
 	test('weightForKind: codebase тяжелее file', () => {
 		assert.ok(weightForKind('@codebase') > weightForKind('@file src/a.ts'));
 		assert.ok(weightForKind('@git-changes') > weightForKind('@file x'));
+	});
+
+	test('stubHeavyRetrievalBlocks: тесный budget -> tool-hint вместо dump', () => {
+		const huge = 'x'.repeat(8_000);
+		const stubbed = stubHeavyRetrievalBlocks(
+			[
+				{ kind: '@codebase', text: huge, weight: 100 },
+				{ kind: '@file a.ts', text: ' const a = 1;', weight: 20 },
+			],
+			TIGHT_MENTION_BUDGET_TOKENS - 100,
+		);
+		assert.strictEqual(stubbed[0]?.text, CODEBASE_TOOL_HINT_STUB);
+		assert.ok(stubbed[0]?.text.includes('find_code'));
+		assert.ok(stubbed[1]?.text.includes('a = 1'));
+		assert.ok(shouldStubCodebaseDump(huge, 1_000));
+		assert.ok(!shouldStubCodebaseDump('short', 8_000));
+	});
+
+	test('fitMentionsToBudget: eviction @codebase оставляет tool-hint stub', () => {
+		const huge = 'y'.repeat(50_000);
+		const fitted = fitMentionsToBudget(
+			[
+				{ kind: '@codebase', text: `[codebase]\n${huge}`, weight: 100 },
+				{ kind: '@file a.ts', text: 'export const a = 1;', weight: 20 },
+			],
+			400,
+		);
+		assert.ok(fitted.truncated);
+		assert.ok(
+			fitted.contextText.includes('find_code')
+			|| fitted.contextText.includes('[truncated')
+			|| fitted.contextText.includes('export const a'),
+		);
 	});
 
 	test('computeMentionBudgetTokens не уходит в минус', () => {

@@ -21,6 +21,9 @@ suite('primaryToolsPresets', () => {
 	});
 
 	test('resolvePrimaryToolsAllowlist coding / custom / all', () => {
+		assert.ok(PRIMARY_TOOLS_PRESETS.coding.includes('find_code'));
+		assert.ok(PRIMARY_TOOLS_PRESETS.coding.includes('project_map'));
+		assert.ok(PRIMARY_TOOLS_PRESETS.coding.includes('pack_context'));
 		assert.deepStrictEqual(
 			resolvePrimaryToolsAllowlist({ primaryToolsPreset: 'coding', primaryTools: [] }),
 			[...PRIMARY_TOOLS_PRESETS.coding],

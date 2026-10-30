@@ -120,6 +120,7 @@ export function buildAgentSystemPrompt(options?: {
 	if (toolsAvailable) {
 		lines.push(
 			'У тебя есть инструменты. Вызывай их, когда нужны факты о файлах или правки.',
+			'Если в контексте stub `[codebase: полный dump пропущен...]` или тесный budget - не жди гигантский dump: find_code / project_map / pack_context, затем read_file по hits.',
 			'Не выдумывай содержимое файлов - перед любой записью заново read_file / get_active_editor; не опирайся на старый снимок из истории tools.',
 			'Одноразовый анализатор/мигратор: напиши скрипт в `.gen/scratch/` (write_file / edit_file), затем `run_scratch` или `run_command`/`await_shell`. Не eval JS из `.gen/tools`.',
 			`Правки пользователя важнее: не откатывай их, если задача явно не требует. Если файл расходится со снимком агента - полный write_file запрещён, только ${targetedEditHint} по актуальному тексту.`,

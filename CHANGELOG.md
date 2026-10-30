@@ -2,6 +2,7 @@
 
 ## dev
 
+- **Smart `@codebase`:** under tight mention budget, replace giant dump with tool-hint stub (`find_code` / `project_map` / `pack_context`); coding preset keeps those tools; wiki feeding-agent
 - **Patch-fail recovery:** structured fail payload (`failed_hunk` + `file_slice` + next-call constraint); one auto model-retry turn with `apply_diff`/`edit_file`/`apply_patch` only
 - **Local LLM tools:** multi-dialect text tool parsers (Hermes / invoke XML / JSONL); one structured retry on truncated/invalid args; tools capability cache + preflight text-tools path; `toolsFallbackPolicy` always|ask|stop (default always - less Confirm spam)
 - **Tools budget:** `primaryToolsPreset` auto/coding/explore/debug/all/custom; auto-shrink schemas near context budget; Settings -> Agent slim controls
