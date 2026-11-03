@@ -2,11 +2,12 @@ import * as vscode from 'vscode';
 import { AgentSession, isAbortError } from '../agent';
 import { AgentCheckpoint } from '../agent/checkpoint';
 import { StickyPlan } from '../agent/plan';
+import { DEFAULT_PLAN_RELATIVE } from '../agent/planFile';
 import { WorkspacePlanStore } from '../agent/planStore';
 import { PLAN_ENTER_REMINDER, PLAN_EXIT_REMINDER } from '../agent/tools/plan/modeSwitch';
 import type { ConfirmChoice } from '../agent/types';
 import { getSettings, isAgentLikeMode, setSessionModel, updateSettings } from '../../core/config/settings';
-import type { ChatMode } from '../../core/config/types';
+import { resolveModeModel, type ChatMode } from '../../core/config/types';
 import { addPersistedAlwaysAllow, getPersistedAlwaysAllow, mergeAlwaysAllow } from '../../core/stores/alwaysAllowStore';
 import { writeLog } from '../../core/log/logger';
 import type { LlmClient } from '../../core/llm/types';
@@ -137,6 +138,8 @@ export class ChatSession {
 	private customCommands: CustomCommand[] = [];
 	// Ключ скрытого handoff (title), чтобы баннер не появлялся снова
 	private dismissedPlanHandoffKey?: string;
+	// Title последнего объявления sticky plan в ленте (анти-спам)
+	private lastAnnouncedPlanTitle?: string;
 	private readonly sessions: SessionStore;
 	// Поллинг git-sync auto-Keep (пока есть pending-хунки и setting вкл.)
 	private gitSyncKeepDisposable?: { dispose(): void };
@@ -338,9 +341,29 @@ export class ChatSession {
 		const customSlashCommands: SlashCommand[] = this.customCommands.map(customToSlashCommand);
 		const planSnap = this.stickyPlan.snapshot();
 		const handoffKey = planSnap?.approved ? planSnap.title : undefined;
+		const stickyUi = this.stickyPlan.toUi();
+		const stickyPending = stickyUi
+			? stickyUi.steps.filter((s) => s.status === 'pending' || s.status === 'in_progress').length
+			: 0;
+		const stickyDone = stickyUi
+			? stickyUi.steps.filter((s) => s.status === 'done' || s.status === 'skipped').length
+			: 0;
+		const actModelForHandoff = resolveModeModel({ ...settings, chatMode: 'agent' });
 		const planHandoff = settings.chatMode === 'plan' && planSnap?.approved && handoffKey !== this.dismissedPlanHandoffKey
-			? { 
-				title: planSnap.title 
+			? {
+				title: planSnap.title,
+				actModel: actModelForHandoff || undefined,
+				pendingSteps: stickyPending,
+				totalSteps: stickyUi?.steps.length ?? planSnap.steps.length,
+			}
+			: undefined;
+		const stickyPlan = stickyUi
+			? {
+				title: stickyUi.title,
+				relativePath: DEFAULT_PLAN_RELATIVE,
+				steps: stickyUi.steps,
+				pendingCount: stickyPending,
+				doneCount: stickyDone,
 			}
 			: undefined;
 		const cachedNCtx = getCachedNCtx(settings.baseUrl, settings.model);
@@ -450,6 +473,7 @@ export class ChatSession {
 				: undefined,
 			activeToolCallId: this.activeToolCallId,
 			planHandoff,
+			stickyPlan,
 			model: settings.model,
 			composerDraft: this.sessions.getDraft() || undefined,
 			composerChips: (() => {
@@ -847,7 +871,35 @@ export class ChatSession {
 	}
 
 	private onPlanChanged(): void {
+		this.maybeAnnounceStickyPlan();
 		void this.flushPlan();
+	}
+
+	// Одно system-сообщение в ленте при фиксации нового sticky plan
+	private maybeAnnounceStickyPlan(): void {
+		const snap = this.stickyPlan.snapshot();
+		if (!snap?.approved) {
+			this.lastAnnouncedPlanTitle = undefined;
+			return;
+		}
+
+		if (this.lastAnnouncedPlanTitle === snap.title) {
+			return;
+		}
+
+		this.lastAnnouncedPlanTitle = snap.title;
+		const pending = snap.steps.filter((s) => s.status === 'pending' || s.status === 'in_progress').length;
+		this.append({
+			id: messageId(),
+			role: 'system',
+			content: vscode.l10n.t(
+				'chat.stickyPlan.locked',
+				snap.title,
+				snap.steps.length,
+				pending,
+				DEFAULT_PLAN_RELATIVE,
+			),
+		});
 	}
 
 	private async flushPlan(): Promise<void> {
@@ -1768,13 +1820,55 @@ export class ChatSession {
 		this.emit();
 	}
 
-	// Скрыть баннер Plan * Agent без смены режима
+	// Скрыть баннер Plan -> Agent без смены режима
 	dismissPlanHandoff(): void {
 		const snap = this.stickyPlan.snapshot();
 		if (snap?.approved) {
 			this.dismissedPlanHandoffKey = snap.title;
 		}
 		this.emit();
+	}
+
+	/**
+	 * Один клик: sticky plan уже зафиксирован -> Agent (actModel) + kickoff-ход.
+	 * План остаётся в prompt через formatStickyPlanForPrompt.
+	 */
+	async approvePlanAndAct(): Promise<void> {
+		const snap = this.stickyPlan.snapshot();
+		if (!snap?.approved) {
+			this.append({
+				id: messageId(),
+				role: 'error',
+				content: vscode.l10n.t('chat.planHandoff.noPlan'),
+			});
+			return;
+		}
+
+		this.dismissedPlanHandoffKey = snap.title;
+		const settings = getSettings();
+		if (settings.chatMode !== 'agent') {
+			await this.setMode('agent');
+		} else {
+			this.emit();
+		}
+
+		const actModel = resolveModeModel({ ...getSettings(), chatMode: 'agent' });
+		this.append({
+			id: messageId(),
+			role: 'system',
+			content: vscode.l10n.t(
+				'chat.planHandoff.started',
+				snap.title,
+				actModel || settings.model,
+				DEFAULT_PLAN_RELATIVE,
+			),
+		});
+
+		await this.send(vscode.l10n.t('chat.planHandoff.kickoff', snap.title));
+	}
+
+	async openStickyPlan(): Promise<void> {
+		await this.planStore.openInEditor();
 	}
 
 	// Открыть файл из чата: если есть снимок до правок агента - vscode.diff, иначе обычный preview документа

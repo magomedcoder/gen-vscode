@@ -6,6 +6,7 @@ import { ProjectSetupBanner } from './components/ProjectSetupBanner';
 import { ResearchJobsPanel } from './components/ResearchJobsPanel';
 import { SessionsRail } from './components/SessionsRail';
 import { SettingsScreen } from './components/SettingsScreen';
+import { PlanStatusPanel } from './components/PlanStatusPanel';
 import { TodoPanel } from './components/TodoPanel';
 import { t } from './i18n';
 import { useGenBridge } from './useGenBridge';
@@ -163,6 +164,7 @@ export function App() {
 							</span>
 						</div>
 					) : null}
+					{chat.stickyPlan ? <PlanStatusPanel plan={chat.stickyPlan} /> : null}
 					{chat.todos && chat.todos.length > 0 ? <TodoPanel todos={chat.todos} /> : null}
 					<MessageList
 						key={chat.sessionId ?? 'none'}
@@ -202,12 +204,19 @@ export function App() {
 								{chat.planHandoff.title
 									? `${t('chat.planHandoff.title')}: ${chat.planHandoff.title}`
 									: t('chat.planHandoff.title')}
+								{chat.planHandoff.actModel
+									? `  ${t('chat.planHandoff.actModel', chat.planHandoff.actModel)}`
+									: ''}
+								{typeof chat.planHandoff.pendingSteps === 'number'
+									&& typeof chat.planHandoff.totalSteps === 'number'
+									? `  ${chat.planHandoff.pendingSteps}/${chat.planHandoff.totalSteps}`
+									: ''}
 							</span>
 							<span className="pause-banner__actions">
 								<button
 									type="button"
 									className="btn"
-									onClick={() => vscodeApi.postMessage({ type: 'setChatMode', mode: 'agent' })}
+									onClick={() => vscodeApi.postMessage({ type: 'approvePlanAndAct' })}
 								>
 									{t('chat.planHandoff.run')}
 								</button>

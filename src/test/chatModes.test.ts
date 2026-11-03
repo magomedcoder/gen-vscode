@@ -1,7 +1,7 @@
 import * as assert from 'assert';
 import { CHAT_MODE_DEFS, CHAT_MODE_IDS, isChatMode } from '../features/chat/chatModes.js';
 import { SLASH_COMMANDS } from '../features/chat/slashCommands.js';
-import { isAgentLikeMode } from '../core/config/types.js';
+import { isAgentLikeMode, resolveModeModel } from '../core/config/types.js';
 
 suite('chatModes registry', () => {
 	test('CHAT_MODE_IDS покрывает все defs без дублей', () => {
@@ -27,5 +27,23 @@ suite('chatModes registry', () => {
 			const cmd = SLASH_COMMANDS.find((c) => c.name === id && c.mode === id);
 			assert.ok(cmd, `missing slash for ${id}`);
 		}
+	});
+
+	test('resolveModeModel: planModel / actModel / fallback model', () => {
+		const base = {
+			model: 'main',
+			planModel: 'planner',
+			actModel: 'actor',
+			chatMode: 'ask' as const,
+		};
+		assert.strictEqual(resolveModeModel({ ...base, chatMode: 'plan' }), 'planner');
+		assert.strictEqual(resolveModeModel({ ...base, chatMode: 'agent' }), 'actor');
+		assert.strictEqual(resolveModeModel({ ...base, chatMode: 'debug' }), 'actor');
+		assert.strictEqual(resolveModeModel({ ...base, chatMode: 'ask' }), 'main');
+		assert.strictEqual(
+			resolveModeModel({ ...base, planModel: '', actModel: '', chatMode: 'plan' }),
+			'main',
+		);
+		assert.strictEqual(resolveModeModel({ ...base, chatMode: 'agent' }), 'actor');
 	});
 });

@@ -189,8 +189,27 @@ export interface ChatViewState {
 	}>;
 	// Id выполняемого инструмента (для отдельной остановки)
 	activeToolCallId?: string;
-	// План подтверждён в mode=plan - баннер «Run in Agent»
-	planHandoff?: { title?: string };
+	// План подтверждён в mode=plan - баннер «Approve -> Agent (actModel)»
+	planHandoff?: {
+		title?: string;
+		// Модель, которая включится после handoff (actModel || model)
+		actModel?: string;
+		pendingSteps?: number;
+		totalSteps?: number;
+	};
+	// Утверждённый sticky plan для статус-панели в ленте (не новый режим)
+	stickyPlan?: {
+		title: string;
+		relativePath: string;
+		steps: Array<{
+			title: string;
+			path?: string;
+			action?: string;
+			status: 'pending' | 'in_progress' | 'done' | 'skipped';
+		}>;
+		pendingCount: number;
+		doneCount: number;
+	};
 	// Текущая модель сессии из getSettings().model
 	model?: string;
 	// Черновик Composer для текущей сессии (сохраняется по sessionId)
@@ -328,6 +347,10 @@ export type FromWebviewMessage = | { type: 'ready' }
 	| { type: 'openProjectPath'; path: string }
 	| { type: 'cancelToolCall'; id: string }
 	| { type: 'dismissPlanHandoff' }
+	// Plan -> Act: зафиксировать sticky plan и перейти в Agent (actModel) + kickoff
+	| { type: 'approvePlanAndAct' }
+	// Открыть `.gen/plan.md` sticky-плана
+	| { type: 'openStickyPlan' }
 	| { type: 'openPath'; path: string }
 	// Исследования / Teams
 	| { type: 'interruptResearchJob'; id?: string; jobId?: string }

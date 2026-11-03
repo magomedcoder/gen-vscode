@@ -440,6 +440,25 @@ suite('StickyPlan', () => {
 		assert.ok(text.includes('Активный план'));
 		assert.ok(text.includes('[done]'));
 	});
+
+	test('toUi только после approve', () => {
+		const plan = new StickyPlan();
+		assert.strictEqual(plan.toUi(), undefined);
+		plan.approve({
+			title: 'Handoff',
+			steps: [
+				{ title: 'one', path: 'a.ts' },
+				{ title: 'two', path: 'b.ts' },
+			],
+		});
+		const ui = plan.toUi();
+		assert.ok(ui);
+		assert.strictEqual(ui!.title, 'Handoff');
+		assert.strictEqual(ui!.steps.length, 2);
+		assert.strictEqual(ui!.steps[0].status, 'pending');
+		plan.clear();
+		assert.strictEqual(plan.toUi(), undefined);
+	});
 });
 
 suite('plan markdown file', () => {

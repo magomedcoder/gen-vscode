@@ -1871,6 +1871,36 @@ body {
 	color: var(--vscode-descriptionForeground);
 }
 
+.todo-panel__title-row {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: 8px;
+	margin-bottom: 6px;
+}
+
+.todo-panel__title-row .todo-panel__title {
+	margin-bottom: 0;
+}
+
+.plan-panel__meta {
+	font-weight: 400;
+	text-transform: none;
+	letter-spacing: 0;
+	opacity: 0.85;
+}
+
+.plan-panel__path {
+	color: var(--vscode-descriptionForeground);
+	font-size: 11px;
+}
+
+.plan-panel__open {
+	flex-shrink: 0;
+	padding: 2px 8px;
+	font-size: 11px;
+}
+
 .todo-panel__list {
 	margin: 0;
 	padding: 0;

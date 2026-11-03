@@ -16,11 +16,11 @@ export const PLAN_ENTER_REMINDER = [
 	'Используй только чтение/поиск (read_file, glob, grep, codebase_search и т.п.) и propose_plan / write_plan.',
 	'Правки файлов (write_file, apply_diff, apply_patch, delete_file) запрещены.',
 	'Shell (run_command / run_tests): только с подтверждением пользователя, если planShellPolicy=ask; иначе недоступен - перейди в Agent (/agent или plan_exit).',
-	'Когда план готов - propose_plan; после подтверждения пользователя перейди в agent через plan_exit или /agent.',
+	'Когда план готов - propose_plan; после подтверждения пользователем в UI появится «Approve plan -> Agent» (или plan_exit / /agent).',
 ].join(' ');
 
-// Напоминание модели при выходе Plan * Agent
-export const PLAN_EXIT_REMINDER = 'Режим Agent включён. Можно править файлы и запускать команды в рамках политики подтверждений. Следуй активному плану в `.gen/plan.md`, если он есть.';
+// Напоминание модели при выходе Plan -> Agent
+export const PLAN_EXIT_REMINDER = 'Режим Agent включён. Можно править файлы и запускать команды в рамках политики подтверждений. Следуй активному sticky-плану в `.gen/plan.md`, если он есть; отмечай прогресс через update_plan.';
 
 function asChatMode(raw: string): ChatMode | undefined {
 	const v = raw.trim().toLowerCase() as ChatMode;

@@ -364,6 +364,12 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
 			case 'dismissPlanHandoff':
 				this.session.dismissPlanHandoff();
 				return;
+			case 'approvePlanAndAct':
+				await this.session.approvePlanAndAct();
+				return;
+			case 'openStickyPlan':
+				await this.session.openStickyPlan();
+				return;
 			case 'restoreExportArchive':
 				await this.session.restoreExportArchive();
 				return;
