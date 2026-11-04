@@ -5,6 +5,7 @@ import * as vscode from 'vscode';
 import { getSettings } from '../../core/config/settings';
 import { fetchHttpsText } from './fetchHttpsText';
 import { formatGenRulesForPrompt, GENRULES_RELATIVE, MAX_GENRULES_CHARS, normalizeGenRulesText } from './genrules';
+import { loadProjectMemoryAppendix, MEMORY_RELATIVE } from './projectMemory';
 
 const RULE_FILES = [
 	GENRULES_RELATIVE,
@@ -112,7 +113,7 @@ export async function listRulesCandidates(): Promise<RuleCandidate[]> {
 	const folder = vscode.workspace.workspaceFolders?.[0];
 
 	if (folder) {
-		for (const rel of RULE_FILES) {
+		for (const rel of [...RULE_FILES, MEMORY_RELATIVE]) {
 			const uri = vscode.Uri.joinPath(folder.uri, rel);
 			out.push({
 				label: rel,
@@ -121,7 +122,7 @@ export async function listRulesCandidates(): Promise<RuleCandidate[]> {
 			});
 		}
 	} else {
-		for (const rel of RULE_FILES) {
+		for (const rel of [...RULE_FILES, MEMORY_RELATIVE]) {
 			out.push({ 
 				label: rel, 
 				path: rel, 
@@ -192,7 +193,7 @@ async function loadInstructionUrlsAppendix(): Promise<string[]> {
 	return chunks;
 }
 
-// Собрать .genrules, AGENTS.md, user-level и instructionUrls в приложение к prompt
+// Собрать .genrules, AGENTS.md, .gen/memory.md, user-level и instructionUrls в приложение к prompt
 export async function loadProjectRulesAppendix(): Promise<string | undefined> {
 	const chunks: string[] = [];
 	const folder = vscode.workspace.workspaceFolders?.[0];
@@ -204,6 +205,12 @@ export async function loadProjectRulesAppendix(): Promise<string | undefined> {
 				chunks.push(`### ${rel}\n${normalized}`);
 			}
 		}
+	}
+
+	// Project memory (workspace only) - после правил проекта, до user AGENTS.md
+	const memoryAppendix = await loadProjectMemoryAppendix();
+	if (memoryAppendix) {
+		chunks.push(memoryAppendix);
 	}
 
 	// Пользовательские правила - после проектных

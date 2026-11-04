@@ -2,6 +2,7 @@
 
 ## dev
 
+- **Project memory:** только workspace `.gen/memory.md` в rules appendix Agent/Ask; `/init` сеет шаблон; после `/compact` оффер дописать 3-5 решений (без cloud Memories)
 - **Plan -> Act handoff:** один клик «Approve plan -> Agent» (Agent/`actModel`, sticky plan в prompt, kickoff-ход); панель статуса sticky plan в ленте + Open `.gen/plan.md`
 - **Smart `@codebase`:** при тесном mention-budget dump -> stub prefer `find_code` / `project_map` / `pack_context`; coding preset оставляет эти tools; wiki feeding-agent
 - **Patch-fail recovery:** structured fail (`failed_hunk` + `file_slice` + constraint следующего вызова); один auto model-retry turn только с `apply_diff`/`edit_file`/`apply_patch`

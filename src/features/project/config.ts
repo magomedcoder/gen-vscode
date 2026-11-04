@@ -2,6 +2,7 @@ import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { DEFAULT_GENIGNORE_PATTERNS, DEFAULT_SENSITIVE_PATH_PATTERNS, EXAMPLE_DENIED_COMMANDS } from '../../core/config/types';
+import { MEMORY_TEMPLATE } from './projectMemory';
 
 export const GEN_DIR_RELATIVE = '.gen';
 export const GEN_CONFIG_RELATIVE = '.gen/config.json';
@@ -49,10 +50,11 @@ Project files for Gen / файлы проекта Gen.
 | \`references/\` | Per-alias reference JSON | JSON ссылок по alias |
 | \`plans/\` | Multi-file plans | Планы агента |
 | \`scratch/\` | Ephemeral scripts (\`run_scratch\`) | Одноразовые скрипты |
+| \`memory.md\` | Project decisions / preferences (workspace only) | Память проекта (только файл) |
 
 Also under workspace root: \`.genignore\` (ignore paths/folders for the agent; gitignore syntax).
 
-Inside \`.gen/\`: \`config.json\` (\`deniedCommands\`, \`sensitivePathPatterns\`, \`secretPatterns\`, other settings - not path ignore), \`hooks.json\`, \`shell.json\`, \`references.json\` (on demand), \`plan.md\`.
+Inside \`.gen/\`: \`config.json\` (\`deniedCommands\`, \`sensitivePathPatterns\`, \`secretPatterns\`, other settings - not path ignore), \`hooks.json\`, \`shell.json\`, \`references.json\` (on demand), \`plan.md\`, \`memory.md\`.
 
 Path/folder ignore -> edit \`.genignore\` (not \`config.json\`).
 Commands / redact patterns -> edit \`.gen/config.json\` by hand (not Settings UI).
@@ -108,6 +110,7 @@ export async function ensureGenScaffold(
 	if (options.seedTemplates !== false) {
 		await writeIfMissing(path.join(genRoot, 'hooks.json'), HOOKS_TEMPLATE);
 		await writeIfMissing(path.join(genRoot, 'shell.json'), SHELL_TEMPLATE);
+		await writeIfMissing(path.join(genRoot, 'memory.md'), MEMORY_TEMPLATE);
 	}
 
 	for (const dir of GEN_SCAFFOLD_DIRS) {

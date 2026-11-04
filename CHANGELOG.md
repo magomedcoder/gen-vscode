@@ -2,6 +2,7 @@
 
 ## dev
 
+- **Project memory:** workspace-only `.gen/memory.md` in agent/ask rules appendix; `/init` seeds template; after `/compact` offer to append 3-5 decision lines (no cloud Memories)
 - **Plan -> Act handoff:** one-click «Approve plan -> Agent» (switches to Agent/`actModel`, keeps sticky plan in prompt, kickoff turn); sticky plan status panel in the feed + Open `.gen/plan.md`
 - **Smart `@codebase`:** under tight mention budget, replace giant dump with tool-hint stub (`find_code` / `project_map` / `pack_context`); coding preset keeps those tools; wiki feeding-agent
 - **Patch-fail recovery:** structured fail payload (`failed_hunk` + `file_slice` + next-call constraint); one auto model-retry turn with `apply_diff`/`edit_file`/`apply_patch` only

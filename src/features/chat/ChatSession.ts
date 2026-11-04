@@ -52,6 +52,7 @@ import { getGenRulesManager } from '../project/genrules';
 import { formatPersonaAppendix, resolvePersona } from '../project/personas';
 import { runBeforeSubmitHook, runSessionCompactingHook, runSessionDiffHook } from '../project/hooks';
 import { ensureGenScaffold } from '../project/config';
+import { appendMemoryLines, extractMemoryCandidatesFromSummary, MEMORY_RELATIVE, openProjectMemory as openMemoryFile } from '../project/projectMemory';
 
 const MAX_STORED = 80;
 // Максимум сообщений в очереди, пока занят текущий turn
@@ -140,6 +141,8 @@ export class ChatSession {
 	private dismissedPlanHandoffKey?: string;
 	// Title последнего объявления sticky plan в ленте (анти-спам)
 	private lastAnnouncedPlanTitle?: string;
+	/** Кандидаты «что зафиксировать» после ручного /compact */
+	private memoryOfferLines?: string[];
 	private readonly sessions: SessionStore;
 	// Поллинг git-sync auto-Keep (пока есть pending-хунки и setting вкл.)
 	private gitSyncKeepDisposable?: { dispose(): void };
@@ -481,6 +484,9 @@ export class ChatSession {
 				return chips.length > 0 ? chips : undefined;
 			})(),
 			hasExportArchive: Boolean(this.exportArchive?.length),
+			memoryOffer: this.memoryOfferLines && this.memoryOfferLines.length > 0
+				? { lines: [...this.memoryOfferLines] }
+				: undefined,
 		};
 	}
 
@@ -1871,6 +1877,40 @@ export class ChatSession {
 		await this.planStore.openInEditor();
 	}
 
+	dismissMemoryOffer(): void {
+		this.memoryOfferLines = undefined;
+		this.emit();
+	}
+
+	async acceptMemoryOffer(): Promise<void> {
+		const lines = this.memoryOfferLines;
+		if (!lines?.length) {
+			return;
+		}
+
+		try {
+			const { relativePath, appended } = await appendMemoryLines(lines);
+			this.memoryOfferLines = undefined;
+			this.append({
+				id: messageId(),
+				role: 'system',
+				content: vscode.l10n.t('chat.memoryOffer.appended', appended, relativePath),
+			});
+		} catch (err) {
+			this.append({
+				id: messageId(),
+				role: 'error',
+				content: err instanceof Error ? err.message : String(err),
+			});
+		}
+
+		this.emit();
+	}
+
+	async openProjectMemory(): Promise<void> {
+		await openMemoryFile();
+	}
+
 	// Открыть файл из чата: если есть снимок до правок агента - vscode.diff, иначе обычный preview документа
 	async openEditedPath(pathHint: string): Promise<void> {
 		const trimmed = pathHint.trim();
@@ -2301,6 +2341,25 @@ export class ChatSession {
 				role: 'system',
 				content: vscode.l10n.t('chat.compact.done'),
 			});
+
+			const candidates = result.summary
+				? extractMemoryCandidatesFromSummary(result.summary)
+				: [];
+			if (candidates.length > 0) {
+				this.memoryOfferLines = candidates;
+				this.append({
+					id: messageId(),
+					role: 'system',
+					content: vscode.l10n.t(
+						'chat.memoryOffer.hint',
+						MEMORY_RELATIVE,
+						candidates.length,
+						candidates.join('\n'),
+					),
+				});
+			} else {
+				this.memoryOfferLines = undefined;
+			}
 		} catch (err) {
 			const cancelled = isAbortError(err) || controller.signal.aborted;
 			this.append({

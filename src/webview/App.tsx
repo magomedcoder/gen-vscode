@@ -145,6 +145,36 @@ export function App() {
 							</span>
 						</div>
 					) : null}
+					{chat.memoryOffer && chat.memoryOffer.lines.length > 0 ? (
+						<div className="pause-banner" role="status">
+							<span className="pause-banner__text">
+								{t('chat.memoryOffer.banner', chat.memoryOffer.lines.length)}
+							</span>
+							<span className="pause-banner__actions">
+								<button
+									type="button"
+									className="btn"
+									onClick={() => vscodeApi.postMessage({ type: 'acceptMemoryOffer' })}
+								>
+									{t('chat.memoryOffer.accept')}
+								</button>
+								<button
+									type="button"
+									className="btn btn--secondary"
+									onClick={() => vscodeApi.postMessage({ type: 'openProjectMemory' })}
+								>
+									{t('chat.memoryOffer.open')}
+								</button>
+								<button
+									type="button"
+									className="btn btn--secondary"
+									onClick={() => vscodeApi.postMessage({ type: 'dismissMemoryOffer' })}
+								>
+									{t('chat.memoryOffer.dismiss')}
+								</button>
+							</span>
+						</div>
+					) : null}
 					{chat.nCtxWarn ? (
 						<div className="pause-banner pause-banner--warn" role="status">
 							<span className="pause-banner__text">{t('chat.tokens.nCtxWarnBanner')}</span>

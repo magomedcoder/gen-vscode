@@ -220,6 +220,10 @@ export interface ChatViewState {
 	researchJobs?: ResearchJobUi[];
 	// Есть полный архив до сжатия (память/диск) - баннер восстановления
 	hasExportArchive?: boolean;
+	// После /compact: кандидаты для дописи в `.gen/memory.md`
+	memoryOffer?: {
+		lines: string[];
+	};
 }
 
 export type ToWebviewMessage = | { type: 'state'; state: ChatViewState }
@@ -362,5 +366,9 @@ export type FromWebviewMessage = | { type: 'ready' }
 	| { type: 'removeWorktree'; path: string }
 	| { type: 'cleanupAllFinishedWorktrees' }
 	| { type: 'openProjectReport'; path: string }
-	/** Восстановить полную историю из exportArchive после compact */
-	| { type: 'restoreExportArchive' };
+	// Восстановить полную историю из exportArchive после compact
+	| { type: 'restoreExportArchive' }
+	// Дописать предложенные строки в `.gen/memory.md` после /compact
+	| { type: 'acceptMemoryOffer' }
+	| { type: 'dismissMemoryOffer' }
+	| { type: 'openProjectMemory' };

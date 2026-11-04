@@ -373,6 +373,15 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
 			case 'restoreExportArchive':
 				await this.session.restoreExportArchive();
 				return;
+			case 'acceptMemoryOffer':
+				await this.session.acceptMemoryOffer();
+				return;
+			case 'dismissMemoryOffer':
+				this.session.dismissMemoryOffer();
+				return;
+			case 'openProjectMemory':
+				await this.session.openProjectMemory();
+				return;
 			case 'openPath': {
 				const path = String(msg.path ?? '').trim();
 				if (!path) {
