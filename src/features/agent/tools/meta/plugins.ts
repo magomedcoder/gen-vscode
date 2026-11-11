@@ -217,7 +217,7 @@ export const runPluginTool: ToolDefinition = {
 			command: exe.command,
 			args: cmdArgs,
 			cwd: workspaceRoot,
-			timeoutMs: timeoutMs ?? undefined,
+			timeoutMs: effectiveTimeoutMs,
 			signal: ctx.signal,
 		});
 		return {
@@ -227,24 +227,3 @@ export const runPluginTool: ToolDefinition = {
 		};
 	},
 };
-
-function sanitizeAuditArgs(args: string[]): string[] {
-	let redactNext = false;
-	return args.map((arg) => {
-		if (redactNext) {
-			redactNext = false;
-			return '[redacted]';
-		}
-		
-		if (/^--?(?:token|password|passwd|secret|api[-_]?key)$/i.test(arg)) {
-			redactNext = true;
-			return arg;
-		}
-
-		if (/^--?(?:token|password|passwd|secret|api[-_]?key)=/i.test(arg)) {
-			return `${arg.slice(0, arg.indexOf('=') + 1)}[redacted]`;
-		}
-
-		return arg.slice(0, 300);
-	});
-}

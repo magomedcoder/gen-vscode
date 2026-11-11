@@ -2114,6 +2114,24 @@ body {
 	max-width: 100%;
 }
 
+.research-jobs__worktree {
+	display: flex;
+	align-items: baseline;
+	gap: 6px;
+	margin: 4px 0;
+	font-size: 11px;
+	min-width: 0;
+}
+
+.research-jobs__worktree-path {
+	flex: 1;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	opacity: 0.85;
+}
+
 .research-jobs__detail {
 	font-size: 11px;
 	color: var(--vscode-descriptionForeground);

@@ -139,6 +139,14 @@ export function ResearchJobsPanel({
 									{job.reportSnippet}
 								</pre>
 							) : null}
+							{job.worktreePath ? (
+								<div className="research-jobs__worktree" title={job.worktreePath}>
+									<span className="research-jobs__badge research-jobs__badge--muted">
+										{t('chat.research.worktree')}
+									</span>
+									<code className="research-jobs__worktree-path">{job.worktreePath}</code>
+								</div>
+							) : null}
 							<div className="research-jobs__actions">
 								{isActive(job.status) ? (
 									<button

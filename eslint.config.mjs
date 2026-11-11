@@ -1,6 +1,8 @@
 import typescriptEslint from "typescript-eslint";
 
 export default [{
+    ignores: ["**/fixtures/**", "**/test/fixtures/**"],
+}, {
     files: ["**/*.{ts,tsx}"],
 }, {
     plugins: {
@@ -28,5 +30,11 @@ export default [{
         eqeqeq: "warn",
         "no-throw-literal": "warn",
         semi: "warn",
+        "no-unused-vars": "off",
+        "@typescript-eslint/no-unused-vars": ["error", {
+            argsIgnorePattern: "^_",
+            varsIgnorePattern: "^_",
+            caughtErrorsIgnorePattern: "^_",
+        }],
     },
 }];

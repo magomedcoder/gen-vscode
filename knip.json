@@ -1,0 +1,26 @@
+{
+  "$schema": "https://unpkg.com/knip@5/schema.json",
+  "entry": [
+    "src/extension.ts!",
+    "src/webview/index.tsx!",
+    "src/features/index/treeSitterWorkerMain.ts!",
+    "src/**/*.test.ts!"
+  ],
+  "project": [
+    "src/**/*.{ts,tsx}"
+  ],
+  "ignore": [
+    "src/test/eval/**",
+    "src/test/fixtures/**"
+  ],
+  "ignoreBinaries": ["vsce", "xvfb-run"],
+  "ignoreDependencies": [
+    "tree-sitter-wasms",
+    "playwright",
+    "@types/vscode",
+    "@types/mocha",
+    "@types/node",
+    "@types/react",
+    "@types/react-dom"
+  ]
+}

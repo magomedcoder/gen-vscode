@@ -119,6 +119,32 @@ export function registerChat(context: vscode.ExtensionContext): vscode.Disposabl
 				ok ? vscode.l10n.t('chat.worktrees.removed') : vscode.l10n.t('chat.worktrees.removeFailed'),
 			);
 		}),
+		vscode.commands.registerCommand('gen.cleanupFinishedWorktrees', async () => {
+			const items = await listAgentWorktrees();
+			if (!items.length) {
+				void vscode.window.showInformationMessage(vscode.l10n.t('chat.worktrees.empty'));
+				return;
+			}
+
+			const confirm = await vscode.window.showWarningMessage(
+				vscode.l10n.t('chat.worktrees.cleanupConfirm', items.length),
+				{ modal: true },
+				vscode.l10n.t('chat.worktrees.cleanupAction'),
+			);
+			if (confirm !== vscode.l10n.t('chat.worktrees.cleanupAction')) {
+				return;
+			}
+
+			let removed = 0;
+			for (const w of items) {
+				if (await removeAgentWorktree(w.path)) {
+					removed += 1;
+				}
+			}
+
+			await provider.getSession().cleanupAllFinishedWorktrees();
+			void vscode.window.showInformationMessage(vscode.l10n.t('chat.worktrees.cleanupDone', removed, items.length));
+		}),
 		vscode.commands.registerCommand('gen.design.pickFromClipboard', async () => {
 			await runDesignPickFromClipboard((message) => provider.postToWebview(message));
 		}),

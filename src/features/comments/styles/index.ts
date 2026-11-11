@@ -1,4 +1,4 @@
-import { getCommentStyleConfig, resolveCommentStyleId } from './styles';
+import { getCommentStyleConfig } from './styles';
 import { stripByStyle } from './stripByStyle';
 
 export type { CommentStyleConfig, CommentStyleId } from './types';

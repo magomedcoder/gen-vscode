@@ -73,6 +73,20 @@ export interface CompleteParams {
 	model?: string;
 }
 
+export interface CompleteFimParams {
+	prompt: string;
+	suffix?: string;
+	signal?: AbortSignal;
+	model?: string;
+	maxTokens?: number;
+	onRetry?: (info: LlmRetryInfo) => void;
+}
+
+export interface CompleteFimResult {
+	content: string;
+	unsupported?: boolean;
+}
+
 export interface CompleteResult {
 	content: string;
 	// Reasoning/thinking от модели (если провайдер отдал)

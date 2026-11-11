@@ -177,7 +177,15 @@ export function AgentBehaviorPage({ draft, setField, updateDraft }: SettingsPage
 					checked={draft.worktreesEnabled}
 					onChange={(v) => setField('worktreesEnabled', v)}
 				/>
-				<p className="field__hint">{t('settings.worktrees.manageHint')}</p>
+				{draft.worktreesEnabled ? (
+					<div className="field__hint field__hint--block">
+						<p>{t('settings.worktrees.enabledBanner')}</p>
+						<p>{t('settings.worktrees.manageHint')}</p>
+						<p>{t('settings.worktrees.cleanupHint')}</p>
+					</div>
+				) : (
+					<p className="field__hint">{t('settings.worktrees.manageHint')}</p>
+				)}
 			</SettingsSection>
 
 			<SettingsSection

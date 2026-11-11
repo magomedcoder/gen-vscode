@@ -3,7 +3,7 @@ import { buildAuthHeaders } from '../config/apiKey';
 import { getResolvedSecret } from '../config/secretVault';
 import { getSettings, setSessionModel, type GenSettings } from '../config/settings';
 import { httpErrorMessage, isAbortError, isRetryableError, LlmHttpError, parseErrorDetail, parseRetryAfterMs, retryDelayMs, toAbortError, toTimeoutError, isTimeoutError } from './errors';
-import type { LlmRetryInfo } from './types';
+import type { CompleteFimParams, CompleteFimResult, LlmRetryInfo } from './types';
 import { logLlm } from './log';
 import { parseModelsListResponse, type LlmModelOption } from './modelLabel';
 import { parseUsage } from './usage';
@@ -11,6 +11,8 @@ import { extractThinkingDelta, splitAssistantPayload } from './thinking';
 import type { ChatMessage, CompleteParams, CompleteResult, ConnectionCapabilities, ConnectionHealthResult, ListModelsParams, LlmClient, LlmToolCall } from './types';
 import { extractNCtxFromModelsPayload, extractNCtxFromProps, getCachedNCtx, setCachedNCtx, softCacheNCtxFromCompletePayload } from './contextBudget';
 import { normalizeBaseUrl } from './normalizeBaseUrl';
+
+const fimSupportByBase = new Map<string, boolean>();
 
 function formatHealthError(err: unknown, baseUrl: string): string {
 	const raw = err instanceof Error ? err.message : String(err);
@@ -435,6 +437,101 @@ export class HttpLlmClient implements LlmClient {
 				...fallback,
 				toolsFallback: true,
 			};
+		}
+	}
+
+	async completeFim(params: CompleteFimParams): Promise<CompleteFimResult> {
+		const settings = this.getConfig();
+		const baseKey = normalizeBaseUrl(settings.baseUrl) || settings.baseUrl;
+		if (fimSupportByBase.get(baseKey) === false) {
+			return { content: '', unsupported: true };
+		}
+
+		const model = params.model?.trim() || await this.resolveSessionModel(settings);
+		if (!model) {
+			throw new Error(vscode.l10n.t('llm.needModel'));
+		}
+
+		const body: Record<string, unknown> = {
+			model,
+			prompt: params.prompt,
+			max_tokens: params.maxTokens ?? Math.min(settings.maxTokens, 256),
+			temperature: Math.min(settings.temperature, 0.2),
+			stream: false,
+		};
+		if (params.suffix !== undefined) {
+			body.suffix = params.suffix;
+		}
+
+		try {
+			const data = await this.requestJson<{
+				choices?: Array<{ 
+					text?: string;
+					message?: {
+						content?: string | null
+					}
+				}>;
+				error?: { message?: string };
+			}>('/v1/completions', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify(body),
+				signal: params.signal,
+			}, settings, params.onRetry);
+
+			if (data.error?.message) {
+				throw new Error(data.error.message);
+			}
+
+			const choice = data.choices?.[0];
+			const text = (choice?.text ?? choice?.message?.content ?? '').toString();
+			fimSupportByBase.set(baseKey, true);
+			return { 
+				content: text 
+			};
+		} catch (err) {
+			if (isAbortError(err) || params.signal?.aborted) {
+				throw toAbortError(err);
+			}
+
+			const status = err instanceof LlmHttpError ? err.status : undefined;
+			if (status === 404 || status === 405 || status === 501) {
+				fimSupportByBase.set(baseKey, false);
+				return { content: '', unsupported: true };
+			}
+
+			if (status === 400 && params.suffix) {
+				try {
+					const retryBody = { ...body };
+					delete retryBody.suffix;
+					const data = await this.requestJson<{
+						choices?: Array<{ 
+							text?: string
+							message?: {
+								content?: string | null
+							}
+						}>;
+					}>('/v1/completions', {
+						method: 'POST',
+						headers: { 'Content-Type': 'application/json' },
+						body: JSON.stringify(retryBody),
+						signal: params.signal,
+					}, settings, params.onRetry);
+					const choice = data.choices?.[0];
+					const text = (choice?.text ?? choice?.message?.content ?? '').toString();
+					fimSupportByBase.set(baseKey, true);
+					return { content: text };
+				} catch (inner) {
+					const innerStatus = inner instanceof LlmHttpError ? inner.status : undefined;
+					if (innerStatus === 404 || innerStatus === 405 || innerStatus === 501) {
+						fimSupportByBase.set(baseKey, false);
+						return { content: '', unsupported: true };
+					}
+					throw inner;
+				}
+			}
+
+			throw err;
 		}
 	}
 

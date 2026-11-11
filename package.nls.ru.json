@@ -18,6 +18,7 @@
 	"command.notebook.improveCell.title": "Gen: Улучшить ячейку",
 	"command.notebook.generateCell.title": "Gen: Сгенерировать ячейку",
 	"command.manageWorktrees.title": "Gen: Управление worktrees",
+	"command.cleanupFinishedWorktrees.title": "Gen: Очистить завершённые worktrees",
 	"command.dryRunHook.title": "Gen: Тестовый запуск hook-события",
 	"command.designPickFromClipboard.title": "Gen: Design - URL из буфера",
 	"command.generateCommitMessage.title": "Gen: Сгенерировать Commit Message",

@@ -15,7 +15,6 @@ import {
 	preferLspOrRegexOutline,
 	outlineEntriesFromLspProviderResult,
 	searchOutlineEntries,
-	summarizeOutlineForPath,
 	applyOutlinePathRemove,
 	applyOutlinePathUpdate,
 	type OutlineDocument,

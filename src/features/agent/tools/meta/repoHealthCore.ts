@@ -26,10 +26,6 @@ export function isGraphPath(rel: string): boolean {
 	return detectImportLang(rel) !== undefined;
 }
 
-function isJsLikePath(rel: string): boolean {
-	return JS_EXT.test(rel);
-}
-
 /**
  * Импорты ES/CJS из текста (эвристика).
  * `export ... from` / `export * from` помечаются как реэкспорт (реэкспорт всё равно создаёт ребро; ложные срабатывания циклов снижаем, игнорируя чистые barrel-реэкспорты при оценке).

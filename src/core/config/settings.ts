@@ -1,5 +1,4 @@
 import { normalizeApprovalPolicy } from '../../features/agent/permissionPolicy';
-import type { ApprovalPolicy } from './approvalTypes';
 import * as vscode from 'vscode';
 import type { ExtensionContext, Memento } from 'vscode';
 import { initApiKeyStore } from './apiKey';

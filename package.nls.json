@@ -18,6 +18,7 @@
 	"command.notebook.improveCell.title": "Gen: Improve cell",
 	"command.notebook.generateCell.title": "Gen: Generate cell",
 	"command.manageWorktrees.title": "Gen: Manage worktrees",
+	"command.cleanupFinishedWorktrees.title": "Gen: Cleanup finished worktrees",
 	"command.dryRunHook.title": "Gen: Dry-run hook event",
 	"command.designPickFromClipboard.title": "Gen: Design pick from clipboard URL",
 	"command.generateCommitMessage.title": "Gen: Generate Commit Message",

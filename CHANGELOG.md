@@ -1,7 +1,10 @@
 # Changelog
 
-## dev
+## v0.7.0 - November 11, 2026
 
+- **Hygiene:** `knip --include files` smoke script; `@typescript-eslint/no-unused-vars` as error
+- **Worktrees UX:** Settings banner when enabled; `gen.cleanupFinishedWorktrees`; Teams shows worktree path + cleanup
+- **Tab / ghost:** prefer FIM `/v1/completions` (prompt+suffix) with chat fallback; multi-line ghost (capped)
 - **Project memory:** workspace-only `.gen/memory.md` in agent/ask rules appendix; `/init` seeds template; after `/compact` offer to append 3-5 decision lines (no cloud Memories)
 - **Plan -> Act handoff:** one-click «Approve plan -> Agent» (switches to Agent/`actModel`, keeps sticky plan in prompt, kickoff turn); sticky plan status panel in the feed + Open `.gen/plan.md`
 - **Smart `@codebase`:** under tight mention budget, replace giant dump with tool-hint stub (`find_code` / `project_map` / `pack_context`); coding preset keeps those tools; wiki feeding-agent
@@ -21,7 +24,7 @@
 - **Agents / hooks / plugins:** `generateAgentFile`; Hooks dry-run in Settings UI; prompt-macro UX copy
 - **Polish:** webSearch empty title->url; image/PDF resize fail-soft notes; `IMAGE_TOKEN_ESTIMATE`
 
-## 0.6.0 (17 October 2026)
+## v0.6.0 (17 October 2026)
 
 - **Security:** drop Settings UI deny-lists (`deniedPaths`) and `providerUsePolicy` / `providerUsePatterns` (runtime + schema + admin lock); path/folder ignore via workspace-root `.genignore` (seeded on `/init` / `gen.initProject`); `deniedCommands` / `sensitivePathPatterns` / `secretPatterns` only in user/project JSON (`UI_LAYER_EXCLUDED_KEYS` - not Settings `globalState`)
 - **Index storage:** move codebase index + project map off `.gen/` into VSCode `ExtensionContext.storageUri` (`index/<key>/`, `map/<key>/`); indexing runs without requiring `.gen/config.json` (scaffold still via `gen.initProject` / `/init`)
@@ -37,7 +40,7 @@
 - **Sessions / config / privacy:** session archive/filter/search; exportArchive quarantine + secret redaction; layer schema errors; expanded admin locks; Privacy Mode; `compactReservedTokens` = headroom
 - **Design / media:** click-to-code via `design_inspect` + designSession; PDF page budget; host image resize; Exa/Parallel adapter tests
 
-## 0.5.0 (30 September 2026)
+## v0.5.0 (30 September 2026)
 
 - **Secrets:** unified SecretStorage vault; `webSearchApiKey` no longer in JSON/settings layers (migrate + clear UI); LLM apiKey via same vault
 - **Permissions:** opt-in `persistAlwaysAllow` - Always patterns survive reloads (workspaceState); Permissions UI list/clear
@@ -66,7 +69,7 @@
 - **Sessions:** `tabEvictionPolicy` (`closeOldestIdle` default / `block`) - at `maxTabCount`, new/fork/handoff closes oldest idle tabs (never current or busy)
 - **Sessions / compact:** lossless `exportArchive` persisted under ExtensionContext.storageUri (`export-archives/`); banner + `/restore-archive` to restore full history after compact; archive cleared on clear/delete/restore
 
-## 0.4.0 (11 September 2026)
+## v0.4.0 (11 September 2026)
 
 - **Context / compact (prod path):** mention token budgets + per-kind eviction (`@codebase` first); preflight trim before complete; tool model-path cap `toolOutputModelMaxChars` (default 2000); overflow **one** shrink+retry; `midLoopAutoCompact` default on (rule-based); `llmAutoCompact` default **off**; `/compact` preview + undo; near-budget / n_ctx warn banners + `/compact` CTA; budget breakdown in header
 - **Parallel research:** `task` accepts `prompts[]` (+ `max_parallel`) for read-only fan-out; busy status while research runs; aggregate JSON results
@@ -85,7 +88,7 @@
 - Context: n_ctx probe + budget UI + hygiene; Merkle/LSP symbols/`@map`; `edit_file` / scratch / ephemeral / `repo_health`
 - `smallModel`: shared `resolveSmallModel` for title agent + compact/summary
 
-## 0.3.0 (7 September 2026)
+## v0.3.0 (7 September 2026)
 
 - **Context overflow:** parse `exceed_context_size_error` (incl. nested llama.cpp JSON); preflight estimate + shrink; auto-compact before turn; limited retry; `contextOverflowPolicy` on Request settings; clear user-facing errors instead of raw HTTP 400
 - Permissions v2: approval policy UI (`allow` / `ask` / `review` / `deny`), Always + suggested pattern, session allowlist, auto-approve, continue-on-deny, capability toggles
@@ -115,7 +118,7 @@
 - LLM: honor `Retry-After` on 429/5xx with visible retry status; parallel read-only tool batches; tool output truncation
 - Images/attachments: paste/drag + vision; `read_file` images; auto-resize limits; export/import sessions; lossless archive after compact
 
-## 0.2.0 (3 September 2026)
+## v0.2.0 (3 September 2026)
 
 - Context Engine + `@file` / `@folder` / `@codebase` mentions in chat (Composer autocomplete)
 - Docs: English docs without `-ru` suffix; Russian docs as `*-ru.md` with EN/RU cross-links
@@ -132,7 +135,7 @@
 - **`.genrules`** - optional workspace rules file injected into agent, ask, and comment prompts
 - Chat turn queue while busy (Composer **Queue**; **Stop** / **Clear** drop the queue); session token totals logged to agent Output
 
-## 0.1.0 (24 August 2026)
+## v0.1.0 (24 August 2026)
 
 - Chat and agent in the bottom panel (`ask` / `agent`)
   - streaming responses (when the server supports it)

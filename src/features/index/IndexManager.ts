@@ -6,7 +6,7 @@ import { chunkFileContent, chunkFileContentAst } from './chunk';
 import { canSkipDirRewalk, parentDir } from './dirDigests';
 import { contentHash } from './hash';
 import { applyTreeSitterSettings, shouldUseTreeSitterChunk } from './indexEngines';
-import { folderStorageKey, initIndexStorage, isIndexStorageAvailable } from './indexStorage';
+import { initIndexStorage, isIndexStorageAvailable } from './indexStorage';
 import { recordChunkEngineUse, recordMerkleSkipStats, recordOutlineBreakdown, resetIndexRunStats } from './indexStats';
 import { saveMerkleToSqlite, shouldUseSqliteStorage } from './indexSqlite';
 import { flushVectorsCache } from './vectorStore';
@@ -837,7 +837,7 @@ export class IndexManager implements vscode.Disposable {
 	private logIndexMetrics(
 		folderFsPath: string,
 		metrics: MerkleMetrics,
-		toolName: 'index_full' | 'index_reindex' = 'index_full',
+		_toolName: 'index_full' | 'index_reindex' = 'index_full',
 	): void {
 		const missingWasm = listMissingDefaultWasmLangs().length;
 		const line = `индекс merkle: файлы ${metrics.filesIndexed}/${metrics.filesTotal}` +

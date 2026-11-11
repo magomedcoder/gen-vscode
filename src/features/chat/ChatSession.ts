@@ -46,7 +46,7 @@ import type { DiffHunkPayload } from '../agent/diff';
 import { revertHunkInText } from '../agent/diff';
 import { pathExists, resolveWorkspacePath } from '../agent/workspacePath';
 import { startGitSyncAutoKeep } from './gitSyncKeep';
-import { customToSlashCommand, discoverCustomCommands, expandCommandTemplate, validateCommandArgs } from '../project/customCommands';
+import { customToSlashCommand, discoverCustomCommands } from '../project/customCommands';
 import type { CustomCommand } from '../project/customCommands';
 import { getGenRulesManager } from '../project/genrules';
 import { formatPersonaAppendix, resolvePersona } from '../project/personas';

@@ -1,5 +1,4 @@
 import type { ExtensionContext } from 'vscode';
-import { buildAuthHeaders } from './apiKeyHeaders';
 import { clearSecret, getResolvedSecret, hasSecret, initSecretVault, setSecret } from './secretVault';
 
 export { buildAuthHeaders } from './apiKeyHeaders';

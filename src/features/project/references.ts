@@ -66,15 +66,6 @@ function clip(text: string, max: number): string {
 	return `${text.slice(0, max)}\n... [обрезано]`;
 }
 
-async function pathExists(p: string): Promise<boolean> {
-	try {
-		await fs.access(p);
-		return true;
-	} catch {
-		return false;
-	}
-}
-
 async function isNonEmptyDir(dir: string): Promise<boolean> {
 	try {
 		const entries = await fs.readdir(dir);

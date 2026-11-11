@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { getSettings } from '../../core/config/settings';
 import { HttpLlmClient } from '../../core/llm/client';
+import { sanitizeGhostInsert } from './ghostText';
 
 let lastAbort: AbortController | undefined;
 
@@ -29,39 +30,51 @@ export function registerInlineCompletionProvider(): vscode.Disposable {
 
 			const start = Math.max(0, position.line - 40);
 			const prefix = document.getText(new vscode.Range(start, 0, position.line, position.character));
+			const endLine = Math.min(document.lineCount - 1, position.line + 20);
 			const suffix = document.getText(
-				new vscode.Range(position.line, position.character, Math.min(document.lineCount - 1, position.line + 8), 0),
+				new vscode.Range(position.line, position.character, endLine, document.lineAt(endLine).text.length),
 			);
 
 			try {
 				const client = new HttpLlmClient();
 				const model = settings.smallModel?.trim() || undefined;
-				const result = await client.complete({
+				const prompt = prefix.slice(-6000);
+				const fimSuffix = suffix.slice(0, 2000);
+
+				let insert = '';
+				const fim = await client.completeFim({
 					model,
-					messages: [
-						{
-							role: 'system',
-							content: 'Ты движок автодополнения кода. Продолжи код в позиции курсора. Ответь только текстом вставки (без markdown-ограждений и пояснений). Предпочти короткое дополнение в одну или несколько строк.',
-						},
-						{
-							role: 'user',
-							content: `Язык: ${document.languageId}\n\nПРЕФИКС:\n${prefix.slice(-6000)}\n\nСУФФИКС:\n${suffix.slice(0, 1500)}\n\nДополни код сразу после ПРЕФИКСА.`,
-						},
-					],
+					prompt,
+					suffix: fimSuffix,
 					signal: controller.signal,
+					maxTokens: 192,
 				});
-				let insert = result.content.trim();
-				if (insert.startsWith('```')) {
-					insert = insert.replace(/^```(?:\w+)?\n?/, '').replace(/\n?```$/, '').trim();
+				if (!fim.unsupported) {
+					insert = fim.content;
+				} else {
+					const result = await client.complete({
+						model,
+						messages: [
+							{
+								role: 'system',
+								content: 'Ты движок автодополнения кода. Продолжи код в позиции курсора. Ответь только текстом вставки (без markdown-ограждений и пояснений). Можно несколько строк, но без лишней воды.',
+							},
+							{
+								role: 'user',
+								content: `Язык: ${document.languageId}\n\nПРЕФИКС:\n${prompt}\n\nСУФФИКС:\n${fimSuffix}\n\nДополни код сразу после ПРЕФИКСА (перед СУФФИКСОМ).`,
+							},
+						],
+						signal: controller.signal,
+					});
+					insert = result.content;
 				}
 
+				insert = sanitizeGhostInsert(insert);
 				if (!insert || controller.signal.aborted) {
 					return;
 				}
 
-				// Для latency/UX берём только первую строку
-				const first = insert.split(/\r?\n/)[0] ?? insert;
-				return [new vscode.InlineCompletionItem(first, new vscode.Range(position, position))];
+				return [new vscode.InlineCompletionItem(insert, new vscode.Range(position, position))];
 			} catch {
 				return;
 			} finally {

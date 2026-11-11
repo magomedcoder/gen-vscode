@@ -946,8 +946,6 @@ export class AgentSession {
 				}
 				params.onToolStart?.(call.id, toolAbort);
 
-				const toolPathHint = pathFromToolArguments(call.function.arguments);
-
 				const finishToolUi = (
 					status: ToolCallStatus,
 					resultText: string,

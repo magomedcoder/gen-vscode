@@ -1,7 +1,10 @@
 # Changelog
 
-## dev
+## v0.7.0- 11 ноября 2026
 
+- **Hygiene:** smoke `knip --include files`; `@typescript-eslint/no-unused-vars` как error
+- **Worktrees UX:** баннер в Settings при включении; `gen.cleanupFinishedWorktrees`; Teams показывает путь + cleanup
+- **Tab / ghost:** FIM `/v1/completions` (prompt+suffix) с fallback на chat; multi-line ghost (с лимитом)
 - **Project memory:** только workspace `.gen/memory.md` в rules appendix Agent/Ask; `/init` сеет шаблон; после `/compact` оффер дописать 3-5 решений (без cloud Memories)
 - **Plan -> Act handoff:** один клик «Approve plan -> Agent» (Agent/`actModel`, sticky plan в prompt, kickoff-ход); панель статуса sticky plan в ленте + Open `.gen/plan.md`
 - **Smart `@codebase`:** при тесном mention-budget dump -> stub prefer `find_code` / `project_map` / `pack_context`; coding preset оставляет эти tools; wiki feeding-agent
@@ -21,7 +24,7 @@
 - **Agents / hooks / plugins:** `generateAgentFile`; dry-run hooks в Settings; prompt-macro UX
 - **Polish:** webSearch empty title->url; fail-soft notes для image/PDF; `IMAGE_TOKEN_ESTIMATE`
 
-## 0.6.0 (17 октября 2026)
+## v0.6.0 (17 октября 2026)
 
 - **Security:** убраны deny-list UI (`deniedPaths`) и `providerUsePolicy` / `providerUsePatterns` (runtime + schema + admin lock); ignore путей/папок через `.genignore` в корне workspace (seed при `/init` / `gen.initProject`); `deniedCommands` / `sensitivePathPatterns` / `secretPatterns` только в user/project JSON (`UI_LAYER_EXCLUDED_KEYS` - не Settings `globalState`)
 - **Index storage:** индекс и project map перенесены из `.gen/` в VSCode `ExtensionContext.storageUri` (`index/<key>/`, `map/<key>/`); индексация без обязательного `.gen/config.json` (scaffold по-прежнему через `gen.initProject` / `/init`)
@@ -37,7 +40,7 @@
 - **Sessions / config / privacy:** archive/filter/search; exportArchive quarantine + redact; schema errors слоёв; admin locks; Privacy Mode; `compactReservedTokens` = headroom
 - **Design / media:** click-to-code через `design_inspect` + designSession; PDF page budget; host image resize; тесты Exa/Parallel
 
-## 0.5.0 (30 сентября 2026)
+## v0.5.0 (30 сентября 2026)
 
 - **Secrets:** единый SecretStorage vault; `webSearchApiKey` больше не в JSON/слоях (migrate + clear в UI); LLM apiKey через тот же vault
 - **Permissions:** opt-in `persistAlwaysAllow` - Always-паттерны переживают reload (workspaceState); список/очистка в Permissions
@@ -66,7 +69,7 @@
 - **Sessions:** `tabEvictionPolicy` (`closeOldestIdle` по умолчанию / `block`) - на лимите `maxTabCount` new/fork/handoff закрывает самые старые idle (не current и не busy)
 - **Sessions / compact:** lossless `exportArchive` на диске (ExtensionContext.storageUri / `export-archives/`); баннер + `/restore-archive` после compact; архив сбрасывается при clear/delete/restore
 
-## 0.4.0 (11 сентября 2026)
+## v0.4.0 (11 сентября 2026)
 
 - **Context / compact:** budget токенов для @-вложений + eviction по kind; preflight trim; `toolOutputModelMaxChars` (default 2000); один overflow retry; `midLoopAutoCompact` default on; `llmAutoCompact` default **off**; preview `/compact` + undo; near-budget / n_ctx warn + CTA `/compact`; breakdown в шапке
 - **Параллельный research:** `task` с `prompts[]` (+ `max_parallel`) для read-only fan-out; статус busy; агрегированный JSON
@@ -85,7 +88,7 @@
 - Context: n_ctx probe + budget UI + hygiene; Merkle/LSP symbols/`@map`; `edit_file` / scratch / ephemeral / `repo_health`
 - `smallModel`: общий `resolveSmallModel` для title + compact/summary
 
-## 0.3.0 (7 сентября 2026)
+## v0.3.0 (7 сентября 2026)
 
 - **Переполнение контекста:** разбор `exceed_context_size_error` (в т.ч. вложенный JSON llama.cpp); preflight оценка + shrink; auto-compact перед ходом; ограниченный retry; `contextOverflowPolicy` на экране Запросы; понятные ошибки вместо сырого HTTP 400
 - Permissions v2: UI политики подтверждений (`allow` / `ask` / `review` / `deny`), Always + подсказка паттерна, session allowlist, auto-approve, continue-on-deny, capability toggles
@@ -115,7 +118,7 @@
 - LLM: учёт `Retry-After` при 429/5xx со статусом в composer; параллельные read-only tool batches; обрезка вывода tools
 - Images/attachments: paste/drag + vision; `read_file` изображений; лимиты resize; export/import сессий; lossless archive после compact
 
-## 0.2.0 (3 сентября 2026)
+## v0.2.0 (3 сентября 2026)
 
 - Context Engine + упоминания `@file` / `@folder` / `@codebase` в чате (автодополнение в Composer)
 - Документация: английские docs без суффикса `-ru`; русские - `*-ru.md` со ссылками EN/RU
@@ -132,7 +135,7 @@
 - **`.genrules`** - опциональный файл правил проекта в system prompt agent / ask / комментариев
 - Очередь turns при занятом агенте (**В очередь**; **Стоп** / **Очистить** сбрасывают очередь); итог токенов сессии в лог agent
 
-## 0.1.0 (24 августа 2026)
+## v0.1.0 (24 августа 2026)
 
 - Чат и агент в bottom-панели (`ask` / `agent`)
   - streaming ответов (если сервер поддерживает)
